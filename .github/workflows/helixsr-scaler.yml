@@ -1,5 +1,6 @@
-# HelixSR Scaler: builds the DLL on every push and pull request, and attaches the zip to a draft release when a
-# v* tag is pushed (git tag v1.0.0 && git push origin v1.0.0). Publish the draft on GitHub when it's tested.
+# HelixSR Scaler: builds the DLL on every push and pull request, packs the Windows zip and the Linux / Steam Deck
+# tar.gz (same DLL, run through Proton; tested under Wine here), and attaches both to a draft release when a v* tag
+# is pushed (git tag v1.0.0 && git push origin v1.0.0). Publish the draft on GitHub when it's tested.
 
 name: HelixSR Scaler
 
@@ -17,6 +18,9 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      name: ${{ steps.version.outputs.name }}
 
     steps:
     - uses: actions/checkout@v4
@@ -74,7 +78,12 @@ jobs:
         Remove-Item -Force "$out\!! EXTRACT ALL FILES TO GAME FOLDER !!" -ErrorAction SilentlyContinue
         Copy-Item LICENSE "$out\Licenses\OptiScaler_LICENSE.txt"
         Copy-Item helixsr\README.txt "$out\README.txt"
-        Compress-Archive -Path $out -DestinationPath "${{ github.workspace }}\${{ steps.version.outputs.name }}.zip"
+        # HelixSR Scaler's Linux setup in place of OptiScaler's, and the list of the download's files it uses
+        Copy-Item -Force helixsr\setup_linux.sh "$out\setup_linux.sh"
+        Push-Location $out
+        Get-ChildItem -Recurse -File | ForEach-Object { (Resolve-Path -Relative $_.FullName).Substring(2).Replace('\', '/') } |
+          Sort-Object | Set-Content -Encoding ascii HelixSR-Scaler-package.txt
+        Pop-Location
 
     - uses: actions/upload-artifact@v4
       with:
@@ -82,12 +91,80 @@ jobs:
         path: ${{ github.workspace }}\package
         if-no-files-found: error
 
+  linux:
+    needs: build
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/download-artifact@v4
+      with:
+        name: ${{ needs.build.outputs.name }}
+        path: win
+
+    - name: Package
+      run: |
+        name="${{ needs.build.outputs.name }}-linux"
+        out="linux/$name"
+        mkdir -p linux
+        cp -r "win/${{ needs.build.outputs.name }}" "$out"
+        rm -f "$out/setup_windows.bat" "$out/HelixSR-Scaler-package.txt"
+        cp helixsr/setup_linux.sh "$out/setup_linux.sh"
+        chmod +x "$out/setup_linux.sh"
+        cp helixsr/README-Linux.txt "$out/README.txt"
+        (cd "$out" && find . -type f | sed 's|^\./||' | LC_ALL=C sort >HelixSR-Scaler-package.txt)
+        tar -C linux -czf "$name.tar.gz" "$name"
+        echo "name=$name" >>"$GITHUB_ENV"
+        ls -la "$out"
+
+    - name: Install test tools
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq --no-install-recommends shellcheck wine wine64 mingw-w64 >/dev/null
+
+    - name: Check scripts
+      run: shellcheck -S warning helixsr/setup_linux.sh helixsr/tests/*.sh
+
+    - name: Test setup_linux.sh
+      run: helixsr/tests/test_setup_linux.sh "linux/$name"
+
+    - name: Test under Wine
+      run: helixsr/tests/test_wine.sh "linux/$name"
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.name }}
+        path: ${{ env.name }}.tar.gz
+        if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build, linux]
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Files
+      run: |
+        name="${{ needs.build.outputs.name }}"
+        (cd "artifacts/$name" && zip -qr "$GITHUB_WORKSPACE/$name.zip" "$name")
+        cp "artifacts/$name-linux/$name-linux.tar.gz" .
+        ls -la *.zip *.tar.gz
+
     - name: Draft release
-      if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
       with:
         draft: true
-        name: HelixSR Scaler ${{ steps.version.outputs.version }}
-        files: ${{ github.workspace }}/${{ steps.version.outputs.name }}.zip
+        name: HelixSR Scaler ${{ needs.build.outputs.version }}
+        files: |
+          ${{ needs.build.outputs.name }}.zip
+          ${{ needs.build.outputs.name }}-linux.tar.gz
         body: |
-          HelixSR Scaler ${{ steps.version.outputs.version }}, based on OptiScaler. Source code: this repository (GPL-3.0).
+          HelixSR Scaler ${{ needs.build.outputs.version }}, based on OptiScaler. Source code: this repository (GPL-3.0).
+
+          - Windows: ${{ needs.build.outputs.name }}.zip
+          - Linux and Steam Deck: ${{ needs.build.outputs.name }}-linux.tar.gz (run ./setup_linux.sh)

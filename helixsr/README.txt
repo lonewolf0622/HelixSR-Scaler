@@ -2,17 +2,15 @@ HelixSR Scaler
 ==============
 
 HelixSR Scaler lets HelixSR run in games that only have DLSS, XeSS or FSR 2.
-It is OptiScaler with HelixSR set up already and a simple menu.
+It is OptiScaler with HelixSR built in: HelixSR is one more choice in OptiScaler's upscaler list,
+and everything else OptiScaler does is still there.
+
+On Linux or Steam Deck? Use the Linux download and read its README.txt instead.
 
 Don't use it in online games or games with anti-cheat.
 
 
-THE EASY WAY
-
-Use the HelixSR app. It puts HelixSR and HelixSR Scaler into your game for you.
-
-
-BY HAND
+INSTALLING
 
 1. Set up HelixSR first (run helixsr-setup from the HelixSR download). After that, HelixSR's
    amd_fidelityfx_dx12.dll contains the upscaler.
@@ -27,15 +25,17 @@ BY HAND
 
 5. Start the game. In its graphics settings, turn on DLSS (or FSR or XeSS if there is no DLSS).
 
-6. Press Insert. The menu says "HelixSR is running" when it works.
+6. Press Insert. HelixSR is picked in the upscaler list, with its settings under it.
 
 
 IN THE MENU (Insert key)
 
-- Sharpness: how crisp the picture looks.
+Under the upscaler list, while HelixSR is picked:
+- Sharpness: how crisp the picture looks. Try Off if edges sparkle or shimmer.
 - Speed boost: faster math on graphics cards that support it. Turn it off if the picture shimmers.
-- Having problems?: fixes for some AMD cards, and a button that opens the HelixSR folder.
-- All settings: OptiScaler's full menu, for experts.
+- GPU mode: Auto is right for most cards.
+- Open the HelixSR folder: helixsr.log in there tells what HelixSR did.
+Everything else in the menu is OptiScaler's.
 
 Changes are saved in HelixSR\helixsr.ini. Restart the game after changing them.
 

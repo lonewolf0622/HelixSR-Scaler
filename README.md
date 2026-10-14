@@ -1,14 +1,19 @@
 # HelixSR Scaler
 
 **HelixSR in games that only have DLSS, XeSS or FSR 2.** HelixSR Scaler is [OptiScaler](https://github.com/optiscaler/OptiScaler)
-with [HelixSR](https://github.com/lonewolf0622/HelixSR) set up out of the box and a simple menu in plain words.
+with [HelixSR](https://github.com/lonewolf0622/HelixSR) built in.
 
+- **HelixSR is in the upscaler list**, next to XeSS, FSR and DLSS, with its settings under it: sharpness, speed boost
+  (int8) and GPU mode. Everything else OptiScaler does is still there.
 - **No setup files to edit.** Put the `HelixSR` folder next to it and HelixSR is the upscaler.
-- **A simple menu (Insert key)** that says whether HelixSR is running, with the few settings that matter: sharpness,
-  speed boost (int8) and a fix for some AMD cards. OptiScaler's full menu is one click away under *All settings*.
+- **Windows, Linux and Steam Deck.** On Linux the same DLL runs through Proton or Wine; the Linux download has a setup
+  that finds your Steam games, installs, and gives you the launch options.
 - **Updates** come from this repository's releases.
 
-The easiest way to install it is the HelixSR app. To install it by hand, see [helixsr/README.txt](helixsr/README.txt).
+| | Download | How to install |
+|---|---|---|
+| Windows | `HelixSR-Scaler-<version>.zip` | [helixsr/README.txt](helixsr/README.txt) |
+| Linux, Steam Deck | `HelixSR-Scaler-<version>-linux.tar.gz` | [helixsr/README-Linux.txt](helixsr/README-Linux.txt) (`./setup_linux.sh`) |
 
 Don't use it in online games or games with anti-cheat.
 
@@ -17,7 +22,9 @@ Don't use it in online games or games with anti-cheat.
 Branch `helixsr` is OptiScaler's `release/0.9` branch plus HelixSR Scaler's changes. Everything HelixSR-specific is in
 `OptiScaler/helixsr/`; OptiScaler's own files only change in a few places marked `HelixSR Scaler`, so OptiScaler's updates
 merge easily (`git fetch upstream && git merge upstream/release/0.9`). GitHub Actions builds it on every push
-(`.github/workflows/helixsr-scaler.yml`); pushing a `v*` tag that matches `HELIXSR_SCALER_VERSION` in
+(`.github/workflows/helixsr-scaler.yml`), packs the Linux download and tests it: `helixsr/tests/test_setup_linux.sh`
+checks the setup against a made-up Steam library, and `helixsr/tests/test_wine.sh` loads the built DLL under Wine.
+Pushing a `v*` tag that matches `HELIXSR_SCALER_VERSION` in
 `OptiScaler/resource.h` makes a draft release.
 
 HelixSR Scaler is free software under the GPL-3.0 license, like OptiScaler. All credit for OptiScaler goes to its
