@@ -59,7 +59,9 @@ jobs:
       run: |
         if (Test-Path build-errors.log) {
           Get-Content build-errors.log | Select-Object -Unique -First 40 | ForEach-Object {
-            Write-Output ("::error::" + ($_ -replace '^.*\\OptiScaler\\', ''))
+            $line = $_ -replace '\s*\[[^\]]*\.vcxproj\]\s*$', ''
+            $line = $line -replace '^.*?\\OptiScaler\\OptiScaler\\', ''
+            Write-Output ("::error::" + $line)
           }
         }
 
