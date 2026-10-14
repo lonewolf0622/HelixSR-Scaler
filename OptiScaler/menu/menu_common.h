@@ -194,6 +194,7 @@ class MenuCommon
     static void VulkanInited() { _vulkanReady = true; }
     static bool IsInited() { return _isInited; }
     static bool IsVisible() { return _isVisible; }
+    static void HideMenu(); // HelixSR Scaler
     static HWND Handle() { return _handle; }
 
     static bool RenderMenu();

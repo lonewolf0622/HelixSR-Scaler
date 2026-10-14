@@ -1,0 +1,80 @@
+# HelixSR Scaler: builds the DLL on every push and pull request, and attaches the zip to a draft release when a
+# v* tag is pushed (git tag v1.0.0 && git push origin v1.0.0). Publish the draft on GitHub when it's tested.
+
+name: HelixSR Scaler
+
+on:
+  push:
+    branches: [ "helixsr" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "helixsr" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: 'true'
+
+    - name: Version
+      id: version
+      shell: pwsh
+      run: |
+        $h = Get-Content OptiScaler\resource.h
+        $v = (('MAJOR', 'MINOR', 'PATCH') | ForEach-Object {
+          ($h | Select-String "#define HELIXSR_SCALER_VERSION_$_\s+(\d+)").Matches[0].Groups[1].Value
+        }) -join '.'
+        $name = "HelixSR-Scaler-$v"
+        if (-not $env:GITHUB_REF.StartsWith('refs/tags/')) { $name += '-' + $env:GITHUB_SHA.Substring(0, 7) }
+        "version=$v" >> $env:GITHUB_OUTPUT
+        "name=$name" >> $env:GITHUB_OUTPUT
+        Write-Output "HelixSR Scaler $v ($name)"
+
+    - name: Tag matches the version
+      if: startsWith(github.ref, 'refs/tags/')
+      shell: pwsh
+      run: |
+        if ("${{ github.ref_name }}" -ne "v${{ steps.version.outputs.version }}") {
+          Write-Error "Tag ${{ github.ref_name }} doesn't match HELIXSR_SCALER_VERSION in resource.h (${{ steps.version.outputs.version }})"
+          exit 1
+        }
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Build
+      run: msbuild /m /p:Configuration=Release . /verbosity:minimal
+
+    - name: Package
+      shell: pwsh
+      run: |
+        $out = "${{ github.workspace }}\package\${{ steps.version.outputs.name }}"
+        New-Item -ItemType Directory -Force $out | Out-Null
+        Copy-Item -Recurse "${{ github.workspace }}\x64\Release\a\*" $out
+        Remove-Item -Force "$out\!! EXTRACT ALL FILES TO GAME FOLDER !!" -ErrorAction SilentlyContinue
+        Copy-Item LICENSE "$out\Licenses\OptiScaler_LICENSE.txt"
+        Copy-Item helixsr\README.txt "$out\README.txt"
+        Compress-Archive -Path $out -DestinationPath "${{ github.workspace }}\${{ steps.version.outputs.name }}.zip"
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.version.outputs.name }}
+        path: ${{ github.workspace }}\package
+        if-no-files-found: error
+
+    - name: Draft release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        draft: true
+        name: HelixSR Scaler ${{ steps.version.outputs.version }}
+        files: ${{ github.workspace }}/${{ steps.version.outputs.name }}.zip
+        body: |
+          HelixSR Scaler ${{ steps.version.outputs.version }}, based on OptiScaler. Source code: this repository (GPL-3.0).

@@ -359,6 +359,9 @@
     <ClInclude Include="version_check.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="helixsr\HelixSR.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="upscalers\xess\XeSSFeature_Dx11on12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -807,6 +810,9 @@
       <Filter>Util</Filter>
     </ClCompile>
     <ClCompile Include="version_check.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="helixsr\HelixSR.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="inputs\NVNGX_DLSS_Dx12.cpp">

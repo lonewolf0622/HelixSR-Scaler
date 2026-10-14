@@ -15,6 +15,7 @@
 #include <hooks/Reflex_Hooks.h>
 
 #include <version_check.h>
+#include <helixsr/HelixSR.h> // HelixSR Scaler
 
 #include <imgui/imgui_internal.h>
 
@@ -355,6 +356,26 @@ void MenuCommon::ShowResetButton(CustomOptional<bool, NoDefault>* initFlag, std:
     }
 
     ImGui::EndDisabled();
+}
+
+// HelixSR Scaler: what the Close button of the full menu does, for the simple menu's Close button
+void MenuCommon::HideMenu()
+{
+    auto& io = ImGui::GetIO();
+
+    _isVisible = false;
+    hasGamepad = (io.BackendFlags | ImGuiBackendFlags_HasGamepad) > 0;
+    io.BackendFlags &= 30;
+    io.ConfigFlags = ImGuiConfigFlags_NoMouse | ImGuiConfigFlags_NoMouseCursorChange | ImGuiConfigFlags_NoKeyboard;
+
+    if (pfn_ClipCursor_hooked)
+        pfn_ClipCursor(&_cursorLimit);
+
+    _showMipmapCalcWindow = false;
+    _showHudlessWindow = false;
+    io.MouseDrawCursor = false;
+    io.WantCaptureKeyboard = false;
+    io.WantCaptureMouse = false;
 }
 
 inline void MenuCommon::ReInitUpscaler()
@@ -2305,7 +2326,7 @@ bool MenuCommon::RenderMenu()
                 else
                     ImGui::SetWindowFontScale(splashScale);
 
-                ImGui::Text("OptiScaler - %s for menu",
+                ImGui::Text("HelixSR Scaler - %s for menu", // HelixSR Scaler
                             Keybind::KeyNameFromVirtualKeyCode(config->ShortcutKey.value_or_default()).c_str());
                 ImGui::TextColored(toneMapColor(ImVec4(1.0f, 1.0f, 1.0f, 0.7f)), splashMessage.c_str());
 
@@ -2883,9 +2904,17 @@ bool MenuCommon::RenderMenu()
                        (state.detectedQuirks.size() > 0) ? "(Q)" : "", state.isOptiPatcherSucceed ? "(OP)" : "");
         }
 
-        if (ImGui::Begin(windowTitle.c_str(), NULL, flags))
+        // HelixSR Scaler: the simple HelixSR menu, OptiScaler's own menu behind its "All settings" button
+        if (HelixSR::SimpleMenu())
+        {
+            if (HelixSR::RenderMenu(menuResScale, flags, toneMapColor) == HelixSR::MenuAction::Close)
+                HideMenu();
+        }
+        else if (ImGui::Begin(windowTitle.c_str(), NULL, flags))
         {
             bool rcasEnabled = false;
+
+            HelixSR::RenderBackButton(); // HelixSR Scaler
 
             if (!_showMipmapCalcWindow && !_showHudlessWindow && !ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow))
                 ImGui::SetWindowFocus();
