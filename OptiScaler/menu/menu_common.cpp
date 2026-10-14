@@ -358,26 +358,6 @@ void MenuCommon::ShowResetButton(CustomOptional<bool, NoDefault>* initFlag, std:
     ImGui::EndDisabled();
 }
 
-// HelixSR Scaler: what the Close button of the full menu does, for the simple menu's Close button
-void MenuCommon::HideMenu()
-{
-    auto& io = ImGui::GetIO();
-
-    _isVisible = false;
-    hasGamepad = (io.BackendFlags | ImGuiBackendFlags_HasGamepad) > 0;
-    io.BackendFlags &= 30;
-    io.ConfigFlags = ImGuiConfigFlags_NoMouse | ImGuiConfigFlags_NoMouseCursorChange | ImGuiConfigFlags_NoKeyboard;
-
-    if (pfn_ClipCursor_hooked)
-        pfn_ClipCursor(&_cursorLimit);
-
-    _showMipmapCalcWindow = false;
-    _showHudlessWindow = false;
-    io.MouseDrawCursor = false;
-    io.WantCaptureKeyboard = false;
-    io.WantCaptureMouse = false;
-}
-
 inline void MenuCommon::ReInitUpscaler()
 {
     if (State::Instance().currentFeature->Name() == "DLSSD")
