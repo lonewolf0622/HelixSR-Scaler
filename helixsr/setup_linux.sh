@@ -215,7 +215,7 @@ remove_from() { # remove_from EXE_FOLDER [quiet]
         rm -f "$dir/$f"
     done <"$dir/$MANIFEST"
     # what OptiScaler and HelixSR make while the game runs
-    rm -f "$dir/OptiScaler.log" "$dir/HelixSR/helixsr_upscaler.dll" "$dir/HelixSR/helixsr.log"
+    rm -f "$dir/OptiScaler.log" "$dir/HelixSR/helixsr_upscaler.dll" "$dir/HelixSR/helixsr.log" "$dir/HelixSR/helixsr.ini"
     if [ -d "$dir/$BACKUP" ]; then
         cp -a "$dir/$BACKUP/." "$dir/" && rm -rf "${dir:?}/$BACKUP"
     fi

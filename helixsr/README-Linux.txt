@@ -58,7 +58,9 @@ Under the upscaler list, while HelixSR is picked:
 - Open the HelixSR folder: helixsr.log in there tells what HelixSR did.
 Everything else in the menu is OptiScaler's.
 
-Changes are saved in HelixSR/helixsr.ini in the game. Restart the game after changing them.
+Changes are saved in OptiScaler.ini in the game, under [HelixSR]. That is the only settings file:
+you can also change HelixSR's settings there with a text editor. Restart the game after changing them.
+(HelixSR Scaler copies them to HelixSR/helixsr.ini for HelixSR when the game starts; leave that file be.)
 
 
 IF SOMETHING'S WRONG

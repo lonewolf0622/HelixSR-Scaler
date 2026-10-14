@@ -460,7 +460,7 @@ void RenderHud(float scale, ImVec4 (*color)(const ImVec4&))
         if (!found)
             Text(dl, note, smallSize, Col(kRed), "! NO HELIXSR FOLDER NEXT TO THE GAME");
         else if (m.saveFailed)
-            Text(dl, note, smallSize, Col(kRed), "! COULDN'T SAVE HELIXSR.INI");
+            Text(dl, note, smallSize, Col(kRed), "! COULDN'T SAVE THE SETTINGS");
         else if (m.restartNeeded)
             Text(dl, note, smallSize, Col(kAmber), "! SAVED. RESTART THE GAME TO APPLY");
         else

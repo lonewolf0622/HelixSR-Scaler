@@ -21,7 +21,7 @@ x86_64-w64-mingw32-gcc -O2 -o "$G/TestGame.exe" "$HERE/wine_load.c" || exit 1
 
 HOME="$W/home" "$PKG/setup_linux.sh" --yes --game "$G" </dev/null >"$W/setup.txt" 2>&1
 check "setup_linux.sh installs" '[ -f "$G/dxgi.dll" ] && [ -f "$G/HelixSR/helixsr.dll" ]'
-sed -i 's/^LogToFile=auto/LogToFile=true/' "$G/OptiScaler.ini"
+sed -i 's/^LogToFile=auto/LogToFile=true/; s/^Int8=auto/Int8=off/; s/^WaveSize=auto/WaveSize=64/' "$G/OptiScaler.ini"
 
 export WINEPREFIX="$W/prefix" WINEDEBUG=-all WINEDLLOVERRIDES="dxgi=n,b;mscoree,mshtml="
 wineboot -i >/dev/null 2>&1
@@ -33,6 +33,7 @@ check "dxgi.dll loads from the game folder" 'grep -qi "loaded from .*game.dxgi.d
 check "OptiScaler.log written" '[ -s "$G/OptiScaler.log" ]'
 check "logs as HelixSR Scaler" 'grep -q "HelixSR Scaler v" "$G/OptiScaler.log"'
 check "finds the HelixSR folder" 'grep -q "HelixSR found in" "$G/OptiScaler.log"'
+check "writes helixsr.ini from OptiScaler.ini" 'grep -q "^Int8 = off" "$G/HelixSR/helixsr.ini" && grep -q "^WaveSize = 64" "$G/HelixSR/helixsr.ini"'
 check "makes helixsr_upscaler.dll" 'cmp -s "$G/HelixSR/helixsr.dll" "$G/HelixSR/helixsr_upscaler.dll"'
 
 if [ $fails != 0 ] && [ -f "$G/OptiScaler.log" ]; then
