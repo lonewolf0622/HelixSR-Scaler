@@ -32,7 +32,6 @@ const wchar_t* kLog = L"helixsr.log";
 
 fs::path folder;
 bool found = false;
-bool simpleMenu = true;
 
 std::string Lower(std::string s)
 {
@@ -434,9 +433,9 @@ void OpenFolder() { ShellExecuteW(nullptr, L"open", folder.c_str(), nullptr, nul
 
 ImVec4 (*toColor)(const ImVec4&) = nullptr;
 
-ImVec4 Green() { return toColor(ImVec4(0.35f, 0.85f, 0.45f, 1.0f)); }
-ImVec4 Yellow() { return toColor(ImVec4(1.0f, 0.8f, 0.0f, 1.0f)); }
-ImVec4 Red() { return toColor(ImVec4(1.0f, 0.35f, 0.3f, 1.0f)); }
+ImVec4 Green() { return toColor(ImVec4(0.176f, 0.831f, 0.749f, 1.0f)); }  // HelixSR teal
+ImVec4 Yellow() { return toColor(ImVec4(0.961f, 0.722f, 0.294f, 1.0f)); } // HelixSR amber
+ImVec4 Red() { return toColor(ImVec4(0.949f, 0.478f, 0.478f, 1.0f)); }    // HelixSR danger
 
 void Dim(const char* text)
 {
@@ -650,164 +649,84 @@ bool IsActive()
            std::strstr(names[index], "HelixSR") != nullptr;
 }
 
-bool SimpleMenu() { return simpleMenu; }
-
-MenuAction RenderMenu(float scale, ImGuiWindowFlags flags, ImVec4 (*color)(const ImVec4&))
+void RenderSection(float scale, ImVec4 (*color)(const ImVec4&))
 {
     toColor = color;
-    MenuAction action = MenuAction::None;
 
-    // the files are read when the menu opens and then every two seconds
+    // the files are read when the section is drawn and then every two seconds
     static LogStatus status;
     static Settings settings;
     static Settings saved;
-    static int lastFrame = -1000;
     static double lastRead = -10.0;
     static bool restartNeeded = false;
     static bool saveFailed = false;
 
     const double now = ImGui::GetTime();
-    const bool reopened = ImGui::GetFrameCount() > lastFrame + 1;
-    lastFrame = ImGui::GetFrameCount();
-
-    if (found && (reopened || now - lastRead > 2.0))
+    if (found && now - lastRead > 2.0)
     {
         status = ReadLog();
-        if (reopened)
+        if (lastRead < 0.0)
             settings = saved = ReadSettings();
         lastRead = now;
     }
 
-    const ImVec2 center(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f);
-    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-
-    const float width = 520.0f * scale;
-    ImGui::SetNextWindowSizeConstraints(ImVec2(width, 0.0f), ImVec2(width, FLT_MAX));
-
-    if (!ImGui::Begin("HelixSR###HelixSRMenu", nullptr, flags))
-    {
-        ImGui::End();
-        return action;
-    }
-
-    if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow))
-        ImGui::SetWindowFocus();
+    ImGui::SeparatorText("HelixSR");
+    ImGui::Spacing();
 
     RenderStatus(status, scale);
 
-    if (found)
+    if (!found)
+        return;
+
+    ImGui::Spacing();
+
+    const float labelWidth = 130.0f * scale;
+    bool changed = false;
+
+    changed |= Choice("Sharpness", &settings.sharpness, kSharpness, (int) IM_ARRAYSIZE(kSharpness), labelWidth);
+    Help("How crisp the picture looks. Default is what this HelixSR version uses. If edges sparkle or shimmer, try "
+         "Off.");
+
+    changed |= Choice("Speed boost", &settings.int8, kInt8, (int) IM_ARRAYSIZE(kInt8), labelWidth);
+    Help("Faster math (int8) on graphics cards that support it. Auto turns it on where it helps. If the picture "
+         "shimmers or flickers, try Off.");
+
+    if (!status.int8.empty())
     {
-        ImGui::Spacing();
-        ImGui::SeparatorText("Picture");
-
-        const float labelWidth = 130.0f * scale;
-        bool changed = false;
-
-        changed |= Choice("Sharpness", &settings.sharpness, kSharpness, (int) IM_ARRAYSIZE(kSharpness), labelWidth);
-        Help("How crisp the picture looks. Default is what this HelixSR version uses (a little sharpening). "
-             "If edges sparkle or shimmer, try Off.");
-
-        changed |= Choice("Speed boost", &settings.int8, kInt8, (int) IM_ARRAYSIZE(kInt8), labelWidth);
-        Help("Faster math (int8) on graphics cards that support it. Auto turns it on where it helps. If the picture "
-             "shimmers or flickers, try Off.");
-
-        if (!status.int8.empty())
-        {
-            ImGui::SetCursorPosX(labelWidth);
-            ImGui::TextDisabled("Right now: %s", status.int8 == "on" ? "on" : "off");
-        }
-
-        if (ImGui::TreeNode("Having problems?"))
-        {
-            ImGui::TextWrapped("Picture shimmers or flickers: set Sharpness or Speed boost to Off.");
-            ImGui::TextWrapped("AMD Radeon RX 7000 / 9000 and the picture looks broken: try GPU mode 64.");
-            ImGui::Spacing();
-
-            changed |= Choice("GPU mode", &settings.wave, kWave, (int) IM_ARRAYSIZE(kWave), labelWidth);
-            Help("How many threads HelixSR runs together on the graphics card (wave size). Leave it on Auto unless "
-                 "the picture is broken.");
-
-            if (status.networkWave > 0)
-            {
-                ImGui::SetCursorPosX(labelWidth);
-                ImGui::TextDisabled("Right now: %d", status.networkWave);
-            }
-
-            ImGui::Spacing();
-            if (ImGui::Button("Open the HelixSR folder"))
-                OpenFolder();
-            Help("helixsr.log in this folder tells what HelixSR did. Attach it when you report a problem.");
-
-            ImGui::TreePop();
-        }
-
-        if (changed)
-        {
-            saveFailed = !WriteSettings(settings);
-            if (!saveFailed)
-                restartNeeded =
-                    settings.sharpness != saved.sharpness || settings.int8 != saved.int8 || settings.wave != saved.wave;
-        }
-
-        if (saveFailed)
-            ImGui::TextColored(Red(), "Couldn't save helixsr.ini in the HelixSR folder.");
-        else if (restartNeeded)
-            ImGui::TextColored(Yellow(), "Saved. Restart the game to use the new settings.");
+        ImGui::SetCursorPosX(labelWidth);
+        ImGui::TextDisabled("Right now: %s", status.int8 == "on" ? "on" : "off");
     }
 
-    // a newer HelixSR Scaler on GitHub (OptiScaler's update check, pointed at this fork's releases)
-    {
-        auto& state = State::Instance();
-        std::string tag, url;
-        {
-            std::scoped_lock lock(state.versionCheckMutex);
-            if (state.versionCheckCompleted && state.updateAvailable)
-            {
-                tag = state.latestVersionTag;
-                url = state.latestVersionUrl;
-            }
-        }
+    changed |= Choice("GPU mode", &settings.wave, kWave, (int) IM_ARRAYSIZE(kWave), labelWidth);
+    Help("How many threads HelixSR runs together (wave size). Auto is right for most cards. For AMD RX 7000 / 9000 "
+         "with a broken picture, try 64.");
 
-        if (!tag.empty())
-        {
-            ImGui::Spacing();
-            ImGui::TextColored(Yellow(), "HelixSR Scaler %s is out (you have %s).", tag.c_str(), Version());
-            if (!url.empty())
-            {
-                ImGui::SameLine();
-                ImGui::TextLinkOpenURL("Download", url.c_str());
-            }
-        }
+    if (status.networkWave > 0)
+    {
+        ImGui::SetCursorPosX(labelWidth);
+        ImGui::TextDisabled("Right now: %d", status.networkWave);
     }
 
+    if (ImGui::Button("Open the HelixSR folder"))
+        OpenFolder();
+    Help("helixsr.log in this folder tells what HelixSR did. Attach it when you report a problem.");
+
+    if (changed)
+    {
+        saveFailed = !WriteSettings(settings);
+        if (!saveFailed)
+            restartNeeded =
+                settings.sharpness != saved.sharpness || settings.int8 != saved.int8 || settings.wave != saved.wave;
+        saved = settings;
+    }
+
+    if (saveFailed)
+        ImGui::TextColored(Red(), "Couldn't save helixsr.ini in the HelixSR folder.");
+    else if (restartNeeded)
+        ImGui::TextColored(Yellow(), "Saved. Restart the game to use the new settings.");
+
     ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-
-    if (ImGui::Button("All settings"))
-        simpleMenu = false;
-    Help("OptiScaler's full menu, for experts. Everything in it is from OptiScaler, which HelixSR Scaler is based "
-         "on.");
-
-    ImGui::SameLine();
-    const char* closeLabel = "Close";
-    const float closeWidth = ImGui::CalcTextSize(closeLabel).x + ImGui::GetStyle().FramePadding.x * 2.0f;
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - closeWidth);
-    if (ImGui::Button(closeLabel))
-        action = MenuAction::Close;
-
-    ImGui::Spacing();
-    ImGui::TextDisabled("HelixSR Scaler %s%s%s - based on OptiScaler. Insert opens and closes this menu.", Version(),
-                        status.version.empty() ? "" : " - HelixSR ", status.version.c_str());
-
-    ImGui::End();
-    return action;
-}
-
-void RenderBackButton()
-{
-    if (ImGui::Button("< Back to the simple HelixSR menu"))
-        simpleMenu = true;
-    ImGui::Spacing();
+    ImGui::TextDisabled("HelixSR Scaler %s%s%s", Version(), status.version.empty() ? "" : " - HelixSR ",
+                        status.version.c_str());
 }
 } // namespace HelixSR

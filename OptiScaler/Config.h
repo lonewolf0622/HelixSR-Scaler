@@ -306,12 +306,12 @@ class Config
     CustomOptional<std::wstring, NoDefault> TTFFontPath;
     CustomOptional<int> FGShortcutKey { VK_END };
     CustomOptional<bool> LightTheme { false };
-    CustomOptional<float> MenuAccentColorR { 0.00f };
-    CustomOptional<float> MenuAccentColorG { 0.40f };
-    CustomOptional<float> MenuAccentColorB { 0.77f };
-    CustomOptional<float> MenuBGColorR { 0.0f };
-    CustomOptional<float> MenuBGColorG { 0.0f };
-    CustomOptional<float> MenuBGColorB { 0.0f };
+    CustomOptional<float> MenuAccentColorR { 0.176f }; // HelixSR Scaler: teal #2dd4bf (HelixSR FSR colour)
+    CustomOptional<float> MenuAccentColorG { 0.831f };
+    CustomOptional<float> MenuAccentColorB { 0.749f };
+    CustomOptional<float> MenuBGColorR { 0.078f }; // HelixSR Scaler: ink #141826
+    CustomOptional<float> MenuBGColorG { 0.094f };
+    CustomOptional<float> MenuBGColorB { 0.149f };
     CustomOptional<float> MenuBGColorA { 0.99f };
 
     // Hooks

@@ -2884,17 +2884,9 @@ bool MenuCommon::RenderMenu()
                        (state.detectedQuirks.size() > 0) ? "(Q)" : "", state.isOptiPatcherSucceed ? "(OP)" : "");
         }
 
-        // HelixSR Scaler: the simple HelixSR menu, OptiScaler's own menu behind its "All settings" button
-        if (HelixSR::SimpleMenu())
-        {
-            if (HelixSR::RenderMenu(menuResScale, flags, toneMapColor) == HelixSR::MenuAction::Close)
-                HideMenu();
-        }
-        else if (ImGui::Begin(windowTitle.c_str(), NULL, flags))
+        if (ImGui::Begin(windowTitle.c_str(), NULL, flags))
         {
             bool rcasEnabled = false;
-
-            HelixSR::RenderBackButton(); // HelixSR Scaler
 
             if (!_showMipmapCalcWindow && !_showHudlessWindow && !ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow))
                 ImGui::SetWindowFocus();
@@ -3041,6 +3033,9 @@ bool MenuCommon::RenderMenu()
                 else
                     ImGui::SetWindowFontScale(menuResScale);
             }
+
+            // HelixSR Scaler: HelixSR's status and settings, above the tables
+            HelixSR::RenderSection(menuResScale, toneMapColor);
 
             if (ImGui::BeginTable("main", 2, ImGuiTableFlags_SizingStretchSame))
             {

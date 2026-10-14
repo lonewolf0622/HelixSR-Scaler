@@ -24,18 +24,7 @@ const char* Version();
 // HelixSR is the upscaler running right now
 bool IsActive();
 
-// The simple menu is shown instead of OptiScaler's full menu
-bool SimpleMenu();
-
-enum class MenuAction
-{
-    None,
-    Close,
-};
-
-// Draws the simple menu window. color() tone-maps colours for HDR games (OptiScaler's toneMapColor).
-MenuAction RenderMenu(float scale, ImGuiWindowFlags flags, ImVec4 (*color)(const ImVec4&));
-
-// A button at the top of OptiScaler's full menu that goes back to the simple menu
-void RenderBackButton();
+// The HelixSR section of OptiScaler's menu: status, the few HelixSR settings, the folder button. Drawn inside the
+// menu's own window. color() tone-maps colours for HDR (OptiScaler's toneMapColor).
+void RenderSection(float scale, ImVec4 (*color)(const ImVec4&));
 } // namespace HelixSR
