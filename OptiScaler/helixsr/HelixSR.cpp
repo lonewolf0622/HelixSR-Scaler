@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include "HelixSR.h"
+#include "HelixSRInternal.h"
 
 #include "Config.h"
 #include "State.h"
@@ -21,7 +22,8 @@
 
 namespace fs = std::filesystem;
 
-namespace
+// Shared with the HUD (HelixSRHud.cpp) through HelixSRInternal.h
+namespace HelixSR::detail
 {
 const wchar_t* kFolder = L"HelixSR";
 const wchar_t* kDll = L"helixsr.dll";            // FfxDx12Path
@@ -229,18 +231,10 @@ struct IniFile
 
 // --- Settings shown in the menu ------------------------------------------------------------------------------------
 
-const char* kSharpness[] = { "Default", "Off", "Low", "Medium", "High" };
+extern const char* const kSharpness[] = { "Default", "Off", "Low", "Medium", "High" };
 const float kSharpnessValue[] = { 0.0f, 0.0f, 0.1f, 0.3f, 0.5f };
-const char* kInt8[] = { "Auto", "On", "Off" };
-const char* kWave[] = { "Auto", "64", "32" };
-
-struct Settings
-{
-    int sharpness = 0;
-    int int8 = 0;
-    int wave = 0;
-    std::string sharpener; // kept when it is one HelixSR knows
-};
+extern const char* const kInt8[] = { "Auto", "On", "Off" };
+extern const char* const kWave[] = { "Auto", "64", "32" };
 
 fs::path IniPath() { return folder / kIni; }
 
@@ -325,16 +319,6 @@ bool WriteSettings(const Settings& s)
 }
 
 // --- helixsr.log ---------------------------------------------------------------------------------------------------
-
-struct LogStatus
-{
-    std::string version; // "1.9.0"
-    std::string int8;    // "on" / "off"
-    int networkWave = 0; // 32 / 64
-    bool networkMissing = false;
-    bool gpuUnsupported = false;
-    bool networkFailed = false;
-};
 
 LogStatus ReadLog()
 {
@@ -483,10 +467,67 @@ bool Choice(const char* label, int* value, const char* const* names, int count, 
     return changed;
 }
 
-} // namespace
+MenuState& Menu()
+{
+    static MenuState m;
+    return m;
+}
+
+void RefreshMenu()
+{
+    auto& m = Menu();
+    const double now = ImGui::GetTime();
+    if (found && now - m.lastRead > 2.0)
+    {
+        m.status = ReadLog();
+        if (m.lastRead < 0.0)
+            m.settings = m.saved = m.initial = ReadSettings();
+        m.lastRead = now;
+    }
+}
+
+void SaveMenuSettings()
+{
+    auto& m = Menu();
+    m.saveFailed = !WriteSettings(m.settings);
+    if (!m.saveFailed)
+        m.restartNeeded = m.settings.sharpness != m.initial.sharpness || m.settings.int8 != m.initial.int8 ||
+                          m.settings.wave != m.initial.wave;
+    m.saved = m.settings;
+}
+
+void ChooseBackend(const std::string& code)
+{
+    auto& state = State::Instance();
+    auto cfg = Config::Instance();
+
+    // FSR 3.X has to leave HelixSR's place in the FidelityFX list
+    if (code == "fsr31" || code == "fsr31_12")
+    {
+        const auto& names = state.ffxUpscalerVersionNames;
+        for (size_t i = 0; i < names.size(); i++)
+        {
+            if (names[i] != nullptr && std::strstr(names[i], "HelixSR") == nullptr)
+            {
+                cfg->FfxUpscalerIndex = (int) i;
+                break;
+            }
+        }
+    }
+
+    state.newBackend = code;
+    for (auto& change : state.changeBackend)
+        change.second = true;
+
+    LOG_INFO("HelixSR Scaler: switching to {}", code);
+}
+
+} // namespace HelixSR::detail
 
 namespace HelixSR
 {
+using namespace detail;
+
 void ApplyDefaults()
 {
     auto cfg = Config::Instance();
@@ -560,37 +601,22 @@ bool IsActive()
 void RenderSettings(float scale, ImVec4 (*color)(const ImVec4&))
 {
     toColor = color;
-
-    // the files are read when the section is drawn and then every two seconds
-    static LogStatus status;
-    static Settings settings;
-    static Settings saved;
-    static double lastRead = -10.0;
-    static bool restartNeeded = false;
-    static bool saveFailed = false;
-
-    const double now = ImGui::GetTime();
-    if (found && now - lastRead > 2.0)
-    {
-        status = ReadLog();
-        if (lastRead < 0.0)
-            settings = saved = ReadSettings();
-        lastRead = now;
-    }
+    RefreshMenu();
 
     if (!found)
         return;
 
+    auto& m = Menu();
+    auto& settings = m.settings;
+    const auto& status = m.status;
     const float labelWidth = 130.0f * scale;
     bool changed = false;
 
-    changed |= Choice("Sharpness", &settings.sharpness, kSharpness, (int) IM_ARRAYSIZE(kSharpness), labelWidth);
-    Help("How crisp the picture looks. Default is what this HelixSR version uses. If edges sparkle or shimmer, try "
-         "Off.");
+    changed |= Choice("Sharpness", &settings.sharpness, kSharpness, kSharpnessCount, labelWidth);
+    Help(kSharpnessHelp);
 
-    changed |= Choice("Speed boost", &settings.int8, kInt8, (int) IM_ARRAYSIZE(kInt8), labelWidth);
-    Help("Faster math (int8) on graphics cards that support it. Auto turns it on where it helps. If the picture "
-         "shimmers or flickers, try Off.");
+    changed |= Choice("Speed boost", &settings.int8, kInt8, kInt8Count, labelWidth);
+    Help(kInt8Help);
 
     if (!status.int8.empty())
     {
@@ -598,9 +624,8 @@ void RenderSettings(float scale, ImVec4 (*color)(const ImVec4&))
         ImGui::TextDisabled("Right now: %s", status.int8 == "on" ? "on" : "off");
     }
 
-    changed |= Choice("GPU mode", &settings.wave, kWave, (int) IM_ARRAYSIZE(kWave), labelWidth);
-    Help("How many threads HelixSR runs together (wave size). Auto is right for most cards. For AMD RX 7000 / 9000 "
-         "with a broken picture, try 64.");
+    changed |= Choice("GPU mode", &settings.wave, kWave, kWaveCount, labelWidth);
+    Help(kWaveHelp);
 
     if (status.networkWave > 0)
     {
@@ -613,17 +638,11 @@ void RenderSettings(float scale, ImVec4 (*color)(const ImVec4&))
     Help("helixsr.log in this folder tells what HelixSR did. Attach it when you report a problem.");
 
     if (changed)
-    {
-        saveFailed = !WriteSettings(settings);
-        if (!saveFailed)
-            restartNeeded =
-                settings.sharpness != saved.sharpness || settings.int8 != saved.int8 || settings.wave != saved.wave;
-        saved = settings;
-    }
+        SaveMenuSettings();
 
-    if (saveFailed)
+    if (m.saveFailed)
         ImGui::TextColored(Red(), "Couldn't save helixsr.ini in the HelixSR folder.");
-    else if (restartNeeded)
+    else if (m.restartNeeded)
         ImGui::TextColored(Yellow(), "Saved. Restart the game to use the new settings.");
 
     ImGui::TextDisabled("HelixSR %s, HelixSR Scaler %s", status.version.empty() ? "?" : status.version.c_str(),

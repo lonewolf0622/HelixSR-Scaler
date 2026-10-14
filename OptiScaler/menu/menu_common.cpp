@@ -2035,6 +2035,10 @@ static void ApplyThemeStyle()
     c[ImGuiCol_NavWindowingDimBg] = dimBg;
     c[ImGuiCol_ModalWindowDimBg] = modalDimBg;
 
+    // HelixSR Scaler: the HUD's square corners and accent lines
+    if (HelixSR::HudEnabled())
+        HelixSR::ApplyHudStyle();
+
     _hdrTonemapApplied = false;
     MenuHdrCheck(ImGui::GetIO());
 }
@@ -2863,6 +2867,10 @@ bool MenuCommon::RenderMenu()
         flags |= ImGuiWindowFlags_NoCollapse;
         flags |= ImGuiWindowFlags_AlwaysAutoResize;
 
+        // HelixSR Scaler: the HUD draws its own header
+        if (HelixSR::HudEnabled())
+            flags |= ImGuiWindowFlags_NoTitleBar;
+
         if (lastMenuScale != menuResScale)
         {
             lastMenuScale = menuResScale;
@@ -2894,6 +2902,10 @@ bool MenuCommon::RenderMenu()
         if (ImGui::Begin(windowTitle.c_str(), NULL, flags))
         {
             bool rcasEnabled = false;
+
+            // HelixSR Scaler: the HUD (upscaler, HelixSR's settings, timings, state) above OptiScaler's settings
+            if (HelixSR::HudEnabled())
+                HelixSR::RenderHud(menuResScale, toneMapColor);
 
             if (!_showMipmapCalcWindow && !_showHudlessWindow && !ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow))
                 ImGui::SetWindowFocus();
@@ -3094,11 +3106,12 @@ bool MenuCommon::RenderMenu()
                         spoofingText = config->DxgiSpoofing.value_or_default() ? "On" : "Off";
                         ImGui::Text("| Spoof: %s", spoofingText.c_str());
 
-                        if (currentFeature->Name() != "DLSSD")
+                        // HelixSR Scaler: with the HUD, the upscaler is chosen in its panel 01
+                        if (currentFeature->Name() != "DLSSD" && !HelixSR::HudEnabled())
                             AddDx12Backends(&currentBackend, &currentBackendName);
 
                         // HelixSR Scaler: its settings, under the upscaler choice like the other upscalers' settings
-                        if (HelixSR::IsActive())
+                        if (HelixSR::IsActive() && !HelixSR::HudEnabled())
                             HelixSR::RenderSettings(menuResScale, toneMapColor);
 
                         break;
@@ -3134,7 +3147,8 @@ bool MenuCommon::RenderMenu()
 
                     ImGui::PopItemWidth();
 
-                    if (currentFeature->Name() != "DLSSD")
+                    // HelixSR Scaler: no Change Upscaler button where the HUD switches upscalers
+                    if (currentFeature->Name() != "DLSSD" && !(state.api == DX12 && HelixSR::HudEnabled()))
                     {
                         ImGui::SameLine(0.0f, 6.0f);
 

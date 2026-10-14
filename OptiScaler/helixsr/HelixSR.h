@@ -30,4 +30,12 @@ void Choose();
 // HelixSR's settings, drawn under the upscaler list while HelixSR is the upscaler: sharpness, speed boost (int8),
 // GPU mode and the folder button. Writes helixsr.ini; the game has to restart for them to apply.
 void RenderSettings(float scale, ImVec4 (*color)(const ImVec4&));
+
+// The HUD (HelixSRHud.cpp): the top of the menu window, with the upscaler choice, HelixSR's settings, live timings and
+// HelixSR's state, in the style of a game overlay. OptiScaler's settings follow under it.
+bool HudEnabled();
+void RenderHud(float scale, ImVec4 (*color)(const ImVec4&));
+
+// The HUD's shapes for OptiScaler's own widgets (square corners, accent lines); called after OptiScaler's theme
+void ApplyHudStyle();
 } // namespace HelixSR
