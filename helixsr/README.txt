@@ -10,7 +10,14 @@ On Linux or Steam Deck? Use the Linux download and read its README.txt instead.
 Don't use it in online games or games with anti-cheat.
 
 
-INSTALLING
+THE EASY WAY
+
+The HelixSR Desktop app (https://github.com/lonewolf0622/HelixSR-Desktop-) sets up HelixSR and
+installs HelixSR Scaler into your games with a click: pick a game, choose HelixSR Scaler, Install.
+It downloads HelixSR Scaler by itself.
+
+
+INSTALLING BY HAND
 
 1. Set up HelixSR first (run helixsr-setup from the HelixSR download). After that, HelixSR's
    amd_fidelityfx_dx12.dll contains the upscaler.

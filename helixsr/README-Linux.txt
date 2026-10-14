@@ -18,7 +18,14 @@ That builds HelixSR's network into its amd_fidelityfx_dx12.dll. Leave the HelixS
 Downloads (or your home folder) and HelixSR Scaler's setup finds it by itself.
 
 
-INSTALLING
+THE EASY WAY
+
+The HelixSR Desktop app (https://github.com/lonewolf0622/HelixSR-Desktop-) sets up HelixSR and
+installs HelixSR Scaler into your games with a click: pick a game, choose HelixSR Scaler, Install.
+It downloads HelixSR Scaler by itself.
+
+
+INSTALLING BY HAND
 
 1. Extract this download to its own folder, for example in Downloads.
    (Not into the game's folder.)

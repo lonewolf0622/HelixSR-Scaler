@@ -370,9 +370,15 @@ if [ -z "$NAME" ]; then
 fi
 case " $NAMES OptiScaler.asi " in *" $NAME "*) ;; *) die "--name must be one of: $NAMES" ;; esac
 
+SETTINGS=""
 if installed_in "$TARGET"; then
+    # an update keeps the game's OptiScaler.ini (the settings)
+    if [ -f "$TARGET/OptiScaler.ini" ]; then
+        SETTINGS=$(mktemp)
+        cp -f "$TARGET/OptiScaler.ini" "$SETTINGS"
+    fi
     remove_from "$TARGET" quiet
-    ok "Old HelixSR Scaler taken out (updating)"
+    ok "Old HelixSR Scaler taken out (updating, settings kept)"
 fi
 
 # The download's files go to a staging folder first: the download may have been extracted into the game itself
@@ -424,6 +430,10 @@ while IFS= read -r rel; do
     copy_one "$STAGE/$rel" "$dest"
 done <"$STAGE/.list"
 copy_one "$TMP_HELIX" "HelixSR/helixsr.dll"
+if [ -n "$SETTINGS" ]; then
+    cp -f "$SETTINGS" "$TARGET/OptiScaler.ini"
+    rm -f "$SETTINGS"
+fi
 cp -f "$SELF" "$TARGET/$REMOVER" && chmod +x "$TARGET/$REMOVER"
 mv -f "$TARGET/$MANIFEST.tmp" "$TARGET/$MANIFEST"
 

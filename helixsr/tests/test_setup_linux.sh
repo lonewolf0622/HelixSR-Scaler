@@ -83,8 +83,10 @@ check "launch options printed" 'grep -qF "WINEDLLOVERRIDES=\"dxgi=n,b\" %command
 list=$("$P/setup_linux.sh" --list | cut -f1,2)
 check "own files don't count as the game's upscalers" 'grep -q "^Unreal Game	DLSS FSR$" <<<"$list"'
 
-# --- update keeps the original backup ---
+# --- update keeps the original backup and the settings ---
+echo "WaveSize=64" >>"$B/OptiScaler.ini"
 run --yes --game "$U"
+check "update keeps OptiScaler.ini" 'grep -q "^WaveSize=64" "$B/OptiScaler.ini"'
 check "update keeps the game's file in the backup" 'grep -q "the game'"'"'s own" "$B/HelixSR-Scaler-backup/amd_fidelityfx_dx12.dll"'
 check "update says so" 'grep -q "updating" "$W/out.txt"'
 
