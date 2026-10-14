@@ -1298,8 +1298,15 @@ void MenuCommon::AddDx12Backends(std::string* code, std::string* name)
     else
         selectedUpscalerName = "XeSS";
 
+    // HelixSR Scaler: HelixSR is an FSR 3.1 backend, listed first when it is next to the game
+    if (HelixSR::IsActive())
+        selectedUpscalerName = "HelixSR";
+
     if (ImGui::BeginCombo("", selectedUpscalerName.c_str()))
     {
+        if (HelixSR::Found() && ImGui::Selectable("HelixSR", HelixSR::IsActive()))
+            HelixSR::Choose();
+
         if (ImGui::Selectable("XeSS", *code == "xess"))
             State::Instance().newBackend = "xess";
 
@@ -3034,9 +3041,6 @@ bool MenuCommon::RenderMenu()
                     ImGui::SetWindowFontScale(menuResScale);
             }
 
-            // HelixSR Scaler: HelixSR's status and settings, above the tables
-            HelixSR::RenderSection(menuResScale, toneMapColor);
-
             if (ImGui::BeginTable("main", 2, ImGuiTableFlags_SizingStretchSame))
             {
                 ImGui::TableNextColumn();
@@ -3092,6 +3096,10 @@ bool MenuCommon::RenderMenu()
 
                         if (currentFeature->Name() != "DLSSD")
                             AddDx12Backends(&currentBackend, &currentBackendName);
+
+                        // HelixSR Scaler: its settings, under the upscaler choice like the other upscalers' settings
+                        if (HelixSR::IsActive())
+                            HelixSR::RenderSettings(menuResScale, toneMapColor);
 
                         break;
 

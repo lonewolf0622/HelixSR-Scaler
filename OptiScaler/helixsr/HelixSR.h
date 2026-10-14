@@ -24,7 +24,10 @@ const char* Version();
 // HelixSR is the upscaler running right now
 bool IsActive();
 
-// The HelixSR section of OptiScaler's menu: status, the few HelixSR settings, the folder button. Drawn inside the
-// menu's own window. color() tone-maps colours for HDR (OptiScaler's toneMapColor).
-void RenderSection(float scale, ImVec4 (*color)(const ImVec4&));
+// Selects HelixSR as the DirectX 12 upscaler (the upscaler list's "HelixSR" entry)
+void Choose();
+
+// HelixSR's settings, drawn under the upscaler list while HelixSR is the upscaler: sharpness, speed boost (int8),
+// GPU mode and the folder button. Writes helixsr.ini; the game has to restart for them to apply.
+void RenderSettings(float scale, ImVec4 (*color)(const ImVec4&));
 } // namespace HelixSR

@@ -413,7 +413,7 @@ int FfxIndex()
     return 0;
 }
 
-void UseHelixSR()
+void ChooseHelixSR()
 {
     auto& state = State::Instance();
     auto cfg = Config::Instance();
@@ -433,32 +433,8 @@ void OpenFolder() { ShellExecuteW(nullptr, L"open", folder.c_str(), nullptr, nul
 
 ImVec4 (*toColor)(const ImVec4&) = nullptr;
 
-ImVec4 Green() { return toColor(ImVec4(0.176f, 0.831f, 0.749f, 1.0f)); }  // HelixSR teal
 ImVec4 Yellow() { return toColor(ImVec4(0.961f, 0.722f, 0.294f, 1.0f)); } // HelixSR amber
 ImVec4 Red() { return toColor(ImVec4(0.949f, 0.478f, 0.478f, 1.0f)); }    // HelixSR danger
-
-void Dim(const char* text)
-{
-    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-    ImGui::TextWrapped("%s", text);
-    ImGui::PopStyleColor();
-}
-
-void Headline(const ImVec4& color, const char* text, float scale)
-{
-    if (Config::Instance()->UseHQFont.value_or_default())
-    {
-        ImGui::PushFontSize(std::round(ImGui::GetFontSize() * 1.4f));
-        ImGui::TextColored(color, "%s", text);
-        ImGui::PopFontSize();
-    }
-    else
-    {
-        ImGui::SetWindowFontScale(scale * 1.4f);
-        ImGui::TextColored(color, "%s", text);
-        ImGui::SetWindowFontScale(scale);
-    }
-}
 
 void Help(const char* text)
 {
@@ -507,76 +483,6 @@ bool Choice(const char* label, int* value, const char* const* names, int count, 
     return changed;
 }
 
-// The upscaler's state in plain words
-void RenderStatus(const LogStatus& log, float scale)
-{
-    auto& state = State::Instance();
-    auto feature = state.currentFeature;
-
-    if (!found)
-    {
-        Headline(Red(), "HelixSR isn't installed here", scale);
-        ImGui::TextWrapped("Put the HelixSR folder next to this file, in the game's folder, and start the game "
-                           "again. The HelixSR app does this for you.");
-        return;
-    }
-
-    if (log.gpuUnsupported)
-    {
-        Headline(Red(), "Your graphics card can't run HelixSR", scale);
-        ImGui::TextWrapped("Update your graphics driver. Cards older than AMD Vega / RDNA 1 aren't supported.");
-        return;
-    }
-
-    if (log.networkMissing || log.networkFailed)
-    {
-        Headline(Red(), "HelixSR isn't set up yet", scale);
-        ImGui::TextWrapped("Run the HelixSR setup (or the HelixSR app) and install HelixSR into this game again. "
-                           "Until then you see a red frame around a blurry picture.");
-        return;
-    }
-
-    if (feature == nullptr || !feature->IsInited())
-    {
-        Headline(Yellow(), "Waiting for the game", scale);
-        ImGui::TextWrapped("In the game's graphics settings, turn on DLSS (or FSR or XeSS if there is no DLSS), "
-                           "then load into the game.");
-        return;
-    }
-
-    if (feature->IsFrozen())
-    {
-        Headline(Yellow(), "Paused", scale);
-        ImGui::TextWrapped("The game isn't upscaling right now (for example in menus). Load into the game.");
-        return;
-    }
-
-    if (!HelixSR::IsActive())
-    {
-        Headline(Yellow(), "HelixSR is off", scale);
-        ImGui::TextWrapped("The game is using %s instead.", feature->Name().c_str());
-
-        if (state.api == Vulkan || state.api == DX11)
-            Dim("This game doesn't use DirectX 12. HelixSR runs through DirectX 12 here, which may not work in "
-                "every game.");
-
-        if (ImGui::Button("Use HelixSR"))
-            UseHelixSR();
-        return;
-    }
-
-    Headline(Green(), "HelixSR is running", scale);
-
-    const auto renderH = feature->RenderHeight();
-    const auto targetH = feature->TargetHeight();
-    if (renderH > 0 && targetH > 0)
-    {
-        if (renderH == targetH)
-            ImGui::Text("%up, no upscaling (best picture)", targetH);
-        else
-            ImGui::Text("%up upscaled to %up (%.2fx)", renderH, targetH, (float) targetH / (float) renderH);
-    }
-}
 } // namespace
 
 namespace HelixSR
@@ -632,6 +538,8 @@ const fs::path& Folder() { return folder; }
 
 const char* Version() { return HELIXSR_SCALER_VERSION_STR; }
 
+void Choose() { ChooseHelixSR(); }
+
 bool IsActive()
 {
     auto& state = State::Instance();
@@ -649,7 +557,7 @@ bool IsActive()
            std::strstr(names[index], "HelixSR") != nullptr;
 }
 
-void RenderSection(float scale, ImVec4 (*color)(const ImVec4&))
+void RenderSettings(float scale, ImVec4 (*color)(const ImVec4&))
 {
     toColor = color;
 
@@ -670,15 +578,8 @@ void RenderSection(float scale, ImVec4 (*color)(const ImVec4&))
         lastRead = now;
     }
 
-    ImGui::SeparatorText("HelixSR");
-    ImGui::Spacing();
-
-    RenderStatus(status, scale);
-
     if (!found)
         return;
-
-    ImGui::Spacing();
 
     const float labelWidth = 130.0f * scale;
     bool changed = false;
@@ -725,8 +626,7 @@ void RenderSection(float scale, ImVec4 (*color)(const ImVec4&))
     else if (restartNeeded)
         ImGui::TextColored(Yellow(), "Saved. Restart the game to use the new settings.");
 
-    ImGui::Spacing();
-    ImGui::TextDisabled("HelixSR Scaler %s%s%s", Version(), status.version.empty() ? "" : " - HelixSR ",
-                        status.version.c_str());
+    ImGui::TextDisabled("HelixSR %s, HelixSR Scaler %s", status.version.empty() ? "?" : status.version.c_str(),
+                        Version());
 }
 } // namespace HelixSR
