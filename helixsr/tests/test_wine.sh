@@ -34,6 +34,7 @@ check "OptiScaler.log written" '[ -s "$G/OptiScaler.log" ]'
 check "logs as HelixSR Scaler" 'grep -q "HelixSR Scaler v" "$G/OptiScaler.log"'
 check "finds the HelixSR folder" 'grep -q "HelixSR found in" "$G/OptiScaler.log"'
 check "writes helixsr.ini from OptiScaler.ini" 'grep -q "^Int8 = off" "$G/HelixSR/helixsr.ini" && grep -q "^WaveSize = 64" "$G/HelixSR/helixsr.ini"'
+check "HelixSR's own sharpener off" 'grep -q "^Sharpener = off" "$G/HelixSR/helixsr.ini"'
 check "makes helixsr_upscaler.dll" 'cmp -s "$G/HelixSR/helixsr.dll" "$G/HelixSR/helixsr_upscaler.dll"'
 
 if [ $fails != 0 ] && [ -f "$G/OptiScaler.log" ]; then

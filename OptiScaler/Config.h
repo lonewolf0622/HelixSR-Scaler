@@ -316,9 +316,7 @@ class Config
 
     // HelixSR Scaler: HelixSR's settings, [HelixSR] in OptiScaler.ini. HelixSR Scaler writes them to
     // HelixSR\helixsr.ini, the file HelixSR reads, when the game starts and when they change in the menu.
-    CustomOptional<std::string, NoDefault> HelixSRSharpener; // off, nvidia, rcas
-    CustomOptional<float, NoDefault> HelixSRSharpness;       // 0.0 to 1.0
-    CustomOptional<bool, NoDefault> HelixSRUseGameSlider;
+    // Sharpening is OptiScaler's (RCAS, [Sharpness] and [CAS]); HelixSR's own sharpener stays off.
     CustomOptional<std::string, NoDefault> HelixSRInt8; // on, off
     CustomOptional<int, NoDefault> HelixSRWaveSize;     // 64, 32
 

@@ -438,9 +438,6 @@ bool Config::Reload(std::filesystem::path iniPath)
 
         // HelixSR Scaler: HelixSR's settings
         {
-            HelixSRSharpener.set_from_config(readString("HelixSR", "Sharpener", true));
-            HelixSRSharpness.set_from_config(readFloat("HelixSR", "Sharpness"));
-            HelixSRUseGameSlider.set_from_config(readBool("HelixSR", "UseGameSlider"));
             HelixSRInt8.set_from_config(readString("HelixSR", "Int8", true));
             HelixSRWaveSize.set_from_config(readInt("HelixSR", "WaveSize"));
         }
@@ -1129,10 +1126,6 @@ bool Config::SaveIni()
         ini.SetValue("Menu", "BGColorA", GetFloatValue(Instance()->MenuBGColorA.value_for_config()).c_str());
 
         // HelixSR Scaler: HelixSR's settings
-        ini.SetValue("HelixSR", "Sharpener", Instance()->HelixSRSharpener.value_for_config_or("auto").c_str());
-        ini.SetValue("HelixSR", "Sharpness", GetFloatValue(Instance()->HelixSRSharpness.value_for_config()).c_str());
-        ini.SetValue("HelixSR", "UseGameSlider",
-                     GetBoolValue(Instance()->HelixSRUseGameSlider.value_for_config()).c_str());
         ini.SetValue("HelixSR", "Int8", Instance()->HelixSRInt8.value_for_config_or("auto").c_str());
         ini.SetValue("HelixSR", "WaveSize", GetIntValue(Instance()->HelixSRWaveSize.value_for_config()).c_str());
     }
