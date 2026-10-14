@@ -50,7 +50,18 @@ jobs:
       uses: microsoft/setup-msbuild@v2
 
     - name: Build
-      run: msbuild /m /p:Configuration=Release . /verbosity:minimal
+      run: msbuild /m /p:Configuration=Release . /verbosity:minimal "/flp:errorsonly;logfile=build-errors.log"
+
+    # Compiler errors as annotations, readable on the run's summary page and through the API
+    - name: Show build errors
+      if: failure()
+      shell: pwsh
+      run: |
+        if (Test-Path build-errors.log) {
+          Get-Content build-errors.log | Select-Object -Unique -First 40 | ForEach-Object {
+            Write-Output ("::error::" + ($_ -replace '^.*\\OptiScaler\\', ''))
+          }
+        }
 
     - name: Package
       shell: pwsh
