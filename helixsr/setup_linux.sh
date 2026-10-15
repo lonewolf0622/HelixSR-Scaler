@@ -144,8 +144,16 @@ upscalers_in() {
     all=$(find "$dir" -maxdepth 7 -type f \( -iname 'nvngx_dlss.dll' -o -iname 'amd_fidelityfx_*dx12*.dll' \
         -o -iname 'ffx_fsr2_api_*x64*.dll' -o -iname 'libxess.dll' \) -not -path "*/$BACKUP/*" 2>/dev/null |
         while IFS= read -r f; do
-            if [ -f "$(dirname "$f")/$MANIFEST" ] && grep -qxF "$(basename "$f")" "$(dirname "$f")/$MANIFEST"; then
-                [ -f "$(dirname "$f")/$BACKUP/$(basename "$f")" ] && basename "$f"
+            # the install record next to the .exe lists HelixSR Scaler's files, also those in its subfolders
+            # (OptiScaler\amd_fidelityfx_*.dll, HelixSR\...): they don't count, unless they replaced the game's own
+            local d rel n
+            d=$(dirname "$f") rel=$(basename "$f")
+            for n in 1 2 3; do
+                [ -f "$d/$MANIFEST" ] && break
+                rel="$(basename "$d")/$rel" d=$(dirname "$d")
+            done
+            if [ -f "$d/$MANIFEST" ] && grep -qxF "$rel" "$d/$MANIFEST"; then
+                [ -f "$d/$BACKUP/$rel" ] && basename "$f"
             else
                 basename "$f"
             fi
@@ -221,7 +229,8 @@ remove_from() { # remove_from EXE_FOLDER [quiet]
     fi
     rm -f "$dir/$MANIFEST" "$dir/$REMOVER"
     # folders HelixSR Scaler brought, if nothing else is in them now
-    find "$dir/HelixSR" "$dir/D3D12_Optiscaler" "$dir/Licenses" "$dir/DlssOverrides" -depth -type d -empty -delete 2>/dev/null
+    find "$dir/HelixSR" "$dir/OptiScaler" "$dir/D3D12_Optiscaler" "$dir/Licenses" "$dir/DlssOverrides" -depth -type d \
+        -empty -delete 2>/dev/null
     [ -n "$quiet" ] || ok "HelixSR Scaler removed; the game's own files are back"
 }
 

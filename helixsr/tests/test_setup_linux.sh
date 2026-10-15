@@ -22,9 +22,11 @@ P="$W/HelixSR-Scaler"
 if [ $# -ge 1 ]; then
     cp -r "$1" "$P"
 else
-    mkdir -p "$P/Licenses" "$P/D3D12_Optiscaler"
-    for f in OptiScaler.dll OptiScaler.ini amd_fidelityfx_dx12.dll amd_fidelityfx_upscaler_dx12.dll libxess.dll \
-        setup_windows.bat README.txt Licenses/OptiScaler_LICENSE.txt D3D12_Optiscaler/D3D12Core.dll; do
+    # as OptiScaler's own download: its FidelityFX and XeSS DLLs in an OptiScaler folder
+    mkdir -p "$P/Licenses" "$P/OptiScaler/D3D12_OptiScaler"
+    for f in OptiScaler.dll OptiScaler.ini OptiScaler/amd_fidelityfx_loader_dx12.dll \
+        OptiScaler/amd_fidelityfx_upscaler_dx12.dll OptiScaler/libxess.dll setup_windows.bat README.txt \
+        Licenses/OptiScaler_LICENSE.txt OptiScaler/D3D12_OptiScaler/D3D12Core.dll; do
         echo "package $f" >"$P/$f"
     done
 fi
@@ -77,7 +79,9 @@ check "install succeeds" 'grep -q "installed as" "$W/out.txt"'
 check "goes next to the -Shipping.exe" '[ -f "$B/dxgi.dll" ] && [ ! -e "$U/dxgi.dll" ]'
 check "OptiScaler.dll becomes dxgi.dll" 'cmp -s "$B/dxgi.dll" "$P/OptiScaler.dll" && [ ! -e "$B/OptiScaler.dll" ]'
 check "HelixSR copied in" 'cmp -s "$B/HelixSR/helixsr.dll" "$H/Downloads/HelixSR-1.9.0/amd_fidelityfx_dx12.dll"'
-check "game's file kept in the backup" 'grep -q "the game'"'"'s own" "$B/HelixSR-Scaler-backup/amd_fidelityfx_dx12.dll"'
+# the game's own FSR file: kept in the backup when the download has one of that name, else left where it is
+if [ -f "$P/amd_fidelityfx_dx12.dll" ]; then GAMEFILE="$B/HelixSR-Scaler-backup/amd_fidelityfx_dx12.dll"; else GAMEFILE="$B/amd_fidelityfx_dx12.dll"; fi
+check "game's file kept" 'grep -q "the game'"'"'s own" "$GAMEFILE"'
 check "setup files stay out of the game" '[ ! -e "$B/setup_linux.sh" ] && [ ! -e "$B/setup_windows.bat" ] && [ ! -e "$B/README.txt" ]'
 check "launch options printed" 'grep -qF "WINEDLLOVERRIDES=\"dxgi=n,b\" %command%" "$W/out.txt"'
 list=$("$P/setup_linux.sh" --list | cut -f1,2)
@@ -87,7 +91,7 @@ check "own files don't count as the game's upscalers" 'grep -q "^Unreal Game	DLS
 echo "WaveSize=64" >>"$B/OptiScaler.ini"
 run --yes --game "$U"
 check "update keeps OptiScaler.ini" 'grep -q "^WaveSize=64" "$B/OptiScaler.ini"'
-check "update keeps the game's file in the backup" 'grep -q "the game'"'"'s own" "$B/HelixSR-Scaler-backup/amd_fidelityfx_dx12.dll"'
+check "update keeps the game's file" 'grep -q "the game'"'"'s own" "$GAMEFILE"'
 check "update says so" 'grep -q "updating" "$W/out.txt"'
 
 # --- remove with the copy left in the game: everything as before ---
