@@ -487,6 +487,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             MenuBGColorA.set_from_config(readFloat("Menu", "BGColorA"));
 
             // HelixSR Scaler: HelixSR's settings
+            HelixSRInt8.set_from_config(readString("HelixSR", "Int8", true));
             HelixSRWaveSize.set_from_config(readInt("HelixSR", "WaveSize"));
             if (auto fg = readString("HelixSR", "FrameGeneration", true); fg.has_value())
             {
@@ -1312,6 +1313,7 @@ bool Config::SaveIni()
         ini.SetValue("Menu", "BGColorA", GetFloatValue(Instance()->MenuBGColorA.value_for_config()).c_str());
 
         // HelixSR Scaler: HelixSR's settings
+        ini.SetValue("HelixSR", "Int8", Instance()->HelixSRInt8.value_for_config_or("auto").c_str());
         ini.SetValue("HelixSR", "WaveSize", GetIntValue(Instance()->HelixSRWaveSize.value_for_config()).c_str());
         if (auto fg = Instance()->HelixSRFrameGeneration.value_for_config(); fg.has_value())
             ini.SetValue("HelixSR", "FrameGeneration", fg.value() ? "on" : "off");
@@ -1619,7 +1621,6 @@ bool Config::SaveIni()
     // Old configs, just delete them
     {
         ini.Delete("FSR", "Fsr4ForceEnableInt8");
-        ini.Delete("HelixSR", "Int8"); // HelixSR Scaler: int8 is HelixSR's own choice now
         ini.Delete("Nukems", "MakeDepthCopy", true);
     }
 
