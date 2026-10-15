@@ -21,7 +21,7 @@ x86_64-w64-mingw32-gcc -O2 -o "$G/TestGame.exe" "$HERE/wine_load.c" || exit 1
 
 HOME="$W/home" "$PKG/setup_linux.sh" --yes --game "$G" </dev/null >"$W/setup.txt" 2>&1
 check "setup_linux.sh installs" '[ -f "$G/dxgi.dll" ] && [ -f "$G/HelixSR/helixsr.dll" ]'
-sed -i 's/^LogToFile=auto/LogToFile=true/; s/^WaveSize=auto/WaveSize=64/; s/^FrameGeneration=auto/FrameGeneration=off/' \
+sed -i 's/^LogToFile=auto/LogToFile=true/; s/^WaveSize=auto/WaveSize=64/; s/^Int8=auto/Int8=on/; s/^FrameGeneration=auto/FrameGeneration=off/' \
     "$G/OptiScaler.ini"
 # stand-in for HelixSR's frame generation folder (what HelixSR Desktop copies when the setup built it)
 mkdir -p "$G/HelixSR/helixsr-fg" && echo stand-in >"$G/HelixSR/helixsr-fg/nvexec64.dll"
@@ -36,7 +36,7 @@ check "dxgi.dll loads from the game folder" 'grep -qi "loaded from .*game.dxgi.d
 check "OptiScaler.log written" '[ -s "$G/OptiScaler.log" ]'
 check "logs as HelixSR Scaler" 'grep -q "HelixSR Scaler v" "$G/OptiScaler.log"'
 check "finds the HelixSR folder" 'grep -q "HelixSR found in" "$G/OptiScaler.log"'
-check "writes helixsr.ini from OptiScaler.ini" 'grep -q "^WaveSize = 64" "$G/HelixSR/helixsr.ini" && ! grep -q "^Int8" "$G/HelixSR/helixsr.ini"'
+check "writes helixsr.ini from OptiScaler.ini" 'grep -q "^WaveSize = 64" "$G/HelixSR/helixsr.ini" && grep -q "^Int8 = on" "$G/HelixSR/helixsr.ini"'
 check "HelixSR's own sharpener off" 'grep -q "^Sharpener = off" "$G/HelixSR/helixsr.ini"'
 check "FrameGeneration=off parks helixsr-fg" '[ ! -e "$G/HelixSR/helixsr-fg" ] && [ -f "$G/HelixSR/helixsr-fg.off/nvexec64.dll" ]'
 check "no frame generation set up when off" '! grep -q "FGInput = nvngxfg" "$G/OptiScaler.log"'

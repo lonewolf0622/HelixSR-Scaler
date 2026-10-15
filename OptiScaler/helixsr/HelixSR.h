@@ -35,7 +35,7 @@ bool IsActive();
 void Choose();
 
 // HelixSR's settings, drawn under the upscaler list while HelixSR is the upscaler:
-// GPU mode and the folder button. Writes helixsr.ini; the game has to restart for them to apply.
+// speed boost (int8), GPU mode and the folder button. Writes helixsr.ini; the game has to restart for them to apply.
 void RenderSettings(float scale, ImVec4 (*color)(const ImVec4&));
 
 // The HUD (HelixSRHud.cpp): the top of the menu window, with the upscaler choice, HelixSR's settings, live timings and

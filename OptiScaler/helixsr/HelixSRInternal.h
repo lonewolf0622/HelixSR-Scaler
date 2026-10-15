@@ -14,6 +14,7 @@ namespace HelixSR::detail
 // helixsr.ini, as the menu shows it
 struct Settings
 {
+    int int8 = 0;     // Auto, On, Off
     int wave = 0;     // Auto, 64, 32
     int frameGen = 0; // On, Off (HelixSR's frame generation)
 };
@@ -41,6 +42,11 @@ struct MenuState
     bool saveFailed = false;
 };
 
+extern const char* const kInt8[];
+inline constexpr int kInt8Count = 3;
+inline constexpr const char* kInt8Help =
+    "Faster int8 math. Auto lets HelixSR decide by the graphics card. On can help cards it leaves off that have fast "
+    "int8 (e.g. GTX 16xx). If the picture shimmers or flickers, try Off. Restart the game after changing it.";
 extern const char* const kWave[];
 inline constexpr int kWaveCount = 3;
 extern const char* const kFrameGen[];
