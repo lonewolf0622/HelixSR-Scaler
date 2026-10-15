@@ -25,6 +25,9 @@ bool Requested();
 // Requested() and the route is active: FGInput = dlssg, FGOutput = fsrfg, HelixSR as the NGX frame generation
 bool Active();
 
+// The FSR FG output runs HelixSR's frame generation (the route is configured): name it "HelixSR FG" in the UI
+bool Labeled();
+
 // The game's Streamline data, kept as given (Streamline_Inputs / Streamline_Hooks)
 void StoreConstants(int fIndex, const sl::Constants& constants);
 void StoreOptions(const sl::DLSSGOptions& options); // only version 1 fields are read

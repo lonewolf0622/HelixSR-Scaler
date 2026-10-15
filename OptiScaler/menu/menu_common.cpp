@@ -36,7 +36,8 @@
 #include <type_traits>
 #include <misc/IdentifyGpu.h>
 #include <proxies/NVNGX_Proxy.h>
-#include <helixsr/HelixSR.h> // HelixSR Scaler
+#include <helixsr/HelixSR.h>                  // HelixSR Scaler
+#include <framegen/ffx/HelixSRPresent_Dx12.h> // HelixSR Scaler
 #include <hooks/Xell_Hooks.h>
 #include <low_latency/input/input_common.h>
 #include <hooks/Vulkan_Hooks.h>
@@ -2300,7 +2301,13 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             };
 
             const FGNvngxReplacement activeNvngxFg = state.activeFgNvngx;
-            if (activeNvngxFg == FGNvngxReplacement::Arturs)
+            if (HelixSRPresent::Labeled()) // HelixSR Scaler: HelixSR generates, the FSR FG swapchain presents
+            {
+                fgText = (fg != nullptr && fg->IsActive() && !fg->IsPaused())
+                             ? std::format(" (HelixSR FG x{})", fg->GetInterpolatedFrameCount() + 1)
+                             : std::string(" (HelixSR FG off)");
+            }
+            else if (activeNvngxFg == FGNvngxReplacement::Arturs)
             {
                 fgText = formatFg("Enabler", Nvngx_FG::getMaxFakeFramesCount());
             }
@@ -3591,7 +3598,9 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
     outputOptions = {
         { FGOutput::NoFG, "None" },
-        { FGOutput::FSRFG, "FSR FG", "FSR3/4-FG, RDNA4 autoupgrades to FSR4-FG\n\nFSR4-FG sometimes better/worse than XeFG" },
+        HelixSRPresent::Labeled()
+            ? MenuOption<FGOutput> { FGOutput::FSRFG, "HelixSR FG", "HelixSR FG (FSR FG pacing)\n\nHelixSR generates the frames from the game's DLSS Frame Generation inputs,\nthe FSR FG swapchain presents and paces them ([HelixSR] FGPresent = optiscaler)" }
+            : MenuOption<FGOutput> { FGOutput::FSRFG, "FSR FG", "FSR3/4-FG, RDNA4 autoupgrades to FSR4-FG\n\nFSR4-FG sometimes better/worse than XeFG" },
         { FGOutput::DLSSG, "DLSSG", "DLSSG output\nCan be used in conjuction with Nukem's for example" },
         { FGOutput::XeFG, "XeFG", "XeFG - heaviest, but best universal FG\n\nXeFG 3 overall deals best with HUD\n\nEnable UI Composition if HUD ghosting" },
         { FGOutput::Reprojection, "Reprojection (WIP)", "Reprojects the game image using new mouse data\nKinda like Reflex 2, perceived latency improvement\n\n- REQUIRES DLSSG VIA STREAMLINE AS INPUT\n- Only works with first person perspective games\n- Only mouse, no controller\n- If possible, disable any mouse/camera smoothing in the game\n" },
@@ -4161,7 +4170,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         if (state.activeFgInput != FGInput::Upscaler || (currentFeature != nullptr && !currentFeature->IsFrozen()) &&
                                                             (state.currentVkFG != nullptr || FfxApiProxy::IsFGReady()))
         {
-            ScopedCard card { "FSR FG Settings" };
+            ScopedCard card { HelixSRPresent::Labeled() ? "HelixSR FG Settings (FSR FG pacing)" : "FSR FG Settings" };
 
             // The output resets an index from a game with more FFX versions
             if (_ffxFGIndex < 0 || _ffxFGIndex >= (int) state.ffxFGVersionNames.size())
@@ -4325,7 +4334,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 }
 
                 auto fg = state.currentFG;
-                if (fg != nullptr && strcmp(fg->Name(), "FSR-FG") == 0 &&
+                if (fg != nullptr && (strcmp(fg->Name(), "FSR-FG") == 0 || strcmp(fg->Name(), "HelixSR FG") == 0) &&
                     FfxApiProxy::VersionDx12_FG() >= feature_version { 3, 1, 3 })
                 {
                     ImGui::Spacing();

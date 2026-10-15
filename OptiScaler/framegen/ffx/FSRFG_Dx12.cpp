@@ -313,7 +313,8 @@ feature_version FSRFG_Dx12::Version()
 
 HWND FSRFG_Dx12::Hwnd() { return _hwnd; }
 
-const char* FSRFG_Dx12::Name() { return "FSR-FG"; }
+// HelixSR Scaler: with HelixSR generating, the output is "HelixSR FG" (FSR FG pacing)
+const char* FSRFG_Dx12::Name() { return HelixSRPresent::Labeled() ? "HelixSR FG" : "FSR-FG"; }
 
 static void fgLogCallback(uint32_t type, const wchar_t* message)
 {

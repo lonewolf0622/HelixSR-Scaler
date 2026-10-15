@@ -282,12 +282,14 @@ bool Requested()
     return v == "optiscaler";
 }
 
-bool Active()
+bool Labeled()
 {
     const auto& state = State::Instance();
     return Requested() && state.activeFgInput == FGInput::DLSSG && state.activeFgOutput == FGOutput::FSRFG &&
-           state.activeFgNvngx == FGNvngxReplacement::HelixSR && state.currentFG != nullptr;
+           state.activeFgNvngx == FGNvngxReplacement::HelixSR;
 }
+
+bool Active() { return Labeled() && State::Instance().currentFG != nullptr; }
 
 void StoreConstants(int fIndex, const sl::Constants& c)
 {
