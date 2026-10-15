@@ -10,6 +10,7 @@
 #include "proxies/NVNGX_Proxy.h"
 
 #include <shellapi.h>
+#include <magic_enum.hpp>
 
 #include <algorithm>
 #include <cfloat>
@@ -676,17 +677,56 @@ void ApplyDefaults()
     // A game with its own DLSS Frame Generation (Streamline's sl.dlss_g.dll): its frame generation goes to HelixSR
     // (FGInput = nvngxfg), paced by the game's own Streamline
     const bool optiPresent = cfg->HelixSRFGPresent.value_or("streamline") == "optiscaler";
-    if (!cfg->FGInput.has_value() && FrameGenFound() && optiPresent && GameHasDlssg())
+    const bool inputWasAuto = !cfg->FGInput.has_value();
+    if (inputWasAuto && FrameGenFound() && optiPresent && GameHasDlssg())
     {
         // [HelixSR] FGPresent = optiscaler: the game's DLSS FG inputs (FGInput = dlssg), OptiScaler's FSR FG swapchain
         // presents and paces (FGOutput = fsrfg), HelixSR generates the frames (see HELIXSR_FG_PRESENT.md)
         cfg->FGInput.set_volatile_value(::FGInput::DLSSG);
-        if (!cfg->FGOutput.has_value())
-            cfg->FGOutput.set_volatile_value(::FGOutput::FSRFG);
         LOG_INFO("HelixSR Scaler: the game has DLSS Frame Generation, HelixSR generates and OptiScaler presents "
-                 "(FGPresent = optiscaler: FGInput = dlssg, FGOutput = fsrfg)");
+                 "(FGPresent = optiscaler: FGInput = dlssg)");
     }
-    else if (!cfg->FGInput.has_value() && FrameGenFound())
+
+    // FGPresent = optiscaler with the DLSSG input (set above, or FGInput = dlssg by hand): the output must be
+    // OptiScaler's FSR FG swapchain. auto or dlssg (a DLSSG output needs Streamline's own files and would present with
+    // sl.dlss_g) become fsrfg; another explicit output is kept (then HelixSR does not generate through OptiScaler).
+    if (optiPresent && FrameGenFound() && cfg->FGInput.value_or_default() == ::FGInput::DLSSG)
+    {
+        const bool outputAuto = !cfg->FGOutput.has_value();
+        const auto output = cfg->FGOutput.value_or_default();
+
+        if (outputAuto || output == ::FGOutput::DLSSG)
+        {
+            cfg->FGOutput.set_volatile_value(::FGOutput::FSRFG);
+            LOG_INFO("HelixSR Scaler: FGPresent = optiscaler: FGOutput {} -> fsrfg (OptiScaler's FSR FG swapchain "
+                     "presents HelixSR's frames)",
+                     outputAuto ? "auto" : "dlssg");
+        }
+        else if (output != ::FGOutput::FSRFG)
+        {
+            LOG_WARN("HelixSR Scaler: FGPresent = optiscaler needs FGOutput = fsrfg (or auto); FGOutput = {} kept, "
+                     "HelixSR's frame generation is not used",
+                     magic_enum::enum_name(output));
+        }
+
+        if (cfg->FGNvngxReplacement.value_or_default() != FGNvngxReplacement::HelixSR)
+        {
+            cfg->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::HelixSR);
+            LOG_INFO("HelixSR Scaler: FGPresent = optiscaler: FGNvngxReplacement -> helixsr");
+        }
+
+        LOG_INFO("HelixSR Scaler: FGPresent = optiscaler: FGInput = dlssg, FGOutput = {}, generation by HelixSR",
+                 magic_enum::enum_name(cfg->FGOutput.value_or_default()));
+    }
+    else if (optiPresent && FrameGenFound() && !inputWasAuto)
+    {
+        LOG_INFO("HelixSR Scaler: FGPresent = optiscaler is used with FGInput = dlssg only (FGInput = {}): HelixSR's "
+                 "frames are presented by Streamline",
+                 magic_enum::enum_name(cfg->FGInput.value_or_default()));
+    }
+
+    const bool optiRoute = optiPresent && cfg->FGInput.value_or_default() == ::FGInput::DLSSG;
+    if (inputWasAuto && FrameGenFound() && !optiRoute)
     {
         if (GameHasDlssg())
         {
