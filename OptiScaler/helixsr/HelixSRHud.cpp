@@ -449,12 +449,14 @@ void RenderHud(float scale, ImVec4 (*color)(const ImVec4&))
         Panel(dl, a, b, "02", "HELIXSR CONFIG");
         const float lx = a.x + 18 * k;
         bool changed = false;
-        changed |= Toggles(dl, ImVec2(lx, a.y + 44 * k), "wave", "GPU MODE", kWaveHelp, kWave, kWaveCount,
+        changed |= Toggles(dl, ImVec2(lx, a.y + 44 * k), "fg", "FRAME GEN", kFrameGenHelp, kFrameGen, kFrameGenCount,
+                           &m.settings.frameGen, found);
+        changed |= Toggles(dl, ImVec2(lx, a.y + 82 * k), "wave", "GPU MODE", kWaveHelp, kWave, kWaveCount,
                            &m.settings.wave, found);
         if (changed)
             SaveMenuSettings();
 
-        const ImVec2 note(lx, a.y + 84 * k);
+        const ImVec2 note(lx, a.y + 122 * k);
         if (!found)
             Text(dl, note, smallSize, Col(kRed), "! NO HELIXSR FOLDER NEXT TO THE GAME");
         else if (m.saveFailed)
