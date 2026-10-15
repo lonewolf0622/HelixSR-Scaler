@@ -32,6 +32,7 @@
 #include <fsr4/FSR4ModelSelection.h>
 #include <fsr4/FSR4Upgrade.h>
 #include <misc/IdentifyGpu.h>
+#include <helixsr/HelixSR.h> // HelixSR Scaler
 #include <low_latency/input/input_uell.h>
 
 // #define LOG_LIB_OPERATIONS
@@ -61,6 +62,11 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
     auto normalizedLocalSlPath = localSlPath.lexically_normal();
 
     const bool pathInsideLocalSlPath = Util::IsSubpath(path, normalizedLocalSlPath);
+
+    // HelixSR Scaler: files in the HelixSR folder load as they are. HelixSR's frame generation loads NVIDIA's NGX
+    // core (helixsr-fg\_nvngx.dll) by its full path; answering that with this DLL makes HelixSR call itself
+    if (HelixSR::Found() && Util::IsSubpath(path, HelixSR::Folder()))
+        return nullptr;
 
     // exe path
     auto exePath = Util::ExePath().parent_path().wstring();
