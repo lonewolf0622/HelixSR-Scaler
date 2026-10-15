@@ -160,14 +160,17 @@ struct UpscalerEntry
     int ffxIndex = -1; // FSR from the FFX SDK: its index in the SDK's version list (as OptiScaler's FFX Upscaler list)
 };
 
-std::vector<UpscalerEntry> Dx12Upscalers()
+// The upscalers of a DirectX 12 game, or of a DirectX 11 game (HelixSR, FSR from the FFX SDK and XeSS through
+// OptiScaler's Dx12 interop there)
+std::vector<UpscalerEntry> Upscalers(bool dx11)
 {
     std::vector<UpscalerEntry> list;
     const bool helixDlss = found && NVNGXProxy::HelixSRDlss();
     if (helixDlss)
-        list.push_back({ "HelixSR", ::Upscaler::DLSS, true });
+        list.push_back({ "HelixSR", HelixSRUpscaler(), true });
 
     // every FSR the FFX SDK reports (FSR 4, FSR 3.1, ...), newest first, as OptiScaler's own upscaler list names them
+    const ::Upscaler ffx = dx11 ? ::Upscaler::FFX_on12 : ::Upscaler::FFX;
     FFXFeature::EnsureVersionsDx12();
     const auto& versions = State::Instance().ffxUpscalerVersionsDx12;
     std::vector<int> order(versions.names.size());
@@ -176,15 +179,15 @@ std::vector<UpscalerEntry> Dx12Upscalers()
     std::stable_sort(order.begin(), order.end(), [&versions](int a, int b)
                      { return feature_version(versions.names[b]) < feature_version(versions.names[a]); });
     for (int n : order)
-        list.push_back({ std::string("FSR ") + versions.names[n], ::Upscaler::FFX, false, n });
+        list.push_back({ std::string("FSR ") + versions.names[n], ffx, false, n });
     if (order.empty())
-        list.push_back({ "FSR", ::Upscaler::FFX, false });
+        list.push_back({ "FSR", ffx, false });
 
-    list.push_back({ "XeSS", ::Upscaler::XeSS, false });
+    list.push_back({ "XeSS", dx11 ? ::Upscaler::XeSS_on12 : ::Upscaler::XeSS, false });
     if (!helixDlss && IdentifyGpu::getPrimaryGpu().dlssCapable && Config::Instance()->DLSSEnabled.value_or_default())
         list.push_back({ "DLSS", ::Upscaler::DLSS, false });
     list.push_back({ "FSR 2.2.1", ::Upscaler::FSR22, false });
-    list.push_back({ "FSR 2.1.2", ::Upscaler::FSR21, false });
+    list.push_back({ "FSR 2.1.2", dx11 ? ::Upscaler::FSR21_on12 : ::Upscaler::FSR21, false });
     return list;
 }
 
@@ -352,14 +355,14 @@ void RenderHud(float scale, ImVec4 (*color)(const ImVec4&))
             Text(dl, ImVec2(lx + 6 * k, ly), ts, Col(kText, 0.85f), "DLSS RAY RECONSTRUCTION IS ON");
             Text(dl, ImVec2(lx + 6 * k, ly + 24 * k), ts, Col(kMuted), "THE UPSCALER CAN'T BE CHANGED.");
         }
-        else if (state.api != DX12)
+        else if (state.api != DX12 && state.api != DX11)
         {
-            Text(dl, ImVec2(lx + 6 * k, ly), ts, Col(kText, 0.85f), "HELIXSR RUNS IN DIRECTX 12 GAMES");
+            Text(dl, ImVec2(lx + 6 * k, ly), ts, Col(kText, 0.85f), "HELIXSR RUNS IN DIRECTX 11 AND 12 GAMES");
             Text(dl, ImVec2(lx + 6 * k, ly + 24 * k), ts, Col(kMuted), "PICK AN UPSCALER IN THE LIST BELOW.");
         }
         else
         {
-            const auto list = Dx12Upscalers();
+            const auto list = Upscalers(state.api == DX11);
             const ::Upscaler current = Backend();
             const int ffxIndex = cfg->FfxUpscalerIndex.value_or_default();
             // rows shrink when the list is long (many FSR versions), so it stays inside the panel

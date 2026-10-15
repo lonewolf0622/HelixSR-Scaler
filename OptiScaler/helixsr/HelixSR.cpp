@@ -460,8 +460,11 @@ LogStatus ReadLog()
     return cfg->Dx12Upscaler.value_or_default();
 }
 
-// HelixSR is OptiScaler's DLSS upscaler on GPUs without DLSS (HelixSR's DLSS DLL as the NVNGX module)
-void ChooseHelixSR() { ChooseBackend(::Upscaler::DLSS); }
+// HelixSR is OptiScaler's DLSS upscaler on GPUs without DLSS (HelixSR's DLSS DLL as the NVNGX module); DirectX 11
+// games run it through OptiScaler's Dx12 interop (DLSS w/Dx12, HelixSR's DLL is DirectX 12 only)
+::Upscaler HelixSRUpscaler() { return State::Instance().api == DX11 ? ::Upscaler::DLSS_on12 : ::Upscaler::DLSS; }
+
+void ChooseHelixSR() { ChooseBackend(HelixSRUpscaler()); }
 
 void OpenFolder() { ShellExecuteW(nullptr, L"open", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL); }
 
@@ -692,6 +695,12 @@ void ApplyDefaults()
     }
     if (!cfg->Dx12Upscaler.has_value())
         cfg->Dx12Upscaler.set_volatile_value(::Upscaler::DLSS);
+
+    // DirectX 11: DLSS is HelixSR through the Dx12 interop (FeatureProvider_Dx11 runs it as DLSS w/Dx12), or the
+    // native DLSS on GPUs with DLSS. Frame generation stays DirectX 12 only.
+    if (!cfg->Dx11Upscaler.has_value())
+        cfg->Dx11Upscaler.set_volatile_value(::Upscaler::DLSS);
+
     LOG_INFO("HelixSR frame generation is not included; alternative FG settings: input={}, output={}, provider={}",
              magic_enum::enum_name(cfg->FGInput.value_or_default()),
              magic_enum::enum_name(cfg->FGOutput.value_or_default()),
@@ -775,7 +784,8 @@ bool IsActive()
     if (feature == nullptr || !feature->IsInited())
         return false;
 
-    return feature->GetUpscalerType() == ::Upscaler::DLSS && NVNGXProxy::HelixSRDlss();
+    const auto type = feature->GetUpscalerType();
+    return (type == ::Upscaler::DLSS || type == ::Upscaler::DLSS_on12) && NVNGXProxy::HelixSRDlss();
 }
 
 void RenderSettings(float scale, ImVec4 (*color)(const ImVec4&))
