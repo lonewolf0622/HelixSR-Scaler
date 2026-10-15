@@ -73,8 +73,8 @@ The NGX feature is created on the swapchain's command list on first use (sl.dlss
 the backbuffer size or format changes. Old handles and textures are released `BUFFER_COUNT+4` frames later. NGX init
 goes through `Nvngx_FG::D3D12_Init_Ext` when the FSR FG objects are created. helixsr.dll counts inits, so the game's
 own NGX init is harmless. Threading: everything runs on the FidelityFX present thread, the same thread sl.dlss_g used.
-It works on the direct queue and on the async compute queue (`FGAsync`); helixsr.dll supports both list types. FSR's
-cheap "prepare" dispatch still runs and its output is unused.
+It works on the direct queue and on the async compute queue (`FGAsync`); helixsr.dll supports both list types. With
+HelixSR's own swapchain (below) FSR's "prepare" dispatch no longer runs.
 
 Config wiring: if `FGPresent = optiscaler`, the game has sl.dlss_g, and the user hasn't set `FGInput`, HelixSR.cpp sets
 `FGInput = dlssg` and `FGOutput = fsrfg` as volatile values. dllmain keeps `FGNvngxReplacement = HelixSR` for that
@@ -88,6 +88,74 @@ is given, direct or compute. No closed-source change is needed.
 
 Optional, for checking: helixsr.dll already prints all evaluate parameters with `[FrameGeneration] Log = 1`
 (`ngx_param_dump`, first two frames). That dump is the equivalence gate below.
+
+## Multi-frame generation: HelixSR's presenting swapchain
+
+With `FGPresent = optiscaler` and HelixSR generating, the FG output no longer uses the FidelityFX swapchain. That
+swapchain makes one generated frame per real frame. `framegen/ffx/HelixSRSwapchain_Dx12.{h,cpp}` is HelixSR's own
+presenting swapchain, adapted from the FidelityFX SDK's `FrameInterpolationSwapchainDX12` (MIT, notice kept in both
+files). It makes up to 3 generated frames per real frame (2x, 3x, 4x):
+
+- Frame types `Generated_1..3` + `Real`. Two sets of three output images, created when needed. The set alternates per
+  real frame.
+- The generation callback gets `outputs[0..N-1]` and `numGeneratedFrames = N` on one command list.
+  `HelixSRPresent::Generate` runs one NGX evaluation per generated frame on that list, with `DLSSG.MultiFrameCount = N`
+  and `DLSSG.MultiFrameIndex = 1..N`. `DLSSG.Reset` is only set at index 1. `DLSSG.BackbufferFrameID` moves on once
+  per real frame (the earlier code moved it on per call). The feature is created with `DLSSG.MultiFrameCountMax` = what
+  helixsr.dll offers, so switching between 2x, 3x and 4x keeps it. If an index fails, the real frame is copied into
+  that slot. If index 1 fails, the later indices are not evaluated.
+- The presenter shows the N generated frames, then the real one. Each is paced at
+  `(average real frame time - 2 x variance x varianceFactor) / (N + 1) - safety margin`. For N = 1 this is AMD's
+  `average / 2 - variance x factor`.
+- Refresh cap: with VSync, or on a display without tearing, N is lowered so that (N + 1) x real fps stays at most the
+  refresh rate (2 % slack). A lower cap applies after 30 real frames in a row, a higher one after 120. The log line is
+  "HelixSR swapchain: ... at most N generated frame(s) per real frame".
+- The FG output creates no FidelityFX swapchain context, no FidelityFX FG context and no prepare dispatch in this
+  route. Pacing tuning (`FramePacingTuning` options) goes to the swapchain directly.
+- Choosing N: the menu's Frame Gen slider (Off / Default / 2X / 3X / 4X) or the game's DLSS FG setting (Default).
+  The game sees `numFramesToGenerateMax` = HelixSR's maximum. `[HelixSR] FGInterpolationCount` stores the slider's
+  value. A value above helixsr.dll's current maximum also sets `[HelixSR] MultiFrame` (helixsr.ini) and needs a
+  restart.
+
+### Fence review (every signal and wait)
+
+All fence values only grow. Unlike AMD's version, nothing moves a fence back on a resize or on a generation queue
+change. A GPU queue wait that is queued but not yet processed could otherwise see a lower value and block forever.
+presentIndex numbers every present: for a real frame with N generated frames, base+1..base+N are the generated ones and
+base+N+1 the real one.
+
+| Fence | Signaled by | Value | Waited by |
+|---|---|---|---|
+| gameFence | game queue at each Present | ++gameFenceValue | generation queue (before generation), present queue (passthrough), CPU (waitForPresents, shutdown) |
+| interpolationFence | generation queue, once per real frame, after its wait on gameFence; **also when the callback fails** (AMD skipped it, so the real frame could be copied before the game finished it) | ++interpolationFenceValue | interpolation thread (CPU, then lets the next Present go), present queue before each copy |
+| compositionFenceGPU | present queue after the copy of present i (always, also when no command list was free) | presentIndex | game queue at the next Present (all earlier presents), generation queue before writing an output set (its last presentIndices) |
+| compositionFenceCPU | presenter thread right after queuing that copy | presentIndex | Present (CPU), before it queues the game queue's GPU wait on compositionFenceGPU: no GPU wait is ever queued for a value nobody has queued a signal for |
+| presentFence | present queue after DXGI Present of present i; at the start of an entry also its base (a replaced entry) | presentIndex | waitForPresents, frame-latency waitable object, passthrough game queue wait |
+| replacementBufferFence | present queue when present i == the entry's last presentIndex (the real frame, or the last generated one with onlyPresentGenerated) | presentIndex | Present (CPU) before the game gets that back buffer again |
+
+Deadlock checks:
+- Default case, generation on the game queue. The game queue runs: render k+1, wait compositionGPU >= last(k),
+  signal gameFence, wait compositionGPU >= availability of the set (frame k-1's indices <= last(k)), generation list,
+  signal interpolationFence. compositionGPU >= last(k) needs the present queue's waits on interpolationFence I(k).
+  I(k) was signaled earlier on the game queue, before render k+1. So there is no cycle. The async queue is the same with
+  one more queue in the chain.
+- Present k+1 waits on the CPU until all copies of k are queued. So the presenter always takes the newest entry. An
+  entry that is replaced anyway is covered by the higher values of the next one.
+- An output image that was written but not presented (the callback gave back fewer frames) keeps its old availability.
+  Its next write is on the same generation queue, after the first one, and nothing reads it in between.
+- No entry (onlyPresentGenerated and 0 generated): framesSent does not change, and every wait is for values already
+  signaled.
+- Disable, resize and queue change call waitForPresents first (gameFence, interpolationFence, presentFence >= what
+  was queued) and only then stop the threads. The threads only stop after their current entry.
+
+### One command list vs one submission per index
+
+`HelixSRPresent::Generate` records all N evaluations on the swapchain's single generation list. The earlier GPU checks
+submitted after each index. Offline review of the executor (`nvexec`): there is no CPU readback or fence wait inside
+an evaluation. The descriptor ring (32768) and the constant ring (64 MB) are consumed per launch, whatever the
+submission pattern: about 130 launches per real frame at 4x, so many frames in flight before a wrap. Menu detection
+and the HUD cutoff run only at index 1. The history moves on at the last index, in recording order. GPU check (not run):
+`gpu-check-mfg-onelist.sh` in the DLL worktree compares both ways byte for byte at 2x, 3x and 4x.
 
 ## Other FG inputs (later)
 

@@ -4202,7 +4202,26 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 ShowTooltip("List of FGs reported by FFX SDK");
             }
 
-            RenderFGModeSlider(ctx, "Frame Gen##fsrfg", 1, nullptr);
+            // HelixSR Scaler: HelixSR's own swapchain: Off / Default / 2X / 3X / 4X
+            if (HelixSRPresent::Labeled())
+            {
+                const int hxMax = static_cast<int>(HelixSRPresent::MaxGenerated());
+                RenderFGModeSlider(ctx, "Frame Gen##fsrfg", static_cast<int>(HelixSRPresent::kMaxGenerated),
+                                   &config->FGHelixSRInterpolationCount);
+
+                const int picked = config->FGHelixSRInterpolationCount.value_or_default();
+                if (config->FGEnabled.value_or(false) && picked > hxMax)
+                {
+                    // more than HelixSR's frame generation offers now: saved for the next start
+                    HelixSR::SetMultiFrame(picked);
+                    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "%dX after restarting the game (now up to %dX)",
+                                       picked + 1, hxMax + 1);
+                }
+            }
+            else
+            {
+                RenderFGModeSlider(ctx, "Frame Gen##fsrfg", 1, nullptr);
+            }
 
             bool fgAsync = config->FGAsync.value_or_default();
             if (ImGui::Checkbox("Allow Async", &fgAsync))

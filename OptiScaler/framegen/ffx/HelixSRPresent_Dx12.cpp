@@ -45,6 +45,7 @@ NVSDK_NGX_Handle* handle = nullptr;
 UINT featureWidth = 0;
 UINT featureHeight = 0;
 DXGI_FORMAT featureFormat = DXGI_FORMAT_UNKNOWN;
+uint32_t featureCountMax = 0; // DLSSG.MultiFrameCountMax the feature was created with
 uint32_t backbufferFrameId = 0;
 sl::Constants current {}; // the constants of the frame being generated (the matrices are passed by pointer)
 ID3D12Resource* outputReal = nullptr;
@@ -222,17 +223,18 @@ bool EnsureOutputReal(ID3D12Device* device, ID3D12Resource* like)
     return true;
 }
 
-bool EnsureFeature(ID3D12GraphicsCommandList* list, ID3D12Resource* backbuffer, const Input& depth)
+bool EnsureFeature(ID3D12GraphicsCommandList* list, ID3D12Resource* backbuffer, const Input& depth, uint32_t countMax)
 {
     const auto bb = backbuffer->GetDesc();
 
-    if (handle != nullptr && featureWidth == bb.Width && featureHeight == bb.Height && featureFormat == bb.Format)
+    if (handle != nullptr && featureWidth == bb.Width && featureHeight == bb.Height && featureFormat == bb.Format &&
+        featureCountMax == countMax)
         return true;
 
     if (handle != nullptr)
     {
-        LOG_INFO("HelixSR FG present: backbuffer changed to {}x{} format {}, frame generation recreated", bb.Width,
-                 bb.Height, (UINT) bb.Format);
+        LOG_INFO("HelixSR FG present: backbuffer {}x{} format {}, up to {} generated frame(s): frame generation recreated",
+                 bb.Width, bb.Height, (UINT) bb.Format, countMax);
         Retire(handle, nullptr);
         handle = nullptr;
     }
@@ -253,7 +255,7 @@ bool EnsureFeature(ID3D12GraphicsCommandList* list, ID3D12Resource* backbuffer, 
     params->Set("DLSSG.BackbufferFormat", static_cast<unsigned int>(bb.Format));
     params->Set("DLSSG.InternalWidth", internalWidth);
     params->Set("DLSSG.InternalHeight", internalHeight);
-    params->Set("DLSSG.MultiFrameCountMax", 1u);
+    params->Set("DLSSG.MultiFrameCountMax", countMax);
 
     NVSDK_NGX_Handle* h = nullptr;
     const auto result = Nvngx_FG::D3D12_CreateFeature(list, NVSDK_NGX_Feature_FrameGeneration, params, &h);
@@ -268,10 +270,11 @@ bool EnsureFeature(ID3D12GraphicsCommandList* list, ID3D12Resource* backbuffer, 
     featureWidth = static_cast<UINT>(bb.Width);
     featureHeight = bb.Height;
     featureFormat = bb.Format;
+    featureCountMax = countMax;
     backbufferFrameId = 0;
 
-    LOG_INFO("HelixSR FG present: frame generation created at {}x{} (internal {}x{})", bb.Width, bb.Height,
-             internalWidth, internalHeight);
+    LOG_INFO("HelixSR FG present: frame generation created at {}x{} (internal {}x{}), up to {} generated frame(s)",
+             bb.Width, bb.Height, internalWidth, internalHeight, countMax);
     return true;
 }
 } // namespace
@@ -328,12 +331,31 @@ void Init(ID3D12Device* device)
     LOG_INFO("HelixSR FG present: NGX init {:X}", (UINT) result);
 }
 
-bool Generate(IFGFeature_Dx12* fg, const Frame& f)
+uint32_t MaxGenerated()
 {
+    if (State::Instance().activeFgNvngx != FGNvngxReplacement::HelixSR)
+        return 1;
+
+    return static_cast<uint32_t>(std::clamp(Nvngx_FG::getMaxFakeFramesCount(), 1, static_cast<int>(kMaxGenerated)));
+}
+
+bool Generate(IFGFeature_Dx12* fg, const Frame& f, bool generated[kMaxGenerated])
+{
+    for (uint32_t i = 0; i < kMaxGenerated; i++)
+        generated[i] = false;
+
     TickRetired();
 
-    if (fg == nullptr || f.cmdList == nullptr || f.backbuffer == nullptr || f.output == nullptr)
+    const uint32_t count = std::clamp(f.count, 1u, kMaxGenerated);
+
+    if (fg == nullptr || f.cmdList == nullptr || f.backbuffer == nullptr)
         return false;
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        if (f.outputs[i] == nullptr)
+            return false;
+    }
 
     const int fIndex = static_cast<int>(f.frameID % BUFFER_COUNT);
     auto& state = State::Instance();
@@ -390,26 +412,28 @@ bool Generate(IFGFeature_Dx12* fg, const Frame& f)
     hudlessSeen = hudlessSeen || hudless.resource != nullptr;
     uiSeen = uiSeen || ui.resource != nullptr;
 
-    const bool outputRealOk = EnsureOutputReal(device, f.output);
+    const bool outputRealOk = EnsureOutputReal(device, f.outputs[0]);
     device->Release();
 
-    if (!outputRealOk || !EnsureFeature(f.cmdList, f.backbuffer, depth))
+    // created for the most frames the game may ask for, so that switching between 2x / 3x / 4x keeps the feature
+    const uint32_t countMax = (std::max)(count, MaxGenerated());
+
+    if (!outputRealOk || !EnsureFeature(f.cmdList, f.backbuffer, depth, countMax))
         return false;
 
     const auto bb = f.backbuffer->GetDesc();
     auto* p = params;
 
-    // sl.dlss_g's evaluation keys (helixsr.dll's list of the keys Streamline sets)
+    // sl.dlss_g's evaluation keys (helixsr.dll's list of the keys Streamline sets). The ones that are the same for
+    // every generated frame of this real frame are set once; the frame id moves on once per real frame.
     p->Set("Enable.OFA", 1);
     p->Set("DLSSG.BackbufferFrameID", backbufferFrameId++);
     p->Set("DLSSG.EvalFlags", 0ull);
     p->Set("DLSSG.EnableInterp", 1);
-    p->Set("DLSSG.Reset", (SlBool(current.reset) || f.reset) ? 1 : 0);
     p->Set("DLSSG.IsRecording", 1u);
     p->Set("DLSSG.NotRenderingGameFrames", 0);
-    p->Set("DLSSG.MultiFrameCount", 1u);
-    p->Set("DLSSG.MultiFrameIndex", 1u);
-    p->Set("DLSSG.MultiFrameCountMax", 1u);
+    p->Set("DLSSG.MultiFrameCount", count);
+    p->Set("DLSSG.MultiFrameCountMax", countMax);
     p->Set("DLSSG.ColorBuffersHDR", (state.hdrOutputActive || IsHdrFormat(bb.Format)) ? 1 : 0);
     p->Set("DLSSG.DepthInverted", SlBool(current.depthInverted));
     p->Set("DLSSG.CameraMotionIncluded", SlBool(current.cameraMotionIncluded));
@@ -453,15 +477,13 @@ bool Generate(IFGFeature_Dx12* fg, const Frame& f)
     p->Set("DLSSG.ClipToPrevClip", (void*) &current.clipToPrevClip);
     p->Set("DLSSG.PrevClipToClip", (void*) &current.prevClipToClip);
 
-    // Resources: the real frame with the HUD, the game's tagged inputs, the generated frame
+    // Resources: the real frame with the HUD, the game's tagged inputs (the generated frames per evaluation below)
     Input backbuffer { f.backbuffer, f.backbufferState, 0, 0, static_cast<UINT>(bb.Width), bb.Height };
-    Input output { f.output, f.outputState, 0, 0, static_cast<UINT>(bb.Width), bb.Height };
     Input real { outputReal, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 0, 0, static_cast<UINT>(bb.Width), bb.Height };
 
     SetResource(p, "Backbuffer", backbuffer);
     SetResource(p, "Depth", depth);
     SetResource(p, "MVecs", mvecs);
-    SetResource(p, "OutputInterpolated", output);
     SetResource(p, "OutputReal", real);
 
     // HUD-less and UI exactly as the game tags them; a game that never tags them gets none (as from Streamline). The
@@ -481,13 +503,14 @@ bool Generate(IFGFeature_Dx12* fg, const Frame& f)
     SetSubrect(p, "BidirectionalDistortionField", 0, 0, 0, 0);
 
     // States as with Streamline: inputs readable by compute, outputs writable. Nvngx_FG's HUD cutoff (the same as with
-    // Streamline presenting) expects the HUD-less image in COPY_DEST.
+    // Streamline presenting, at the first index only) expects the HUD-less image in COPY_DEST.
     const bool hudCutoff =
         config->FGHudCutoff.value_or_default() > 0.0f || state.gameQuirks & GameQuirk::FSRFGHudlessMismatchFixup;
     constexpr auto kRead = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 
     Transitions t;
-    t.Add(f.output, f.outputState, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    for (uint32_t i = 0; i < count; i++)
+        t.Add(f.outputs[i], f.outputStates[i], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     t.Add(f.backbuffer, f.backbufferState, kRead);
     t.Add(depth.resource, depth.state, kRead);
     t.Add(mvecs.resource, mvecs.state, kRead);
@@ -495,21 +518,51 @@ bool Generate(IFGFeature_Dx12* fg, const Frame& f)
     t.Add(ui.resource, ui.state, kRead);
     t.Apply(f.cmdList);
 
-    // The same call as with Streamline presenting: Nvngx_FG (HUD cutoff) -> helixsr.dll -> NVIDIA's core
-    const auto result = Nvngx_FG::D3D12_EvaluateFeature(f.cmdList, handle, p, nullptr);
+    // One evaluation per generated frame, in present order, on this command list (as Streamline records them):
+    // index 1 also runs the once-per-real-frame part (and the HUD cutoff), the last one moves the history on. The
+    // reset applies to the first. An index that fails leaves its slot to the real frame; after a failed first index
+    // the others are not evaluated (they need its part).
+    bool any = false;
+    const bool reset = SlBool(current.reset) || f.reset;
+    NVSDK_NGX_Result lastResult = NVSDK_NGX_Result_Success;
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        Input output { f.outputs[i], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 0, 0, static_cast<UINT>(bb.Width), bb.Height };
+        SetResource(p, "OutputInterpolated", output);
+        p->Set("DLSSG.MultiFrameIndex", i + 1);
+        p->Set("DLSSG.Reset", (reset && i == 0) ? 1 : 0);
+
+        // The same call as with Streamline presenting: Nvngx_FG (HUD cutoff) -> helixsr.dll -> NVIDIA's core
+        lastResult = Nvngx_FG::D3D12_EvaluateFeature(f.cmdList, handle, p, nullptr);
+        generated[i] = lastResult == NVSDK_NGX_Result_Success;
+        any = any || generated[i];
+
+        if (!generated[i])
+        {
+            LOG_WARN("HelixSR FG present: frame {} index {} of {} not generated: {:X}", f.frameID, i + 1, count,
+                     (UINT) lastResult);
+
+            if (i == 0)
+                break;
+        }
+    }
 
     t.Revert(f.cmdList);
 
     static uint32_t logged = 0;
-    if (logged < 3 || result != NVSDK_NGX_Result_Success)
+    static uint32_t loggedCount = 0;
+    if (logged < 3 || count != loggedCount)
     {
         logged++;
-        LOG_INFO("HelixSR FG present: frame {} generated: {:X} (depth {}x{}, mvecs {}x{}, hudless {}, ui {})",
-                 f.frameID, (UINT) result, depth.width, depth.height, mvecs.width, mvecs.height,
+        loggedCount = count;
+        LOG_INFO("HelixSR FG present: frame {}: {} generated frame(s), last result {:X} (depth {}x{}, mvecs {}x{}, "
+                 "hudless {}, ui {})",
+                 f.frameID, count, (UINT) lastResult, depth.width, depth.height, mvecs.width, mvecs.height,
                  hudless.resource != nullptr, ui.resource != nullptr);
     }
 
-    return result == NVSDK_NGX_Result_Success;
+    return any;
 }
 
 void Release()
@@ -517,6 +570,7 @@ void Release()
     Retire(handle, outputReal);
     handle = nullptr;
     outputReal = nullptr;
+    featureCountMax = 0;
     featureWidth = 0;
     featureHeight = 0;
     featureFormat = DXGI_FORMAT_UNKNOWN;

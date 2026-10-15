@@ -1,6 +1,7 @@
 #pragma once
 #include "SysUtils.h"
 #include <framegen/IFGFeature_Dx12.h>
+#include "HelixSRSwapchain_Dx12.h"
 #include <proxies/FfxApi_Proxy.h>
 #include <shaders/format_transfer/FT_Dx12.h>
 #include <shaders/hud_copy/HudCopy_Dx12.h>
@@ -35,6 +36,17 @@ class FSRFG_Dx12 : public virtual IFGFeature_Dx12
 
     ID3D12GraphicsCommandList* _fgCommandList[BUFFER_COUNT] {};
     ID3D12CommandAllocator* _fgCommandAllocator[BUFFER_COUNT] {};
+
+    // HelixSR Scaler: with HelixSR generating (FGPresent = optiscaler) HelixSR's own presenting swapchain is used
+    // (HelixSRSwapchain_Dx12, multi-frame generation): no FidelityFX swapchain or frame generation context, no
+    // FidelityFX prepare dispatch. _hxActive stands in for the FidelityFX frame generation context.
+    HelixSRSwapChainDX12* _hxSwapchain = nullptr;
+    bool _hxActive = false;
+    bool HxRoute() const { return _hxSwapchain != nullptr; }
+    bool HasContext() const { return _fgContext != nullptr || _hxActive; }
+    bool HxDispatch(int fIndex, UINT64 willDispatchFrame);
+    uint32_t HxGeneratedFrames();
+    bool HxCreateSwapchain(IDXGISwapChain4* swapChain, ID3D12CommandQueue* realQueue, HWND hwnd);
 
     static FfxApiResourceState GetFfxApiState(D3D12_RESOURCE_STATES state)
     {
@@ -107,7 +119,7 @@ class FSRFG_Dx12 : public virtual IFGFeature_Dx12
 
     ffxReturnCode_t PresentCallback(ffxCallbackDescFrameGenerationPresent* params);
     ffxReturnCode_t DispatchCallback(ffxDispatchDescFrameGeneration* params);
-    bool ShowRealFrame(ffxDispatchDescFrameGeneration* params); // HelixSR Scaler
+    bool ShowRealFrame(ffxDispatchDescFrameGeneration* params, uint32_t index); // HelixSR Scaler
 
     FSRFG_Dx12() : IFGFeature_Dx12(), IFGFeature()
     {

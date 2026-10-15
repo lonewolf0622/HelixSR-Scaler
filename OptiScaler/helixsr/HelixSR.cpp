@@ -773,6 +773,21 @@ const char* Version() { return HELIXSR_SCALER_VERSION_STR; }
 
 void Choose() { ChooseHelixSR(); }
 
+void SetMultiFrame(int count)
+{
+    auto cfg = Config::Instance();
+    count = std::clamp(count, 1, 3);
+
+    if (cfg->HelixSRMultiFrame.value_or(1) == count)
+        return;
+
+    cfg->HelixSRMultiFrame = count;
+    const bool opti = WriteOptiScalerIni();
+    const bool helix = WriteHelixIni();
+    LOG_INFO("HelixSR Scaler: MultiFrame = {} saved (OptiScaler.ini {}, helixsr.ini {}); it applies at the next game start",
+             count, opti, helix);
+}
+
 bool IsActive()
 {
     auto& state = State::Instance();

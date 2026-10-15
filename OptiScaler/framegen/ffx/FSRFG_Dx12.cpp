@@ -273,6 +273,24 @@ void FSRFG_Dx12::ConfigureFramePaceTuning()
 {
     State::Instance().fsrfgFramePaceTuningChanged = false;
 
+    // HelixSR Scaler: HelixSR's swapchain takes the same tuning directly
+    if (_hxSwapchain != nullptr)
+    {
+        HelixSRSwapchainPacingTuning tuning {};
+        if (Config::Instance()->FGFramePacingTuning.value_or_default())
+        {
+            tuning.allowHybridSpin = Config::Instance()->FGFPTAllowHybridSpin.value_or_default();
+            tuning.allowWaitForSingleObjectOnFence =
+                Config::Instance()->FGFPTAllowWaitForSingleObjectOnFence.value_or_default();
+            tuning.hybridSpinTime = Config::Instance()->FGFPTHybridSpinTime.value_or_default();
+            tuning.safetyMarginInMs = Config::Instance()->FGFPTSafetyMarginInMs.value_or_default();
+            tuning.varianceFactor = Config::Instance()->FGFPTVarianceFactor.value_or_default();
+        }
+
+        _hxSwapchain->setFramePacingTuning(tuning);
+        return;
+    }
+
     if (_swapChainContext == nullptr || Version() < feature_version { 3, 1, 3 })
         return;
 
@@ -330,7 +348,7 @@ bool FSRFG_Dx12::Dispatch()
 {
     LOG_FUNC();
 
-    if (_fgContext == nullptr)
+    if (!HasContext())
     {
         LOG_DEBUG("No fg context");
         return false;
@@ -364,6 +382,11 @@ bool FSRFG_Dx12::Dispatch()
         LOG_WARN("Depth or Velocity is not ready, skipping");
         return false;
     }
+
+    // HelixSR Scaler: HelixSR's swapchain gets its configuration directly; no FidelityFX prepare dispatch (its output
+    // would not be used)
+    if (HxRoute())
+        return HxDispatch(fIndex, willDispatchFrame);
 
     ffxConfigureDescFrameGeneration fgConfig = {};
     fgConfig.header.type = FFX_API_CONFIGURE_DESC_TYPE_FRAMEGENERATION;
@@ -884,7 +907,7 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
               params->numGeneratedFrames);
 
     // check for status
-    if (!Config::Instance()->IsFGEnabled() || _fgContext == nullptr || state.scChanged)
+    if (!Config::Instance()->IsFGEnabled() || !HasContext() || state.scChanged)
     {
         LOG_WARN("Cancel async dispatch");
         params->numGeneratedFrames = 0;
@@ -909,25 +932,40 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
     // HelixSR Scaler: HelixSR generates the frame ([HelixSR] FGPresent = optiscaler), this swapchain presents it
     if (HelixSRPresent::Active())
     {
-        bool generated = false;
+        // the swapchain asks for numGeneratedFrames (1 with the FidelityFX swapchain, up to 3 with HelixSR's)
+        const uint32_t count = std::min<uint32_t>(params->numGeneratedFrames, HelixSRPresent::kMaxGenerated);
+        bool generated[HelixSRPresent::kMaxGenerated] {};
 
-        if (params->numGeneratedFrames > 0)
+        if (count > 0)
         {
             HelixSRPresent::Frame frame {};
             frame.cmdList = cmdList;
             frame.backbuffer = (ID3D12Resource*) params->presentColor.resource;
             frame.backbufferState = GetD3D12State((FfxApiResourceState) params->presentColor.state);
-            frame.output = (ID3D12Resource*) params->outputs[0].resource;
-            frame.outputState = GetD3D12State((FfxApiResourceState) params->outputs[0].state);
+            for (uint32_t i = 0; i < count; i++)
+            {
+                frame.outputs[i] = (ID3D12Resource*) params->outputs[i].resource;
+                frame.outputStates[i] = GetD3D12State((FfxApiResourceState) params->outputs[i].state);
+            }
+            frame.count = count;
             frame.frameID = params->frameID;
             frame.reset = params->reset;
 
-            generated = HelixSRPresent::Generate(this, frame);
+            HelixSRPresent::Generate(this, frame, generated);
         }
 
-        // Nothing generated: the real frame in its place, never an unwritten image
-        if (!generated && !ShowRealFrame(params))
-            params->numGeneratedFrames = 0;
+        // A slot without a generated frame shows the real frame, never an unwritten image. If even that copy is not
+        // possible, the presented slots end before it.
+        uint32_t presented = 0;
+        for (uint32_t i = 0; i < count; i++)
+        {
+            if (!generated[i] && !ShowRealFrame(params, i))
+                break;
+
+            presented++;
+        }
+
+        params->numGeneratedFrames = presented;
 
         _lastFrameId = params->frameID;
         return FFX_API_RETURN_OK;
@@ -1073,11 +1111,14 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
 }
 
 // HelixSR Scaler: the real frame copied into the generated frame's image (nothing was generated)
-bool FSRFG_Dx12::ShowRealFrame(ffxDispatchDescFrameGeneration* params)
+bool FSRFG_Dx12::ShowRealFrame(ffxDispatchDescFrameGeneration* params, uint32_t index)
 {
+    if (index >= 4)
+        return false;
+
     auto cmdList = (ID3D12GraphicsCommandList*) params->commandList;
     auto real = (ID3D12Resource*) params->presentColor.resource;
-    auto output = (ID3D12Resource*) params->outputs[0].resource;
+    auto output = (ID3D12Resource*) params->outputs[index].resource;
 
     if (cmdList == nullptr || real == nullptr || output == nullptr)
         return false;
@@ -1092,7 +1133,7 @@ bool FSRFG_Dx12::ShowRealFrame(ffxDispatchDescFrameGeneration* params)
     }
 
     auto realState = GetD3D12State((FfxApiResourceState) params->presentColor.state);
-    auto outputState = GetD3D12State((FfxApiResourceState) params->outputs[0].state);
+    auto outputState = GetD3D12State((FfxApiResourceState) params->outputs[index].state);
 
     ResourceBarrier(cmdList, real, realState, D3D12_RESOURCE_STATE_COPY_SOURCE);
     ResourceBarrier(cmdList, output, outputState, D3D12_RESOURCE_STATE_COPY_DEST);
@@ -1103,6 +1144,102 @@ bool FSRFG_Dx12::ShowRealFrame(ffxDispatchDescFrameGeneration* params)
 
     ResourceBarrier(cmdList, real, D3D12_RESOURCE_STATE_COPY_SOURCE, realState);
     ResourceBarrier(cmdList, output, D3D12_RESOURCE_STATE_COPY_DEST, outputState);
+
+    return true;
+}
+
+// HelixSR Scaler: HelixSR's swapchain created for the game: our reference (as the FidelityFX swapchain context's)
+bool FSRFG_Dx12::HxCreateSwapchain(IDXGISwapChain4* swapChain, ID3D12CommandQueue* realQueue, HWND hwnd)
+{
+    if (swapChain == nullptr || swapChain->QueryInterface(IID_IHelixSRSwapChain, (void**) &_hxSwapchain) != S_OK)
+    {
+        if (swapChain != nullptr)
+            swapChain->Release();
+
+        _hxSwapchain = nullptr;
+        return false;
+    }
+
+    // QueryInterface added the reference FSRFG_Dx12 keeps until ReleaseSwapchain; the game gets the creation's
+    _gameCommandQueue = realQueue;
+    _swapChain = swapChain;
+    _hwnd = hwnd;
+
+    ConfigureFramePaceTuning();
+    return true;
+}
+
+// HelixSR Scaler: generated frames per real frame: the game's choice (FG mode Default) or the menu's, at most what
+// HelixSR's frame generation offers
+uint32_t FSRFG_Dx12::HxGeneratedFrames()
+{
+    auto config = Config::Instance();
+
+    const int max = static_cast<int>(HelixSRPresent::MaxGenerated());
+    _maxInterpolationCount = max;
+
+    const int want = config->FGInterpolationCount(config->FGHelixSRInterpolationCount.value_or_default());
+    const int count = std::clamp(want, 1, max);
+
+    static int logged = 0;
+    if (count != logged)
+    {
+        LOG_INFO("HelixSR swapchain: {} generated frame(s) per real frame ({}x; asked {}, most {})", count, count + 1,
+                 want, max);
+        logged = count;
+    }
+
+    return static_cast<uint32_t>(count);
+}
+
+// HelixSR Scaler: the configuration HelixSR's swapchain applies at the game's next Present
+bool FSRFG_Dx12::HxDispatch(int fIndex, UINT64 willDispatchFrame)
+{
+    auto& state = State::Instance();
+    auto config = Config::Instance();
+
+    HelixSRSwapchainConfig c {};
+    c.frameGenerationEnabled = _isActive;
+    c.allowAsyncWorkloads = config->FGAsync.value_or_default();
+    c.onlyPresentGenerated = state.fgOnlyGenerated;
+    c.generatedFrames = HxGeneratedFrames();
+    c.frameID = willDispatchFrame;
+
+    {
+        DXGI_SWAP_CHAIN_DESC scDesc1 {};
+        bool hasSwapChainDesc = _swapChain->GetDesc(&scDesc1) == S_OK;
+
+        int bufferWidth = hasSwapChainDesc ? scDesc1.BufferDesc.Width : 0;
+        int bufferHeight = hasSwapChainDesc ? scDesc1.BufferDesc.Height : 0;
+
+        int defaultLeft = static_cast<int>(hasSwapChainDesc ? (bufferWidth - _interpolationWidth[fIndex]) / 2 : 0);
+        int defaultTop = hasSwapChainDesc ? (bufferHeight - _interpolationHeight[fIndex]) / 2 : 0;
+        int defaultWidth = static_cast<int>(_interpolationWidth[fIndex]);
+        int defaultHeight = _interpolationHeight[fIndex];
+
+        c.generationRect.left = config->FGRectLeft.value_or(_interpolationLeft[fIndex].value_or(defaultLeft));
+        c.generationRect.top = config->FGRectTop.value_or(_interpolationTop[fIndex].value_or(defaultTop));
+        c.generationRect.width = config->FGRectWidth.value_or(defaultWidth);
+        c.generationRect.height = config->FGRectHeight.value_or(defaultHeight);
+    }
+
+    c.frameGenerationCallbackUserContext = this;
+    c.frameGenerationCallback = [](ffxDispatchDescFrameGeneration* params, void* pUserCtx) -> ffxReturnCode_t
+    {
+        if (pUserCtx != nullptr)
+            return reinterpret_cast<FSRFG_Dx12*>(pUserCtx)->DispatchCallback(params);
+
+        return FFX_API_RETURN_ERROR;
+    };
+
+    _hxSwapchain->setConfig(c);
+    _framesToInterpolate = static_cast<int>(c.generatedFrames);
+
+    if (config->FGUseMutexForSwapchain.value_or_default() && Mutex.getOwner() == 1)
+    {
+        LOG_TRACE("Releasing FG->Mutex: {}", Mutex.getOwner());
+        Mutex.unlockThis(1);
+    };
 
     return true;
 }
@@ -1134,6 +1271,7 @@ void FSRFG_Dx12::DestroyFGContext()
     Deactivate();
 
     HelixSRPresent::Release();
+    _hxActive = false;
 
     if (_fgContext != nullptr)
     {
@@ -1152,7 +1290,7 @@ bool FSRFG_Dx12::Shutdown()
 {
     Deactivate();
 
-    if (_swapChainContext != nullptr)
+    if (_swapChainContext != nullptr || _hxSwapchain != nullptr)
     {
         if (ReleaseSwapchain(_hwnd))
             State::Instance().currentFGSwapchain = nullptr;
@@ -1174,6 +1312,20 @@ bool FSRFG_Dx12::CreateSwapchainInternal(IDXGIFactory* factory, ID3D12CommandQue
 
     if (!CheckForRealObject(__FUNCTION__, cmdQueue, (IUnknown**) &realQueue))
         realQueue = cmdQueue;
+
+    // HelixSR Scaler: HelixSR generating: HelixSR's own presenting swapchain (multi-frame generation)
+    if (HelixSRPresent::Labeled())
+    {
+        IDXGISwapChain4* sc = nullptr;
+        auto hr = HelixSRSwapChainDX12::Create(realFactory, realQueue, desc, &sc);
+        LOG_INFO("HelixSR swapchain: {:X}", (UINT) hr);
+
+        if (hr != S_OK || sc == nullptr || !HxCreateSwapchain(sc, realQueue, desc->OutputWindow))
+            return false;
+
+        *swapChain = sc;
+        return true;
+    }
 
     ffxCreateContextDescFrameGenerationSwapChainNewDX12 createSwapChainDesc {};
     createSwapChainDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_NEW_DX12;
@@ -1216,6 +1368,20 @@ bool FSRFG_Dx12::CreateSwapchain1Internal(IDXGIFactory* factory, ID3D12CommandQu
 
     if (!CheckForRealObject(__FUNCTION__, cmdQueue, (IUnknown**) &realQueue))
         realQueue = cmdQueue;
+
+    // HelixSR Scaler: HelixSR generating: HelixSR's own presenting swapchain (multi-frame generation)
+    if (HelixSRPresent::Labeled())
+    {
+        IDXGISwapChain4* sc = nullptr;
+        auto hr = HelixSRSwapChainDX12::CreateForHwnd(realFactory, realQueue, hwnd, desc, pFullscreenDesc, &sc);
+        LOG_INFO("HelixSR swapchain: {:X}", (UINT) hr);
+
+        if (hr != S_OK || sc == nullptr || !HxCreateSwapchain(sc, realQueue, hwnd))
+            return false;
+
+        *swapChain = sc;
+        return true;
+    }
 
     ffxCreateContextDescFrameGenerationSwapChainForHwndDX12 createSwapChainDesc {};
     createSwapChainDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_FOR_HWND_DX12;
@@ -1281,7 +1447,15 @@ bool FSRFG_Dx12::ReleaseSwapchain(HWND hwnd)
             LOG_INFO("Destroy Ffx Swapchain Result: {}({})", result, FfxApiProxy::ReturnCodeToString(result));
         }
 
+        // HelixSR Scaler: our reference to HelixSR's swapchain (as the FidelityFX swapchain context's)
+        if (_hxSwapchain != nullptr)
+        {
+            auto refs = _hxSwapchain->Release();
+            LOG_INFO("HelixSR swapchain released: {}", refs);
+        }
+
         _swapChainContext = nullptr;
+        _hxSwapchain = nullptr;
         State::Instance().currentFGSwapchain = nullptr;
     }
 
@@ -1301,6 +1475,25 @@ void FSRFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
     CreateObjects(device);
 
     _constants = fgConstants;
+
+    // HelixSR Scaler: HelixSR's swapchain: no FidelityFX frame generation context
+    if (HxRoute())
+    {
+        DXGI_SWAP_CHAIN_DESC desc {};
+        if (_swapChain != nullptr && _swapChain->GetDesc(&desc) == S_OK)
+        {
+            _maxRenderWidth = fgConstants.displayWidth != 0 ? fgConstants.displayWidth : desc.BufferDesc.Width;
+            _maxRenderHeight = fgConstants.displayHeight != 0 ? fgConstants.displayHeight : desc.BufferDesc.Height;
+        }
+
+        _maxInterpolationCount = static_cast<int>(HelixSRPresent::MaxGenerated());
+        _hxActive = true;
+        _isActive = true;
+        _lastDispatchedFrame = 0;
+        LOG_INFO("HelixSR swapchain: frame generation ready, up to {} generated frame(s) per real frame",
+                 _maxInterpolationCount);
+        return;
+    }
 
     // Changing the format of the hudless resource requires a new context
     if (_fgContext != nullptr && (_lastHudlessFormat != _usingHudlessFormat))
@@ -1451,6 +1644,15 @@ void FSRFG_Dx12::CreateContext(ID3D12Device* device, FG_Constants& fgConstants)
 
 void FSRFG_Dx12::Activate()
 {
+    // HelixSR Scaler: HelixSR's swapchain is enabled by the next Dispatch's configuration
+    if (HxRoute() && _hxActive && _swapChain != nullptr && !_isActive)
+    {
+        _isActive = true;
+        _lastDispatchedFrame = 0;
+        LOG_INFO("HelixSR swapchain: frame generation on");
+        return;
+    }
+
     if (_fgContext != nullptr && _swapChain != nullptr && !_isActive)
     {
         ffxConfigureDescFrameGeneration fgConfig = {};
@@ -1494,6 +1696,17 @@ void FSRFG_Dx12::Deactivate()
         }
 
         ffxReturnCode_t result = FFX_API_RETURN_ERROR;
+
+        // HelixSR Scaler: HelixSR's swapchain presents without frame generation from its next Present
+        if (_hxSwapchain != nullptr)
+        {
+            HelixSRSwapchainConfig c {};
+            c.frameGenerationEnabled = false;
+            _hxSwapchain->setConfig(c);
+            _isActive = false;
+            LOG_INFO("HelixSR swapchain: frame generation off");
+            return;
+        }
 
         if (_fgContext != nullptr)
         {
@@ -1549,8 +1762,9 @@ void FSRFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
     if (!FfxApiProxy::IsFGReady())
         FfxApiProxy::InitFfxDx12();
 
-    // If needed hooks are missing or XeFG proxy is not inited or FG swapchain is not created
-    if (!FfxApiProxy::IsFGReady() || State::Instance().currentFGSwapchain == nullptr)
+    // If needed hooks are missing or XeFG proxy is not inited or FG swapchain is not created (HelixSR's swapchain does
+    // not need the FidelityFX library)
+    if ((!FfxApiProxy::IsFGReady() && !HxRoute()) || State::Instance().currentFGSwapchain == nullptr)
         return;
 
     if (State::Instance().isShuttingDown)
@@ -1578,7 +1792,7 @@ void FSRFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
     if (Config::Instance()->IsFGEnabled())
     {
         // If FG context is nullptr
-        if (_fgContext == nullptr)
+        if (!HasContext())
         {
             // Create it again
             CreateContext(device, fgConstants);
@@ -1599,7 +1813,7 @@ void FSRFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
                 DestroyFGContext();
         }
 
-        if (_fgContext != nullptr && State::Instance().activeFgInput == FGInput::Upscaler && !IsPaused() && !IsActive())
+        if (HasContext() && State::Instance().activeFgInput == FGInput::Upscaler && !IsPaused() && !IsActive())
             Activate();
     }
     else if (IsActive())

@@ -34,6 +34,10 @@ bool IsActive();
 // Selects HelixSR (OptiScaler's DLSS upscaler with HelixSR's DLL) as the DirectX 12 upscaler
 void Choose();
 
+// [HelixSR] MultiFrame (the most generated frames per real frame, helixsr.ini [FrameGeneration] MultiFrame), from the
+// menu: saved to OptiScaler.ini and helixsr.ini; HelixSR's frame generation reads it at the next game start
+void SetMultiFrame(int count);
+
 // HelixSR's settings, drawn under the upscaler list while HelixSR is the upscaler:
 // speed boost (int8), GPU mode and the folder button. Writes helixsr.ini; the game has to restart for them to apply.
 void RenderSettings(float scale, ImVec4 (*color)(const ImVec4&));

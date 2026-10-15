@@ -361,6 +361,10 @@ static int OutputMaxInterpolationCount()
     if (auto fg = state.CurrentFG(); fg != nullptr && fg->GetMaxInterpolationCount() > 1)
         return fg->GetMaxInterpolationCount();
 
+    // HelixSR Scaler: HelixSR generating, presented by HelixSR's own swapchain: what HelixSR's frame generation offers
+    if (HelixSRPresent::Labeled())
+        return static_cast<int>(HelixSRPresent::MaxGenerated());
+
     if (state.activeFgOutput == FGOutput::XeFG)
     {
         static int xefgMax = 0;
