@@ -145,6 +145,7 @@ bool FeatureProvider_Vk::ChangeFeature(Upscaler upscaler, VkInstance instance, V
                                        state.newBackend == Upscaler::DLSS_on12;
 
             contextData->createParams = isPassthrough ? parameters : GetNGXParameters(API::Vulkan, false);
+            contextData->createParamsFromGame = isPassthrough;
             contextData->createParams->Set(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, dc->GetFeatureFlags());
             contextData->createParams->Set(NVSDK_NGX_Parameter_Width, dc->RenderWidth());
             contextData->createParams->Set(NVSDK_NGX_Parameter_Height, dc->RenderHeight());
@@ -252,7 +253,9 @@ bool FeatureProvider_Vk::ChangeFeature(Upscaler upscaler, VkInstance instance, V
         // If this is an OptiScaler fake NVNGX param table, delete it
         int optiParam = 0;
 
-        if (contextData->createParams->Get("OptiScaler", &optiParam) == NVSDK_NGX_Result_Success && optiParam == 1)
+        // HelixSR Scaler: not the game's own object (DLSS passthrough), which the game goes on using
+        if (!contextData->createParamsFromGame &&
+            contextData->createParams->Get("OptiScaler", &optiParam) == NVSDK_NGX_Result_Success && optiParam == 1)
         {
             TryDestroyNGXParameters(contextData->createParams, NVNGXProxy::VULKAN_DestroyParameters());
             contextData->createParams = nullptr;

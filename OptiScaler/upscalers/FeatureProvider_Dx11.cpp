@@ -154,6 +154,7 @@ bool FeatureProvider_Dx11::ChangeFeature(Upscaler upscaler, ID3D11Device* device
                                        state.newBackend == Upscaler::DLSS_on12;
 
             contextData->createParams = isPassthrough ? parameters : GetNGXParameters(API::DX11, false);
+            contextData->createParamsFromGame = isPassthrough;
             contextData->createParams->Set(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, dc->GetFeatureFlags());
             contextData->createParams->Set(NVSDK_NGX_Parameter_Width, dc->RenderWidth());
             contextData->createParams->Set(NVSDK_NGX_Parameter_Height, dc->RenderHeight());
@@ -248,7 +249,9 @@ bool FeatureProvider_Dx11::ChangeFeature(Upscaler upscaler, ID3D11Device* device
 
         // if opti nvparam release it
         int optiParam = 0;
-        if (contextData->createParams->Get("OptiScaler", &optiParam) == NVSDK_NGX_Result_Success && optiParam == 1)
+        // HelixSR Scaler: not the game's own object (DLSS passthrough), which the game goes on using
+        if (!contextData->createParamsFromGame &&
+            contextData->createParams->Get("OptiScaler", &optiParam) == NVSDK_NGX_Result_Success && optiParam == 1)
         {
             TryDestroyNGXParameters(contextData->createParams, NVNGXProxy::D3D11_DestroyParameters());
             contextData->createParams = nullptr;
