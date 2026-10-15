@@ -49,10 +49,29 @@ void Nvngx_HelixSR::LoadLibraries()
         _DLSSG_VULKAN_PopulateParameters_Impl =
             (PFN_VULKAN_PopulateParameters_Impl) GetProcAddress(dll, "NVSDK_NGX_VULKAN_PopulateParameters_Impl");
 
+        _maxGeneratedFrames = (PFN_HelixSR_FgMaxGeneratedFrames) GetProcAddress(dll, "HelixSR_FgMaxGeneratedFrames");
+
         LOG_INFO("HelixSR frame generation initialized");
     }
     else
     {
         LOG_WARN("HelixSR frame generation enabled but helixsr.dll cannot be loaded");
     }
+}
+
+int Nvngx_HelixSR::getMaxFakeFramesCount()
+{
+    if (_maxGeneratedFrames == nullptr)
+        return 1;
+
+    const int count = _maxGeneratedFrames();
+
+    static int lastCount = 0;
+    if (count != lastCount)
+    {
+        LOG_INFO("HelixSR frame generation: up to {} generated frame(s) per real frame", count);
+        lastCount = count;
+    }
+
+    return std::clamp(count, 1, 3);
 }

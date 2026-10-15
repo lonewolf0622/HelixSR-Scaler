@@ -412,6 +412,7 @@ class Config
     // Who presents HelixSR's generated frames: streamline (the game's sl.dlss_g, FGInput = nvngxfg) or optiscaler
     // (OptiScaler's FSR FG swapchain with its pacing, FGInput = dlssg, FGOutput = fsrfg; see HELIXSR_FG_PRESENT.md)
     CustomOptional<std::string, NoDefault> HelixSRFGPresent;
+    CustomOptional<int, NoDefault> HelixSRMultiFrame; // 1, 2, 3: most generated frames per real frame
     CustomOptional<bool> MenuBlur { true };
     CustomOptional<float> MenuBlurStrength { 1.0f };
     CustomOptional<bool> CustomTabEnabled { true };

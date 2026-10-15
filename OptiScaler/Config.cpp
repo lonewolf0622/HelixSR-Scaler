@@ -497,6 +497,7 @@ bool Config::Reload(std::filesystem::path iniPath)
                 else if (fg.value() == "off" || fg.value() == "false" || fg.value() == "0")
                     HelixSRFrameGeneration.set_from_config(false);
             }
+            HelixSRMultiFrame.set_from_config(readInt("HelixSR", "MultiFrame"));
             MenuBlur.set_from_config(readBool("Menu", "Blur"));
 
             if (auto setting = readFloat("Menu", "BlurStrength"); setting.has_value())
@@ -1321,6 +1322,7 @@ bool Config::SaveIni()
         else
             ini.SetValue("HelixSR", "FrameGeneration", "auto");
         ini.SetValue("HelixSR", "FGPresent", Instance()->HelixSRFGPresent.value_for_config_or("streamline").c_str());
+        ini.SetValue("HelixSR", "MultiFrame", GetIntValue(Instance()->HelixSRMultiFrame.value_for_config()).c_str());
         ini.SetValue("Menu", "Blur", GetBoolValue(Instance()->MenuBlur.value_for_config()).c_str());
         ini.SetValue("Menu", "BlurStrength", GetFloatValue(Instance()->MenuBlurStrength.value_for_config()).c_str());
         ini.SetValue("Menu", "CustomTabEnabled", GetBoolValue(Instance()->CustomTabEnabled.value_for_config()).c_str());

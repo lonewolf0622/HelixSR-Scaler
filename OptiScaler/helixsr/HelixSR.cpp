@@ -233,7 +233,8 @@ struct Managed
     const char* section; // in helixsr.ini
     const char* key;
 };
-const Managed kManaged[] = { { "Upscaling", "Int8" }, { "Compatibility", "WaveSize" } };
+const Managed kManaged[] = { { "Upscaling", "Int8" }, { "Compatibility", "WaveSize" },
+                             { "FrameGeneration", "MultiFrame" } };
 // earlier keys, taken out of helixsr.ini: sharpening (OptiScaler's now) and frame generation's old mode
 const Managed kRetired[] = { { "Sharpening", "Sharpness" },
                              { "Sharpening", "UseGameSlider" },
@@ -255,6 +256,8 @@ std::optional<std::string> ConfigValue(const std::string& key)
         return cfg->HelixSRInt8.value();
     if (key == "WaveSize" && cfg->HelixSRWaveSize.has_value())
         return std::to_string(cfg->HelixSRWaveSize.value());
+    if (key == "MultiFrame" && cfg->HelixSRMultiFrame.has_value())
+        return std::to_string(std::clamp(cfg->HelixSRMultiFrame.value(), 1, 3));
     return std::nullopt;
 }
 
@@ -326,6 +329,8 @@ void ImportHelixIni()
             cfg->HelixSRInt8 = Lower(v.value());
         if (auto v = old.Get("Compatibility", "WaveSize"); v.has_value() && (v.value() == "64" || v.value() == "32"))
             cfg->HelixSRWaveSize = std::stoi(v.value());
+        if (auto v = old.Get("FrameGeneration", "MultiFrame"); v.has_value() && (v.value() == "2" || v.value() == "3"))
+            cfg->HelixSRMultiFrame = std::stoi(v.value());
         LOG_INFO("HelixSR Scaler: moved the settings in helixsr.ini to OptiScaler.ini");
     }
 
