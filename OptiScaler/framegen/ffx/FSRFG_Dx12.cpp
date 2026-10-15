@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include "FSRFG_Dx12.h"
+#include "HelixSRPresent_Dx12.h"
 
 #include <State.h>
 #include <Util.h>
@@ -348,7 +349,9 @@ bool FSRFG_Dx12::Dispatch()
     if (state.fsrfgFramePaceTuningChanged)
         ConfigureFramePaceTuning();
 
-    _reprojectionActive = config->FGReprojectionEnabled.value_or_default() && HasReprojection();
+    // HelixSR Scaler: no reprojection with HelixSR generating (it would replace the real frame given to HelixSR)
+    _reprojectionActive =
+        config->FGReprojectionEnabled.value_or_default() && HasReprojection() && !HelixSRPresent::Active();
 
     LOG_DEBUG("_frameCount: {}, willDispatchFrame: {}, fIndex: {}", _frameCount, willDispatchFrame, fIndex);
 
@@ -902,6 +905,33 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
         return FFX_API_RETURN_OK;
     }
 
+    // HelixSR Scaler: HelixSR generates the frame ([HelixSR] FGPresent = optiscaler), this swapchain presents it
+    if (HelixSRPresent::Active())
+    {
+        bool generated = false;
+
+        if (params->numGeneratedFrames > 0)
+        {
+            HelixSRPresent::Frame frame {};
+            frame.cmdList = cmdList;
+            frame.backbuffer = (ID3D12Resource*) params->presentColor.resource;
+            frame.backbufferState = GetD3D12State((FfxApiResourceState) params->presentColor.state);
+            frame.output = (ID3D12Resource*) params->outputs[0].resource;
+            frame.outputState = GetD3D12State((FfxApiResourceState) params->outputs[0].state);
+            frame.frameID = params->frameID;
+            frame.reset = params->reset;
+
+            generated = HelixSRPresent::Generate(this, frame);
+        }
+
+        // Nothing generated: the real frame in its place, never an unwritten image
+        if (!generated && !ShowRealFrame(params))
+            params->numGeneratedFrames = 0;
+
+        _lastFrameId = params->frameID;
+        return FFX_API_RETURN_OK;
+    }
+
     auto scFormat = (FfxApiSurfaceFormat) params->presentColor.description.format;
     auto lhFormat = _lastHudlessFormat;
     auto uhFormat = _usingHudlessFormat;
@@ -1041,6 +1071,41 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
     return dispatchResult;
 }
 
+// HelixSR Scaler: the real frame copied into the generated frame's image (nothing was generated)
+bool FSRFG_Dx12::ShowRealFrame(ffxDispatchDescFrameGeneration* params)
+{
+    auto cmdList = (ID3D12GraphicsCommandList*) params->commandList;
+    auto real = (ID3D12Resource*) params->presentColor.resource;
+    auto output = (ID3D12Resource*) params->outputs[0].resource;
+
+    if (cmdList == nullptr || real == nullptr || output == nullptr)
+        return false;
+
+    const auto realDesc = real->GetDesc();
+    const auto outputDesc = output->GetDesc();
+
+    if (realDesc.Width != outputDesc.Width || realDesc.Height != outputDesc.Height ||
+        !CompareResourceFormats(realDesc.Format, outputDesc.Format))
+    {
+        return false;
+    }
+
+    auto realState = GetD3D12State((FfxApiResourceState) params->presentColor.state);
+    auto outputState = GetD3D12State((FfxApiResourceState) params->outputs[0].state);
+
+    ResourceBarrier(cmdList, real, realState, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    ResourceBarrier(cmdList, output, outputState, D3D12_RESOURCE_STATE_COPY_DEST);
+
+    D3D12_TEXTURE_COPY_LOCATION dst { output, D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX };
+    D3D12_TEXTURE_COPY_LOCATION src { real, D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX };
+    cmdList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+
+    ResourceBarrier(cmdList, real, D3D12_RESOURCE_STATE_COPY_SOURCE, realState);
+    ResourceBarrier(cmdList, output, D3D12_RESOURCE_STATE_COPY_DEST, outputState);
+
+    return true;
+}
+
 FSRFG_Dx12::~FSRFG_Dx12() { Shutdown(); }
 
 bool FSRFG_Dx12::SetInterpolatedFrameCount(UINT interpolatedFrameCount) { return true; }
@@ -1066,6 +1131,8 @@ void FSRFG_Dx12::DestroyFGContext()
     LOG_DEBUG("");
 
     Deactivate();
+
+    HelixSRPresent::Release();
 
     if (_fgContext != nullptr)
     {
@@ -1656,6 +1723,8 @@ bool FSRFG_Dx12::SetResource(Dx12Resource* inputResource)
     fResource->resource = inputResource->resource;
     fResource->width = inputResource->width;
     fResource->height = inputResource->height;
+    fResource->left = inputResource->left;
+    fResource->top = inputResource->top;
     fResource->cmdList = inputResource->cmdList;
 
     auto willFlip = State::Instance().activeFgInput == FGInput::Upscaler &&
@@ -1768,6 +1837,9 @@ void FSRFG_Dx12::SetCommandQueue(FG_ResourceType type, ID3D12CommandQueue* queue
 void FSRFG_Dx12::CreateObjects(ID3D12Device* InDevice)
 {
     _device = InDevice;
+
+    // HelixSR Scaler: HelixSR's frame generation started early, as when the game starts NGX
+    HelixSRPresent::Init(InDevice);
 
     if (_fgCommandAllocator[0] != nullptr)
         return;
@@ -1929,7 +2001,8 @@ bool FSRFG_Dx12::Present()
 {
     auto fIndex = GetIndexWillBeDispatched();
 
-    if (Config::Instance()->FGDrawUIOverFG.value_or_default())
+    // HelixSR Scaler: HelixSR's generated frames have the game's UI already
+    if (Config::Instance()->FGDrawUIOverFG.value_or_default() && !HelixSRPresent::Active())
     {
         auto ui = GetResource(FG_ResourceType::UIColor, fIndex);
         if (ui)

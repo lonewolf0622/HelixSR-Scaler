@@ -489,6 +489,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             // HelixSR Scaler: HelixSR's settings
             HelixSRInt8.set_from_config(readString("HelixSR", "Int8", true));
             HelixSRWaveSize.set_from_config(readInt("HelixSR", "WaveSize"));
+            HelixSRFGPresent.set_from_config(readString("HelixSR", "FGPresent", true));
             if (auto fg = readString("HelixSR", "FrameGeneration", true); fg.has_value())
             {
                 if (fg.value() == "on" || fg.value() == "true" || fg.value() == "1")
@@ -1319,6 +1320,7 @@ bool Config::SaveIni()
             ini.SetValue("HelixSR", "FrameGeneration", fg.value() ? "on" : "off");
         else
             ini.SetValue("HelixSR", "FrameGeneration", "auto");
+        ini.SetValue("HelixSR", "FGPresent", Instance()->HelixSRFGPresent.value_for_config_or("streamline").c_str());
         ini.SetValue("Menu", "Blur", GetBoolValue(Instance()->MenuBlur.value_for_config()).c_str());
         ini.SetValue("Menu", "BlurStrength", GetFloatValue(Instance()->MenuBlurStrength.value_for_config()).c_str());
         ini.SetValue("Menu", "CustomTabEnabled", GetBoolValue(Instance()->CustomTabEnabled.value_for_config()).c_str());

@@ -409,6 +409,9 @@ class Config
     CustomOptional<int, NoDefault> HelixSRWaveSize;     // 64, 32
     // HelixSR's frame generation (the HelixSR\helixsr-fg folder): on (auto) or off
     CustomOptional<bool, NoDefault> HelixSRFrameGeneration;
+    // Who presents HelixSR's generated frames: streamline (the game's sl.dlss_g, FGInput = nvngxfg) or optiscaler
+    // (OptiScaler's FSR FG swapchain with its pacing, FGInput = dlssg, FGOutput = fsrfg; see HELIXSR_FG_PRESENT.md)
+    CustomOptional<std::string, NoDefault> HelixSRFGPresent;
     CustomOptional<bool> MenuBlur { true };
     CustomOptional<float> MenuBlurStrength { 1.0f };
     CustomOptional<bool> CustomTabEnabled { true };

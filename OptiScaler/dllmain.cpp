@@ -1612,7 +1612,15 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
             State::Instance().activeFgInput = FGInput::NoFG;
         }
 
-        if (State::Instance().activeFgInput != FGInput::NvngxFG && State::Instance().activeFgOutput != FGOutput::DLSSG)
+        // HelixSR Scaler: with [HelixSR] FGPresent = optiscaler, HelixSR stays the NGX frame generation behind the
+        // FSR FG output (FGInput = dlssg, FGOutput = fsrfg)
+        const bool helixsrPresent = Config::Instance()->HelixSRFGPresent.value_or("streamline") == "optiscaler" &&
+                                    State::Instance().activeFgInput == FGInput::DLSSG &&
+                                    State::Instance().activeFgOutput == FGOutput::FSRFG &&
+                                    State::Instance().activeFgNvngx == FGNvngxReplacement::HelixSR;
+
+        if (State::Instance().activeFgInput != FGInput::NvngxFG &&
+            State::Instance().activeFgOutput != FGOutput::DLSSG && !helixsrPresent)
             State::Instance().activeFgNvngx = FGNvngxReplacement::None;
 
         if (State::Instance().activeFgInput == FGInput::NvngxFG)

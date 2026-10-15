@@ -3,6 +3,7 @@
 #include <Config.h>
 #include <resource_tracking/ResTrack_dx12.h>
 #include <magic_enum.hpp>
+#include <framegen/ffx/HelixSRPresent_Dx12.h>
 
 void Sl_Inputs::CheckForFrame(IFGFeature* fg, uint32_t frameId)
 {
@@ -84,6 +85,10 @@ bool Sl_Inputs::setConstants(const sl::Constants& values, uint32_t frameId)
     if (dataFound)
     {
         auto config = Config::Instance();
+
+        // HelixSR Scaler: the game's constants as given, for HelixSR's DLSS-G parameters (FGPresent = optiscaler)
+        if (HelixSRPresent::Requested())
+            HelixSRPresent::StoreConstants(fgOutput->GetIndex(), data);
 
         // FG Evaluate part
         FG_Constants fgConstants {};
@@ -436,6 +441,8 @@ bool Sl_Inputs::reportResource(const sl::ResourceTag& tag, void* cmdBuffer, uint
         res.cmdList = (ID3D12GraphicsCommandList*) cmdBuffer; // Critical for eOnlyValidNow
         res.width = width;
         res.height = height;
+        res.left = tag.extent ? tag.extent.left : 0;
+        res.top = tag.extent ? tag.extent.top : 0;
         res.state = (D3D12_RESOURCE_STATES) tag.resource->state;
         res.validity = validity;
         res.frameIndex = frameIndex;

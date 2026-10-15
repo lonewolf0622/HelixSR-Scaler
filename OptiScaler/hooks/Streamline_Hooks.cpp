@@ -8,6 +8,7 @@
 #include <nvapi/fakenvapi.h>
 #include <misc/IdentifyGpu.h>
 #include <framegen/nvngx/Nvngx_FG.h>
+#include <framegen/ffx/HelixSRPresent_Dx12.h>
 #include <framegen/xefg/XeFG_Dx12.h>
 #include <proxies/KernelBase_Proxy.h>
 #include <imgui/ImGuiNotify.hpp>
@@ -408,6 +409,9 @@ static sl::Result dummy_slDLSSGGetState(const sl::ViewportHandle& viewport, sl::
 static sl::Result dummy_slDLSSGSetOptions(const sl::ViewportHandle& viewport, const sl::DLSSGOptions& options)
 {
     auto& state = State::Instance();
+
+    // HelixSR Scaler: the game's options for HelixSR's DLSS-G parameters (version 1 fields)
+    HelixSRPresent::StoreOptions(options);
 
     // Only reading v1 fields, safe for any struct version
     const bool enabled = options.mode != sl::DLSSGMode::eOff;
@@ -1298,6 +1302,9 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
 {
     if (o_slDLSSGSetOptions == nullptr)
         return sl::Result::eErrorFeatureMissing;
+
+    // HelixSR Scaler: the game's options for HelixSR's DLSS-G parameters (version 1 fields)
+    HelixSRPresent::StoreOptions(options);
 
     lastDlssgViewport = viewport;
     lastDlssgOptions = options;
