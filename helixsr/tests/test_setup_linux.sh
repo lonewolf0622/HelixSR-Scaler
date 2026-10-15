@@ -100,6 +100,7 @@ check "update says so" 'grep -q "updating" "$W/out.txt"'
 
 # --- remove with the copy left in the game: everything as before ---
 touch "$B/OptiScaler.log" "$B/HelixSR/helixsr.log" "$B/HelixSR/helixsr.ini"
+mkdir -p "$B/HelixSR/helixsr-fg.off" && touch "$B/HelixSR/helixsr-fg.off/nvexec64.dll" # frame generation switched off
 cp "$B/HelixSR/helixsr.dll" "$B/HelixSR/helixsr_upscaler.dll"
 "$B/HelixSR-Scaler-remove.sh" --yes </dev/null >"$W/out.txt" 2>&1
 check "remove restores the game exactly" '[ "$before" = "$(snap "$U")" ]'

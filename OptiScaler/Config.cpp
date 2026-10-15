@@ -488,6 +488,13 @@ bool Config::Reload(std::filesystem::path iniPath)
 
             // HelixSR Scaler: HelixSR's settings
             HelixSRWaveSize.set_from_config(readInt("HelixSR", "WaveSize"));
+            if (auto fg = readString("HelixSR", "FrameGeneration", true); fg.has_value())
+            {
+                if (fg.value() == "on" || fg.value() == "true" || fg.value() == "1")
+                    HelixSRFrameGeneration.set_from_config(true);
+                else if (fg.value() == "off" || fg.value() == "false" || fg.value() == "0")
+                    HelixSRFrameGeneration.set_from_config(false);
+            }
             MenuBlur.set_from_config(readBool("Menu", "Blur"));
 
             if (auto setting = readFloat("Menu", "BlurStrength"); setting.has_value())
@@ -1306,6 +1313,10 @@ bool Config::SaveIni()
 
         // HelixSR Scaler: HelixSR's settings
         ini.SetValue("HelixSR", "WaveSize", GetIntValue(Instance()->HelixSRWaveSize.value_for_config()).c_str());
+        if (auto fg = Instance()->HelixSRFrameGeneration.value_for_config(); fg.has_value())
+            ini.SetValue("HelixSR", "FrameGeneration", fg.value() ? "on" : "off");
+        else
+            ini.SetValue("HelixSR", "FrameGeneration", "auto");
         ini.SetValue("Menu", "Blur", GetBoolValue(Instance()->MenuBlur.value_for_config()).c_str());
         ini.SetValue("Menu", "BlurStrength", GetFloatValue(Instance()->MenuBlurStrength.value_for_config()).c_str());
         ini.SetValue("Menu", "CustomTabEnabled", GetBoolValue(Instance()->CustomTabEnabled.value_for_config()).c_str());
