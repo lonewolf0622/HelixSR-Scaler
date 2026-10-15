@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       release:
-        description: 'Publish release v<version> (the version in OptiScaler/resource.h); HelixSR's release takes it from there'
+        description: 'Publish release v<version> (the version in OptiScaler/resource.h), for the HelixSR release to copy'
         type: boolean
         default: false
 
