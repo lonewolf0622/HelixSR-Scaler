@@ -391,6 +391,11 @@ LogStatus ReadLog()
             s.networkFailed = true;
         else if (line.find("network running") != std::string::npos)
             s.networkMissing = s.gpuUnsupported = s.networkFailed = false;
+
+        if (line.find("frame generation NOT available on this GPU") != std::string::npos)
+            s.fgUnsupported = true;
+        else if (line.find("fg: GPU supports frame generation") != std::string::npos)
+            s.fgUnsupported = false;
     }
 
     return s;
@@ -520,6 +525,18 @@ using namespace detail;
 static void SwitchFrameGeneration()
 {
     auto cfg = Config::Instance();
+
+    // HelixSR's last start found the GPU can't run its frame generation (no 32-lane waves: Vega, Polaris): the game
+    // was told it is unavailable, but with OptiScaler's frame generation pointed at HelixSR it crashes (issue #53).
+    // Switched off and saved in OptiScaler.ini, unless it says on.
+    if (!cfg->HelixSRFrameGeneration.has_value() && ReadLog().fgUnsupported)
+    {
+        cfg->HelixSRFrameGeneration = false;
+        WriteOptiScalerIni();
+        LOG_WARN("HelixSR Scaler: this GPU can't run HelixSR's frame generation (helixsr.log: no 32-lane waves); "
+                 "switched off, [HelixSR] FrameGeneration=off in OptiScaler.ini");
+    }
+
     const bool off = cfg->HelixSRFrameGeneration.has_value() && !cfg->HelixSRFrameGeneration.value();
     const auto on = folder / kFGFolder, parked = folder / kFGFolderOff;
     std::error_code ec;

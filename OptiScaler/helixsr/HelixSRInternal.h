@@ -27,6 +27,7 @@ struct LogStatus
     bool networkMissing = false;
     bool gpuUnsupported = false;
     bool networkFailed = false;
+    bool fgUnsupported = false; // "frame generation NOT available on this GPU" (no 32-lane waves: Vega, Polaris)
 };
 
 struct MenuState
