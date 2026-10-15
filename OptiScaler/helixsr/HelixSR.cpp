@@ -213,11 +213,7 @@ struct IniFile
 
 // --- Settings shown in the menu ------------------------------------------------------------------------------------
 
-// Sharpening is OptiScaler's RCAS on HelixSR's picture; the menu's choices set OptiScaler's own settings
-extern const char* const kSharpness[] = { "Off", "Low", "Medium", "High", "Game" };
-const float kSharpnessValue[] = { 0.0f, 0.2f, 0.4f, 0.7f };
-const int kSharpnessGame = 4;
-const float kSharpnessDefault = 0.2f; // Low
+// Sharpening is OptiScaler's own (RCAS, its menu and [CAS] / [Sharpness]); HelixSR's sharpener stays off
 extern const char* const kInt8[] = { "Auto", "On", "Off" };
 extern const char* const kWave[] = { "Auto", "64", "32" };
 
@@ -238,7 +234,6 @@ const Managed kRetired[] = { { "Sharpening", "Sharpness" }, { "Sharpening", "Use
 
 fs::path HelixIniPath() { return folder / kIni; }
 
-std::string FloatText(float v) { return std::format("{:.2f}", v); }
 
 // The value of each managed key from OptiScaler's config, nullopt for auto (HelixSR's default)
 std::optional<std::string> ConfigValue(const std::string& key)
@@ -278,9 +273,7 @@ bool WriteHelixIni()
     return ini.Save(HelixIniPath());
 }
 
-std::string BoolText(std::optional<bool> v) { return v.has_value() ? (v.value() ? "true" : "false") : "auto"; }
-
-// OptiScaler.ini's [HelixSR], [Sharpness] and [CAS] lines from OptiScaler's config, without touching the rest
+// OptiScaler.ini's [HelixSR] lines from OptiScaler's config, without touching the rest
 bool WriteOptiScalerIni()
 {
     auto cfg = Config::Instance();
@@ -293,27 +286,7 @@ bool WriteOptiScalerIni()
     for (const char* key : { "Sharpener", "Sharpness", "UseGameSlider" }) // earlier versions' keys
         ini.Set("HelixSR", key, std::nullopt);
 
-    // saved even when equal to OptiScaler's defaults: HelixSR Scaler's defaults differ
-    ini.Set("CAS", "Enabled", BoolText(cfg->RcasEnabled.value_for_config_forced()));
-    ini.Set("Sharpness", "OverrideSharpness", BoolText(cfg->OverrideSharpness.value_for_config_forced()));
-    const auto amount = cfg->Sharpness.value_for_config_forced();
-    ini.Set("Sharpness", "Sharpness", amount.has_value() ? FloatText(amount.value()) : "auto");
-
     return ini.Save(path);
-}
-
-// HelixSR's look out of the box: OptiScaler's RCAS at Low, unless OptiScaler.ini says otherwise
-void SharpeningDefaults()
-{
-    auto cfg = Config::Instance();
-    if (cfg->RcasEnabled.has_value())
-        return;
-
-    cfg->RcasEnabled.set_volatile_value(true);
-    if (!cfg->OverrideSharpness.has_value())
-        cfg->OverrideSharpness.set_volatile_value(true);
-    if (!cfg->Sharpness.has_value())
-        cfg->Sharpness.set_volatile_value(kSharpnessDefault);
 }
 
 // First start of a HelixSR Scaler with [HelixSR] in OptiScaler.ini: settings someone made in helixsr.ini move over
@@ -329,13 +302,6 @@ void ImportHelixIni()
     if (fs::exists(HelixIniPath(), ec))
     {
         const auto old = IniFile::Load(HelixIniPath());
-        // HelixSR's sharpener was turned off: no sharpening from OptiScaler either
-        if (auto v = old.Get("Sharpening", "Sharpener"); v.has_value() && Lower(v.value()) == "off")
-        {
-            cfg->RcasEnabled = true;
-            cfg->OverrideSharpness = true;
-            cfg->Sharpness = 0.0f;
-        }
         if (auto v = old.Get("Upscaling", "Int8"); v.has_value() && Lower(v.value()) != "auto")
             cfg->HelixSRInt8 = Lower(v.value());
         if (auto v = old.Get("Compatibility", "WaveSize"); v.has_value() && (v.value() == "64" || v.value() == "32"))
@@ -350,16 +316,6 @@ Settings ReadSettings()
 {
     auto cfg = Config::Instance();
     Settings s;
-
-    if (!cfg->RcasEnabled.value_or_default())
-        s.sharpness = 0;
-    else if (!cfg->OverrideSharpness.value_or_default())
-        s.sharpness = kSharpnessGame;
-    else
-    {
-        const float amount = cfg->Sharpness.value_or_default();
-        s.sharpness = amount <= 0.05f ? 0 : amount <= 0.3f ? 1 : amount <= 0.55f ? 2 : 3;
-    }
 
     if (cfg->HelixSRInt8.has_value())
     {
@@ -376,18 +332,6 @@ Settings ReadSettings()
 bool WriteSettings(const Settings& s)
 {
     auto cfg = Config::Instance();
-
-    // sharpening: OptiScaler's RCAS, applies right away
-    cfg->RcasEnabled = true;
-    if (s.sharpness == kSharpnessGame)
-    {
-        cfg->OverrideSharpness = false;
-    }
-    else
-    {
-        cfg->OverrideSharpness = true;
-        cfg->Sharpness = kSharpnessValue[std::clamp(s.sharpness, 0, 3)];
-    }
 
     cfg->HelixSRInt8 = s.int8 == 1   ? std::optional<std::string>("on")
                        : s.int8 == 2 ? std::optional<std::string>("off")
@@ -537,13 +481,6 @@ void RefreshMenu()
 {
     auto& m = Menu();
 
-    // from OptiScaler's config (no files), so changes in OptiScaler's own Sharpness section show here too
-    if (m.lastRead >= 0.0)
-    {
-        const auto now = ReadSettings();
-        m.settings.sharpness = now.sharpness;
-    }
-
     const double now = ImGui::GetTime();
     if (found && now - m.lastRead > 2.0)
     {
@@ -559,8 +496,7 @@ void SaveMenuSettings()
     auto& m = Menu();
     m.saveFailed = !WriteSettings(m.settings);
     if (!m.saveFailed)
-        m.restartNeeded =
-            m.settings.int8 != m.initial.int8 || m.settings.wave != m.initial.wave; // sharpness: right away
+        m.restartNeeded = m.settings.int8 != m.initial.int8 || m.settings.wave != m.initial.wave;
     m.saved = m.settings;
 }
 
@@ -611,7 +547,6 @@ void ApplyDefaults()
 
     // HelixSR's settings live in OptiScaler.ini [HelixSR]; helixsr.ini is written from them for HelixSR
     ImportHelixIni();
-    SharpeningDefaults();
     if (!WriteHelixIni())
         LOG_WARN("HelixSR Scaler: could not write {}", wstring_to_string(HelixIniPath().wstring()));
 
@@ -664,9 +599,6 @@ void RenderSettings(float scale, ImVec4 (*color)(const ImVec4&))
     const auto& status = m.status;
     const float labelWidth = 130.0f * scale;
     bool changed = false;
-
-    changed |= Choice("Sharpness", &settings.sharpness, kSharpness, kSharpnessCount, labelWidth);
-    Help(kSharpnessHelp);
 
     changed |= Choice("Speed boost", &settings.int8, kInt8, kInt8Count, labelWidth);
     Help(kInt8Help);

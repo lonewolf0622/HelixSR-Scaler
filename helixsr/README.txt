@@ -38,16 +38,13 @@ INSTALLING BY HAND
 IN THE MENU (Insert key)
 
 In the HELIXSR CONFIG panel at the top (pick HelixSR in the UPSCALER panel next to it):
-- Sharpness: how crisp the picture looks (OptiScaler's sharpening; changes show right away).
-  Game follows the game's own sharpness slider. Try Off if edges sparkle or shimmer.
 - Speed boost: faster math on graphics cards that support it. Turn it off if the picture shimmers.
 - GPU mode: Auto is right for most cards.
 - The STATUS panel shows if HelixSR runs, and opens the HelixSR folder (helixsr.log tells what it did).
-Under them is everything from OptiScaler.
+Under them is everything from OptiScaler, its sharpening (RCAS) too.
 
-Changes are saved in OptiScaler.ini in the game's folder: [HelixSR], and [Sharpness] and [CAS]
-for sharpening. It is the only settings file, and you can edit it with a text editor too.
-Sharpness changes show right away; restart the game after changing Speed boost or GPU mode.
+Changes are saved in OptiScaler.ini in the game's folder ([HelixSR]). It is the only settings
+file, and you can edit it with a text editor too. Restart the game after changing them.
 (HelixSR Scaler copies HelixSR's part to HelixSR\helixsr.ini when the game starts; leave that file be.)
 
 

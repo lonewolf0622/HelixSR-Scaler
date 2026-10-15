@@ -14,7 +14,6 @@ namespace HelixSR::detail
 // helixsr.ini, as the menu shows it
 struct Settings
 {
-    int sharpness = 0; // Default, Off, Low, Medium, High
     int int8 = 0;      // Auto, On, Off
     int wave = 0;      // Auto, 64, 32
 };
@@ -41,16 +40,11 @@ struct MenuState
     bool saveFailed = false;
 };
 
-extern const char* const kSharpness[];
 extern const char* const kInt8[];
 extern const char* const kWave[];
-inline constexpr int kSharpnessCount = 5;
 inline constexpr int kInt8Count = 3;
 inline constexpr int kWaveCount = 3;
 
-inline constexpr const char* kSharpnessHelp =
-    "OptiScaler's RCAS sharpening on HelixSR's picture. Changes show right away. Game follows the game's own "
-    "sharpness slider. HelixSR's own sharpener stays off.";
 inline constexpr const char* kInt8Help = "Faster math (int8) on graphics cards that support it. Auto turns it on "
                                          "where it helps. If the picture shimmers or flickers, try Off.";
 inline constexpr const char* kWaveHelp = "How many threads HelixSR runs together (wave size). Auto is right for most "
