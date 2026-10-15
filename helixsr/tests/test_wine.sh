@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Loads the built HelixSR Scaler under Wine, the way Proton does on Linux and Steam Deck, after installing it with
-# setup_linux.sh: dxgi.dll must load, log as HelixSR Scaler, find the HelixSR folder and make helixsr_upscaler.dll.
+# setup_linux.sh: dxgi.dll must load, log as HelixSR Scaler, find the HelixSR folder and write helixsr.ini.
 # No GPU here, so nothing is drawn; this checks the Linux route up to the point a game starts rendering.
 #
 #   helixsr/tests/test_wine.sh PACKAGE_FOLDER      (needs wine and x86_64-w64-mingw32-gcc)
@@ -35,7 +35,7 @@ check "logs as HelixSR Scaler" 'grep -q "HelixSR Scaler v" "$G/OptiScaler.log"'
 check "finds the HelixSR folder" 'grep -q "HelixSR found in" "$G/OptiScaler.log"'
 check "writes helixsr.ini from OptiScaler.ini" 'grep -q "^Int8 = off" "$G/HelixSR/helixsr.ini" && grep -q "^WaveSize = 64" "$G/HelixSR/helixsr.ini"'
 check "HelixSR's own sharpener off" 'grep -q "^Sharpener = off" "$G/HelixSR/helixsr.ini"'
-check "makes helixsr_upscaler.dll" 'cmp -s "$G/HelixSR/helixsr.dll" "$G/HelixSR/helixsr_upscaler.dll"'
+check "no second copy of HelixSR's DLL (one DLL for DLSS)" '[ ! -e "$G/HelixSR/helixsr_upscaler.dll" ]'
 
 if [ $fails != 0 ] && [ -f "$G/OptiScaler.log" ]; then
     echo "--- OptiScaler.log (first 80 lines)"
