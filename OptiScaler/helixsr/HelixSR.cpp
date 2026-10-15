@@ -512,6 +512,40 @@ namespace HelixSR
 {
 using namespace detail;
 
+// Streamline's DLSS Frame Generation plugin in the game: next to the .exe, else anywhere in the game's folder (the
+// .exe's folder and up to three levels above it, searched a few levels down, e.g. Unreal Engine's plugin folders)
+static bool GameHasDlssg()
+{
+    std::error_code ec;
+    const auto exeDir = Util::ExePath().parent_path();
+    if (fs::exists(exeDir / L"sl.dlss_g.dll", ec))
+        return true;
+
+    // up to three levels, not past a library folder (Steam's common) nor to a drive's root
+    auto root = exeDir;
+    for (int up = 0; up < 3; ++up)
+    {
+        const auto parent = root.parent_path();
+        if (parent == root || parent.parent_path() == parent || _wcsicmp(parent.filename().c_str(), L"common") == 0)
+            break;
+        root = parent;
+    }
+
+    int seen = 0;
+    auto it = fs::recursive_directory_iterator(root, fs::directory_options::skip_permission_denied, ec);
+    for (; !ec && it != fs::recursive_directory_iterator() && ++seen < 20000; it.increment(ec))
+    {
+        if (it.depth() > 7)
+        {
+            it.disable_recursion_pending();
+            continue;
+        }
+        if (it->is_regular_file(ec) && _wcsicmp(it->path().filename().c_str(), L"sl.dlss_g.dll") == 0)
+            return true;
+    }
+    return false;
+}
+
 void ApplyDefaults()
 {
     auto cfg = Config::Instance();
@@ -553,6 +587,14 @@ void ApplyDefaults()
 
     if (!cfg->FGNvngxReplacement.has_value() && FrameGenFound())
         cfg->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::HelixSR);
+
+    // A game with its own DLSS Frame Generation (Streamline's sl.dlss_g.dll): its frame generation goes to HelixSR
+    // (FGInput = nvngxfg), paced by the game's own Streamline
+    if (!cfg->FGInput.has_value() && FrameGenFound() && GameHasDlssg())
+    {
+        cfg->FGInput.set_volatile_value(::FGInput::NvngxFG);
+        LOG_INFO("HelixSR Scaler: the game has DLSS Frame Generation, it runs HelixSR's (FGInput = nvngxfg)");
+    }
 }
 
 bool Found() { return found; }
