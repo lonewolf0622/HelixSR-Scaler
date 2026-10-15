@@ -294,9 +294,9 @@ bool WriteOptiScalerIni()
         ini.Set("HelixSR", key, std::nullopt);
 
     // saved even when equal to OptiScaler's defaults: HelixSR Scaler's defaults differ
-    ini.Set("CAS", "Enabled", BoolText(cfg->RcasEnabled.value_for_config(true)));
-    ini.Set("Sharpness", "OverrideSharpness", BoolText(cfg->OverrideSharpness.value_for_config(true)));
-    const auto amount = cfg->Sharpness.value_for_config(true);
+    ini.Set("CAS", "Enabled", BoolText(cfg->RcasEnabled.value_for_config_forced()));
+    ini.Set("Sharpness", "OverrideSharpness", BoolText(cfg->OverrideSharpness.value_for_config_forced()));
+    const auto amount = cfg->Sharpness.value_for_config_forced();
     ini.Set("Sharpness", "Sharpness", amount.has_value() ? FloatText(amount.value()) : "auto");
 
     return ini.Save(path);

@@ -122,6 +122,25 @@ template <class T, HasDefaultValue defaultState = WithDefault> class CustomOptio
         return this->value();
     }
 
+    // HelixSR Scaler: as value_for_config, but a value equal to the default is returned too (saved explicitly):
+    // HelixSR Scaler's defaults differ from OptiScaler's
+    constexpr std::optional<T> value_for_config_forced()
+        requires(defaultState == WithDefault)
+    {
+        if (_volatile)
+        {
+            if (_configIni != _defaultValue)
+                return _configIni;
+
+            return std::nullopt;
+        }
+
+        if (!this->has_value())
+            return std::nullopt;
+
+        return this->value();
+    }
+
     constexpr std::optional<T> value_for_config()
         requires(defaultState != WithDefault)
     {
