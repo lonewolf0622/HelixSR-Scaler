@@ -247,6 +247,7 @@ struct FsExistsCache
 
 static FsExistsCache nukemsExists;
 static FsExistsCache enablerExists;
+static FsExistsCache helixsrExists;
 
 struct FlagDefinition
 {
@@ -1854,6 +1855,7 @@ void MenuCommon::HandleMenuShortcuts(RenderMenuContext& ctx)
                 auto optiPath = std::filesystem::path(Config::Instance()->MainDllPath.value());
                 state.artursFgFileAvailable = enablerExists.Get(optiPath / L"dlss-enabler-headless.dll");
                 state.nukemsFgFileAvailable = nukemsExists.Get(optiPath / L"dlssg_to_fsr3_amd_is_better.dll");
+                state.helixsrFgFileAvailable = helixsrExists.Get(optiPath / L"helixsr_fg.dll");
 
                 if (State::Instance().currentFeature != nullptr)
                 {
@@ -2295,6 +2297,10 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             else if (activeNvngxFg == FGNvngxReplacement::Nukems)
             {
                 fgText = formatFg("Nukems", Nvngx_FG::getMaxFakeFramesCount());
+            }
+            else if (activeNvngxFg == FGNvngxReplacement::HelixSR)
+            {
+                fgText = formatFg("HelixSR", Nvngx_FG::getMaxFakeFramesCount());
             }
             else if (activeNvngxFg == FGNvngxReplacement::FFX)
             {
@@ -3586,8 +3592,8 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     // DLSSG output requirements
     auto constexpr dlssgOutputIndex = (uint32_t) FGOutput::DLSSG;
     const bool maySupportDlssg = primaryGpu.vendorId == VendorId::Nvidia;
-    const bool hasDlssgReplacement =
-        state.nukemsFgFileAvailable || state.artursFgFileAvailable || FfxApiProxy::IsFGReady(false);
+    const bool hasDlssgReplacement = state.nukemsFgFileAvailable || state.artursFgFileAvailable ||
+                                     state.helixsrFgFileAvailable || FfxApiProxy::IsFGReady(false);
 
     if (!maySupportDlssg && hasDlssgReplacement)
     {
@@ -3652,6 +3658,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
                                                       "FFX used for the middle fake frame, Enabler for the rest\n\n"
                                                       "2x - FFX\n3x - Enabler\n4x - FFX + Enabler\n5x - Enabler\n6x - FFX + Enabler\n\n"
                                                       "Due to pacing, only odd number of fake frames are able to use FFX"},
+        { FGNvngxReplacement::HelixSR, "HelixSR", "DLSS FG network on any GPU (requires helixsr_fg.dll)" },
     };
 
     // clang-format on
@@ -3695,6 +3702,9 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     nvngxOptions[fgNvngxComboIndex].set_disabled(
         !FfxApiProxy::IsFGReady(false) || !state.artursFgFileAvailable,
         "Missing amd_fidelityfx_framegeneration_dx12.dll\nor missing dlss-enabler-headless.dll");
+
+    auto constexpr fgNvngxHelixSRIndex = (uint32_t) FGNvngxReplacement::HelixSR;
+    nvngxOptions[fgNvngxHelixSRIndex].set_disabled(!state.helixsrFgFileAvailable, "Missing helixsr_fg.dll");
 
     // TODO: Automatically switch to any other option
 
@@ -3751,6 +3761,9 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
             else if (FfxApiProxy::IsFGReady(false))
                 config->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::FFX);
+
+            else if (state.helixsrFgFileAvailable)
+                config->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::HelixSR);
         }
 
         const bool nvngxFgChanged = (replaceFgOutputWithNvngx || showNvngxFgDowndown) &&
@@ -5054,6 +5067,17 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                                     "FFX for middle fake frames, and Enabler for the rest\n\n2x - FFX\n"
                                     "3x - Enabler\n4x - FFX + Enabler\n5x - Enabler\n6x - FFX + Enabler");
         }
+        else if (activeNvngxFg == FGNvngxReplacement::HelixSR)
+        {
+            SeparatorWithHelpMarker("Frame Generation (DLSS FG network via HelixSR)",
+                                    "HelixSR frame generation as helixsr_fg.dll");
+
+            if (!state.helixsrFgFileAvailable)
+            {
+                ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)),
+                                   "Please put helixsr_fg.dll into OptiScaler folder");
+            }
+        }
 
         if (state.activeFgInput == FGInput::NvngxFG)
         {
@@ -5089,8 +5113,9 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 // Hide to reduce confusion, config is still read
                 const bool isUnrealEngine = State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
                                             State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine;
-                const bool isDllProxyNvngxType =
-                    activeNvngxFg == FGNvngxReplacement::Nukems || activeNvngxFg == FGNvngxReplacement::Arturs;
+                const bool isDllProxyNvngxType = activeNvngxFg == FGNvngxReplacement::Nukems ||
+                                                 activeNvngxFg == FGNvngxReplacement::Arturs ||
+                                                 activeNvngxFg == FGNvngxReplacement::HelixSR;
                 if (isDllProxyNvngxType && !primaryGpu.dlssCapable && primaryGpu.fsr4Support == FSR4Support::None &&
                     !primaryGpu.d3d12IsVkd3dProton && !isUnrealEngine)
                 {
@@ -8621,10 +8646,11 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
 
         if (activeNvngxFg != FGNvngxReplacement::None)
         {
-            const char* nvngxName = activeNvngxFg == FGNvngxReplacement::Nukems   ? "Nukems"
-                                    : activeNvngxFg == FGNvngxReplacement::Arturs ? "Enabler"
-                                    : activeNvngxFg == FGNvngxReplacement::FFX    ? "FFX"
-                                                                                  : "Combo";
+            const char* nvngxName = activeNvngxFg == FGNvngxReplacement::Nukems    ? "Nukems"
+                                    : activeNvngxFg == FGNvngxReplacement::Arturs  ? "Enabler"
+                                    : activeNvngxFg == FGNvngxReplacement::FFX     ? "FFX"
+                                    : activeNvngxFg == FGNvngxReplacement::HelixSR ? "HelixSR"
+                                                                                   : "Combo";
             const int detectedCount = state.dlssgDetectedInterpolationCount;
 
             if (detectedCount <= 0)

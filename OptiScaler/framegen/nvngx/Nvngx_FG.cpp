@@ -8,6 +8,7 @@
 
 #include "IFGNvngx.h"
 #include "Nvngx_Nukems.h"
+#include "Nvngx_HelixSR.h"
 #include "Nvngx_Arturs.h"
 #include "Nvngx_FFX.h"
 #include "Nvngx_Combo.h"
@@ -39,6 +40,10 @@ IFGNvngx* Nvngx_FG::getProvider()
         _provider = std::make_unique<Nvngx_Combo>();
         break;
 
+    case FGNvngxReplacement::HelixSR:
+        _provider = std::make_unique<Nvngx_HelixSR>();
+        break;
+
     case FGNvngxReplacement::None:
     default:
         return nullptr;
@@ -52,6 +57,7 @@ IFGNvngx* Nvngx_FG::getProvider()
             FGNvngxReplacement::Arturs,
             FGNvngxReplacement::FFX,
             FGNvngxReplacement::Nukems,
+            FGNvngxReplacement::HelixSR,
         };
 
         auto formatProvider = [](FGNvngxReplacement provider)
@@ -66,6 +72,8 @@ IFGNvngx* Nvngx_FG::getProvider()
                 return "Nukems";
             case FGNvngxReplacement::Combo:
                 return "Combo";
+            case FGNvngxReplacement::HelixSR:
+                return "HelixSR";
             case FGNvngxReplacement::None:
             default:
                 return "???";
@@ -91,6 +99,10 @@ IFGNvngx* Nvngx_FG::getProvider()
 
             case FGNvngxReplacement::Nukems:
                 candidate = std::make_unique<Nvngx_Nukems>();
+                break;
+
+            case FGNvngxReplacement::HelixSR:
+                candidate = std::make_unique<Nvngx_HelixSR>();
                 break;
 
             case FGNvngxReplacement::None:

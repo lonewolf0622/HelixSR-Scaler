@@ -82,6 +82,7 @@ enum class FGNvngxReplacement : uint32_t
     Arturs,
     FFX,
     Combo,
+    HelixSR,
 };
 
 enum class WorkingMode : uint32_t
@@ -191,6 +192,7 @@ class State
     // Nvngx FG, uses streamline swapchain
     bool nukemsFgFileAvailable = false;
     bool artursFgFileAvailable = false;
+    bool helixsrFgFileAvailable = false;
     bool dlssgDebugView = false;
     bool dlssgInterpolatedOnly = false;
     uint64_t dlssgLastFrame = 0;
