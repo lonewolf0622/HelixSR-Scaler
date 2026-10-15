@@ -225,6 +225,8 @@ remove_from() { # remove_from EXE_FOLDER [quiet]
     # what OptiScaler and HelixSR make while the game runs
     rm -f "$dir/OptiScaler.log" "$dir/HelixSR/helixsr_upscaler.dll" "$dir/HelixSR/helixsr.log" "$dir/HelixSR/helixsr.ini" \
         "$dir/HelixSR/helixsr-fg/nvexec.log"
+    # frame generation switched off in OptiScaler.ini ([HelixSR] FrameGeneration=off): HelixSR Scaler parked its folder
+    rm -rf "${dir:?}/HelixSR/helixsr-fg.off"
     if [ -d "$dir/$BACKUP" ]; then
         cp -a "$dir/$BACKUP/." "$dir/" && rm -rf "${dir:?}/$BACKUP"
     fi
@@ -371,7 +373,7 @@ TMP_FG=$(mktemp -d)
 trap 'rm -f "$TMP_HELIX"; rm -rf "$TMP_FG"' EXIT
 cp -f "$HELIX" "$TMP_HELIX"
 # Frame generation: the helixsr-fg folder HelixSR's setup made next to its DLL (a reinstall: the game's own copy)
-for d in "$(dirname "$HELIX")/helixsr-fg" "$(dirname "$HELIX")/dlss-loader/helixsr-fg"; do
+for d in "$(dirname "$HELIX")/helixsr-fg" "$(dirname "$HELIX")/helixsr-fg.off" "$(dirname "$HELIX")/dlss-loader/helixsr-fg"; do
     if [ -f "$d/nvexec64.dll" ] && [ -f "$d/_nvngx.dll" ] && [ -f "$d/nvngx_dlssg.dll" ]; then
         cp -f "$d"/*.dll "$TMP_FG/" && break
     fi

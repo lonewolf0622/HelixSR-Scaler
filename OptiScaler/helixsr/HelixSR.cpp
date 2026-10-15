@@ -29,6 +29,9 @@ namespace HelixSR::detail
 const wchar_t* kFolder = L"HelixSR";
 const wchar_t* kDll = L"helixsr.dll";     // HelixSR's DLSS DLL: OptiScaler's DLSS upscaler and frame generation
 const wchar_t* kFGFolder = L"helixsr-fg"; // what frame generation needs (NVIDIA's core and frame generation)
+// frame generation switched off ([HelixSR] FrameGeneration=off): the folder under this name, so neither HelixSR's DLL
+// nor OptiScaler finds it (HelixSR's DLL has no switch of its own: it uses helixsr-fg when it is there)
+const wchar_t* kFGFolderOff = L"helixsr-fg.off";
 const wchar_t* kIni = L"helixsr.ini";
 const wchar_t* kLog = L"helixsr.log";
 
@@ -215,6 +218,7 @@ struct IniFile
 
 // Sharpening is OptiScaler's own (RCAS, its menu and [CAS] / [Sharpness]); HelixSR's sharpener stays off
 extern const char* const kWave[] = { "Auto", "64", "32" };
+extern const char* const kFrameGen[] = { "On", "Off" };
 
 // --- Settings: OptiScaler.ini, with HelixSR's part copied to helixsr.ini ------------------------------------------
 // HelixSR reads only helixsr.ini next to its DLL. OptiScaler.ini is the one file people edit: [HelixSR] for HelixSR's
@@ -282,6 +286,8 @@ bool WriteOptiScalerIni()
 
     for (const auto& m : kManaged)
         ini.Set("HelixSR", m.key, ConfigValue(m.key).value_or("auto"));
+    ini.Set("HelixSR", "FrameGeneration",
+            cfg->HelixSRFrameGeneration.has_value() ? (cfg->HelixSRFrameGeneration.value() ? "on" : "off") : "auto");
     for (const char* key : { "Sharpener", "Sharpness", "UseGameSlider", "Int8" }) // earlier versions' keys
         ini.Set("HelixSR", key, std::nullopt);
 
@@ -317,6 +323,8 @@ Settings ReadSettings()
     if (cfg->HelixSRWaveSize.has_value())
         s.wave = cfg->HelixSRWaveSize.value() == 64 ? 1 : cfg->HelixSRWaveSize.value() == 32 ? 2 : 0;
 
+    s.frameGen = cfg->HelixSRFrameGeneration.value_or(true) ? 0 : 1;
+
     return s;
 }
 
@@ -327,6 +335,8 @@ bool WriteSettings(const Settings& s)
     cfg->HelixSRWaveSize = s.wave == 1   ? std::optional<int>(64)
                            : s.wave == 2 ? std::optional<int>(32)
                                          : std::optional<int>();
+    // On is the default (auto); Off is saved
+    cfg->HelixSRFrameGeneration = s.frameGen == 1 ? std::optional<bool>(false) : std::optional<bool>();
 
     const bool opti = WriteOptiScalerIni();
     const bool helix = WriteHelixIni();
@@ -484,7 +494,7 @@ void SaveMenuSettings()
     auto& m = Menu();
     m.saveFailed = !WriteSettings(m.settings);
     if (!m.saveFailed)
-        m.restartNeeded = m.settings.wave != m.initial.wave;
+        m.restartNeeded = m.settings.wave != m.initial.wave || m.settings.frameGen != m.initial.frameGen;
     m.saved = m.settings;
 }
 
@@ -504,6 +514,43 @@ void ChooseBackend(::Upscaler upscaler)
 namespace HelixSR
 {
 using namespace detail;
+
+// [HelixSR] FrameGeneration: off renames the helixsr-fg folder to helixsr-fg.off before HelixSR's DLL loads, on (and
+// auto) renames it back. Runs at startup, before anything uses the folder.
+static void SwitchFrameGeneration()
+{
+    auto cfg = Config::Instance();
+    const bool off = cfg->HelixSRFrameGeneration.has_value() && !cfg->HelixSRFrameGeneration.value();
+    const auto on = folder / kFGFolder, parked = folder / kFGFolderOff;
+    std::error_code ec;
+    const bool hasOn = fs::is_directory(on, ec), hasParked = fs::is_directory(parked, ec);
+
+    if (off && hasOn)
+    {
+        if (hasParked) // an install or update put a new helixsr-fg next to an older parked one
+            fs::remove_all(parked, ec);
+        fs::rename(on, parked, ec);
+        if (ec)
+            LOG_WARN("HelixSR Scaler: could not switch frame generation off ({})", ec.message());
+        else
+            LOG_INFO("HelixSR Scaler: frame generation off ([HelixSR] FrameGeneration=off)");
+    }
+    else if (!off && hasParked)
+    {
+        if (hasOn) // the newer files are the ones in helixsr-fg
+            fs::remove_all(parked, ec);
+        else
+            fs::rename(parked, on, ec);
+        if (ec)
+            LOG_WARN("HelixSR Scaler: could not switch frame generation on ({})", ec.message());
+        else
+            LOG_INFO("HelixSR Scaler: frame generation on");
+    }
+    else if (off)
+    {
+        LOG_INFO("HelixSR Scaler: frame generation off ([HelixSR] FrameGeneration=off)");
+    }
+}
 
 // Streamline's DLSS Frame Generation plugin in the game: next to the .exe, else anywhere in the game's folder (the
 // .exe's folder and up to three levels above it, searched a few levels down, e.g. Unreal Engine's plugin folders)
@@ -572,6 +619,8 @@ void ApplyDefaults()
     if (!WriteHelixIni())
         LOG_WARN("HelixSR Scaler: could not write {}", wstring_to_string(HelixIniPath().wstring()));
 
+    SwitchFrameGeneration();
+
     // OptiScaler.ini wins when it sets these; set_volatile_value keeps them out of OptiScaler.ini when it is saved.
     // HelixSR is the DLSS upscaler (on GPUs without DLSS, see NVNGXProxy::HelixSRDlss) and, with its helixsr-fg
     // folder, the provider of DLSS frame generation.
@@ -596,6 +645,12 @@ bool FrameGenFound()
 {
     std::error_code ec;
     return found && fs::is_directory(folder / kFGFolder, ec);
+}
+
+bool detail::FrameGenInstalled()
+{
+    std::error_code ec;
+    return found && (fs::is_directory(folder / kFGFolder, ec) || fs::is_directory(folder / kFGFolderOff, ec));
 }
 
 fs::path DllPath() { return found ? folder / kDll : fs::path(); }
@@ -632,6 +687,12 @@ void RenderSettings(float scale, ImVec4 (*color)(const ImVec4&))
 
     changed |= Choice("GPU mode", &settings.wave, kWave, kWaveCount, labelWidth);
     Help(kWaveHelp);
+
+    if (FrameGenInstalled())
+    {
+        changed |= Choice("Frame generation", &settings.frameGen, kFrameGen, kFrameGenCount, labelWidth);
+        Help(kFrameGenHelp);
+    }
 
     if (status.networkWave > 0)
     {

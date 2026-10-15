@@ -474,10 +474,18 @@ void RenderHud(float scale, ImVec4 (*color)(const ImVec4&))
         bool changed = false;
         changed |= Toggles(dl, ImVec2(lx, a.y + 44 * k), "wave", "GPU MODE", kWaveHelp, kWave, kWaveCount,
                            &m.settings.wave, found);
+        if (FrameGenInstalled())
+            changed |= Toggles(dl, ImVec2(lx, a.y + 82 * k), "fg", "FRAME GEN", kFrameGenHelp, kFrameGen,
+                               kFrameGenCount, &m.settings.frameGen, found);
+        else
+        {
+            Text(dl, ImVec2(lx, a.y + 82 * k), fs * 0.93f, Col(kMuted, 0.5f), "FRAME GEN");
+            Text(dl, ImVec2(lx + 150 * k, a.y + 82 * k), fs * 0.93f, Col(kMuted), "NOT INSTALLED");
+        }
         if (changed)
             SaveMenuSettings();
 
-        const ImVec2 note(lx, a.y + 84 * k);
+        const ImVec2 note(lx, a.y + 122 * k);
         if (!found)
             Text(dl, note, smallSize, Col(kRed), "! NO HELIXSR FOLDER NEXT TO THE GAME");
         else if (m.saveFailed)

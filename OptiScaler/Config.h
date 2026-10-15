@@ -406,6 +406,8 @@ class Config
     // HelixSR\helixsr.ini, the file HelixSR reads, when the game starts and when they change in the menu.
     // Sharpening is OptiScaler's (RCAS, [Sharpness] and [CAS]); HelixSR's own sharpener stays off.
     CustomOptional<int, NoDefault> HelixSRWaveSize; // 64, 32
+    // HelixSR's frame generation (the HelixSR\helixsr-fg folder): on (auto) or off
+    CustomOptional<bool, NoDefault> HelixSRFrameGeneration;
     CustomOptional<bool> MenuBlur { true };
     CustomOptional<float> MenuBlurStrength { 1.0f };
     CustomOptional<bool> CustomTabEnabled { true };
