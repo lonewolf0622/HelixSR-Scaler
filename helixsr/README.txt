@@ -44,7 +44,8 @@ INSTALLING BY HAND
 FRAME GENERATION
 
 HelixSR's frame generation runs when the game's DLSS Frame Generation is turned on. HelixSR Scaler
-sets that up by itself when it finds the game's sl.dlss_g.dll. If the game has DLSS Frame Generation
+sets that up by itself when it finds the game's sl.dlss_g.dll. A game with an older Streamline (NVIDIA's
+DLSS Frame Generation files) uses the newer ones in OptiScaler\streamline that come with this download. If the game has DLSS Frame Generation
 but OptiScaler.log says no sl.dlss_g.dll was found, set FGInput=nvngxfg under [FrameGen] in
 OptiScaler.ini. To switch HelixSR's frame generation off, set FrameGeneration=off under [HelixSR].
 
