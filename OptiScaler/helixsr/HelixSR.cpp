@@ -664,10 +664,23 @@ void ApplyDefaults()
 
     // A game with its own DLSS Frame Generation (Streamline's sl.dlss_g.dll): its frame generation goes to HelixSR
     // (FGInput = nvngxfg), paced by the game's own Streamline
-    if (!cfg->FGInput.has_value() && FrameGenFound() && GameHasDlssg())
+    if (!cfg->FGInput.has_value() && FrameGenFound())
     {
-        cfg->FGInput.set_volatile_value(::FGInput::NvngxFG);
-        LOG_INFO("HelixSR Scaler: the game has DLSS Frame Generation, it runs HelixSR's (FGInput = nvngxfg)");
+        if (GameHasDlssg())
+        {
+            cfg->FGInput.set_volatile_value(::FGInput::NvngxFG);
+            LOG_INFO("HelixSR Scaler: the game has DLSS Frame Generation, it runs HelixSR's (FGInput = nvngxfg)");
+        }
+        else
+        {
+            LOG_INFO("HelixSR Scaler: no sl.dlss_g.dll (DLSS Frame Generation) found in the game's folder; if the "
+                     "game has DLSS Frame Generation, set FGInput=nvngxfg in OptiScaler.ini [FrameGen]");
+        }
+    }
+    else if (!FrameGenInstalled()) // (switched off: parked in helixsr-fg.off, logged above)
+    {
+        LOG_INFO("HelixSR Scaler: no {} folder next to {}: frame generation is off (copy HelixSR's {} folder there)",
+                 wstring_to_string(kFGFolder), wstring_to_string(kDll), wstring_to_string(kFGFolder));
     }
 }
 

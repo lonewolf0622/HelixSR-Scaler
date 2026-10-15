@@ -98,6 +98,7 @@ is_built_helixsr() { [ -f "$1" ] && [ "$(tail -c 32 "$1" 2>/dev/null | head -c 8
 find_helixsr() {
     local c data="${XDG_DATA_HOME:-$HOME/.local/share}"
     for c in "$HERE/HelixSR/helixsr.dll" "$HERE/amd_fidelityfx_dx12.dll" "$HERE"/../HelixSR*/amd_fidelityfx_dx12.dll \
+        "$data"/HelixSR-Desktop/releases/*/HelixSR*/amd_fidelityfx_dx12.dll \
         "$data"/HelixSR-Desktop/releases/*/amd_fidelityfx_dx12.dll \
         "$HOME"/Downloads/HelixSR*/amd_fidelityfx_dx12.dll "$HOME"/Downloads/*/HelixSR*/amd_fidelityfx_dx12.dll \
         "$HOME"/HelixSR*/amd_fidelityfx_dx12.dll "$HOME"/Desktop/HelixSR*/amd_fidelityfx_dx12.dll; do

@@ -20,19 +20,34 @@ It downloads HelixSR Scaler by itself.
 INSTALLING BY HAND
 
 1. Set up HelixSR first (run helixsr-setup from the HelixSR download). After that, HelixSR's
-   amd_fidelityfx_dx12.dll contains the upscaler.
+   amd_fidelityfx_dx12.dll contains the upscaler, and the helixsr-fg folder next to it has
+   frame generation.
 
-2. In the game's folder (where the game's .exe is), make a folder called HelixSR.
-   Copy HelixSR's amd_fidelityfx_dx12.dll into it and rename the copy to helixsr.dll.
+2. Copy everything from this download into the game's folder, next to the .exe.
 
-3. Copy everything from this download into the game's folder, next to the .exe.
+3. Run setup_windows.bat there. It asks which name to use for OptiScaler.dll (dxgi.dll is right for
+   most games), then finds HelixSR (in your Downloads, or the HelixSR app's) and copies it into the
+   game's HelixSR folder, with frame generation. If it can't find HelixSR, drag HelixSR's
+   amd_fidelityfx_dx12.dll into its window.
 
-4. Rename OptiScaler.dll to dxgi.dll. If the game doesn't start, try winmm.dll or version.dll instead.
-   (setup_windows.bat does this step for you and asks which name to use.)
+   Without setup_windows.bat: in the game's folder, make a folder called HelixSR. Copy HelixSR's
+   amd_fidelityfx_dx12.dll into it and rename the copy to helixsr.dll. Copy HelixSR's helixsr-fg
+   folder into it too (HelixSR\helixsr-fg): without it there is no frame generation. Then rename
+   OptiScaler.dll to dxgi.dll (if the game doesn't start, try winmm.dll or version.dll instead).
 
-5. Start the game. In its graphics settings, turn on DLSS (or FSR or XeSS if there is no DLSS).
+4. Start the game. In its graphics settings, turn on DLSS (or FSR or XeSS if there is no DLSS),
+   and DLSS Frame Generation if the game has it.
 
-6. Press Insert. The top of the menu shows ONLINE when HelixSR is running.
+5. Press Insert. The top of the menu shows ONLINE when HelixSR is running.
+
+
+FRAME GENERATION
+
+HelixSR's frame generation runs when the game's DLSS Frame Generation is turned on. HelixSR Scaler
+sets that up by itself when it finds the game's sl.dlss_g.dll. A game with an older Streamline (NVIDIA's
+DLSS Frame Generation files) uses the newer ones in OptiScaler\streamline that come with this download. If the game has DLSS Frame Generation
+but OptiScaler.log says no sl.dlss_g.dll was found, set FGInput=nvngxfg under [FrameGen] in
+OptiScaler.ini. To switch HelixSR's frame generation off, set FrameGeneration=off under [HelixSR].
 
 
 IN THE MENU (Insert key)

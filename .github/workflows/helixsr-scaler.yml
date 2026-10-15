@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       release:
-        description: 'Make a draft release v<version> (the version in OptiScaler/resource.h)'
+        description: 'Publish release v<version> (the version in OptiScaler/resource.h), for the HelixSR release to copy'
         type: boolean
         default: false
 
@@ -85,12 +85,26 @@ jobs:
         Remove-Item -Force "$out\!! EXTRACT ALL FILES TO GAME FOLDER !!" -ErrorAction SilentlyContinue
         Copy-Item LICENSE "$out\Licenses\OptiScaler_LICENSE.txt"
         Copy-Item helixsr\README.txt "$out\README.txt"
+        # NVIDIA Streamline 2.8.0 (the release HelixSR's frame generation is made from) in OptiScaler\streamline: a game
+        # with an older Streamline then runs DLSS Frame Generation with these (OptiScaler swaps in only newer ones)
+        $sl = "$env:RUNNER_TEMP\streamline"
+        Invoke-WebRequest https://github.com/NVIDIA-RTX/Streamline/releases/download/v2.8.0/streamline-sdk-v2.8.0.zip -OutFile "$sl.zip"
+        if ((Get-FileHash "$sl.zip").Hash -ne '313669F8CF886F823EA0518A50712EFA5E2E8623689ED2A6BD0D9353E475BC47') { throw 'Streamline 2.8.0 download changed' }
+        Expand-Archive "$sl.zip" $sl
+        New-Item -ItemType Directory -Force "$out\OptiScaler\streamline" | Out-Null
+        Copy-Item "$sl\bin\x64\sl.*.dll", "$sl\bin\x64\NvLowLatencyVk.dll" "$out\OptiScaler\streamline"
+        Copy-Item "$sl\license.txt" "$out\Licenses\Streamline_LICENSE.txt"
+        if ((Get-ChildItem "$out\OptiScaler\streamline" -Filter sl.dlss_g.dll).Count -ne 1) { throw 'no sl.dlss_g.dll' }
         # HelixSR Scaler's Linux setup in place of OptiScaler's, and the list of the download's files it uses
         Copy-Item -Force helixsr\setup_linux.sh "$out\setup_linux.sh"
         Push-Location $out
         Get-ChildItem -Recurse -File | ForEach-Object { (Resolve-Path -Relative $_.FullName).Substring(2).Replace('\', '/') } |
           Sort-Object | Set-Content -Encoding ascii HelixSR-Scaler-package.txt
         Pop-Location
+
+    - name: Test setup_windows.bat's HelixSR step
+      shell: pwsh
+      run: helixsr\tests\test_setup_windows.ps1
 
     - uses: actions/upload-artifact@v4
       with:
@@ -162,10 +176,11 @@ jobs:
         cp "artifacts/$name-linux/$name-linux.tar.gz" .
         ls -la *.zip *.tar.gz
 
-    - name: Draft release
+    - name: Release
       uses: softprops/action-gh-release@v2
       with:
-        draft: true
+        draft: false
+        make_latest: true
         tag_name: v${{ needs.build.outputs.version }}
         target_commitish: ${{ github.sha }}
         name: HelixSR Scaler ${{ needs.build.outputs.version }}
