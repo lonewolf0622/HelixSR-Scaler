@@ -38,6 +38,9 @@ chmod +x "$P/setup_linux.sh"
 H="$W/home"
 mkdir -p "$H/Downloads/HelixSR-1.9.0"
 { head -c 4096 /dev/urandom; printf 'HXSRNET1'; head -c 24 /dev/zero; } >"$H/Downloads/HelixSR-1.9.0/amd_fidelityfx_dx12.dll"
+# frame generation as HelixSR's setup leaves it next to the DLL
+mkdir -p "$H/Downloads/HelixSR-1.9.0/helixsr-fg"
+for f in nvexec64.dll _nvngx.dll nvngx_dlssg.dll; do echo "fg $f" >"$H/Downloads/HelixSR-1.9.0/helixsr-fg/$f"; done
 L1="$H/.local/share/Steam/steamapps" L2="$W/sd"
 mkdir -p "$L1" "$L2/steamapps"
 printf '"libraryfolders"\n{\n\t"0"\n\t{\n\t\t"path"\t\t"%s"\n\t}\n\t"1"\n\t{\n\t\t"path"\t\t"%s"\n\t}\n}\n' \
@@ -83,7 +86,8 @@ check "HelixSR copied in" 'cmp -s "$B/HelixSR/helixsr.dll" "$H/Downloads/HelixSR
 if [ -f "$P/amd_fidelityfx_dx12.dll" ]; then GAMEFILE="$B/HelixSR-Scaler-backup/amd_fidelityfx_dx12.dll"; else GAMEFILE="$B/amd_fidelityfx_dx12.dll"; fi
 check "game's file kept" 'grep -q "the game'"'"'s own" "$GAMEFILE"'
 check "setup files stay out of the game" '[ ! -e "$B/setup_linux.sh" ] && [ ! -e "$B/setup_windows.bat" ] && [ ! -e "$B/README.txt" ]'
-check "launch options printed" 'grep -qF "WINEDLLOVERRIDES=\"dxgi=n,b\" %command%" "$W/out.txt"'
+check "no launch options for dxgi.dll" 'grep -q "No launch options needed" "$W/out.txt" && ! grep -q "WINEDLLOVERRIDES=" "$W/out.txt"'
+check "frame generation copied in" 'cmp -s "$B/HelixSR/helixsr-fg/nvexec64.dll" "$H/Downloads/HelixSR-1.9.0/helixsr-fg/nvexec64.dll" && [ -f "$B/HelixSR/helixsr-fg/_nvngx.dll" ]'
 list=$("$P/setup_linux.sh" --list | cut -f1,2)
 check "own files don't count as the game's upscalers" 'grep -q "^Unreal Game	DLSS FSR$" <<<"$list"'
 

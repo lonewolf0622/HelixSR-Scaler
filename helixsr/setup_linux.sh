@@ -223,7 +223,8 @@ remove_from() { # remove_from EXE_FOLDER [quiet]
         rm -f "$dir/$f"
     done <"$dir/$MANIFEST"
     # what OptiScaler and HelixSR make while the game runs
-    rm -f "$dir/OptiScaler.log" "$dir/HelixSR/helixsr_upscaler.dll" "$dir/HelixSR/helixsr.log" "$dir/HelixSR/helixsr.ini"
+    rm -f "$dir/OptiScaler.log" "$dir/HelixSR/helixsr_upscaler.dll" "$dir/HelixSR/helixsr.log" "$dir/HelixSR/helixsr.ini" \
+        "$dir/HelixSR/helixsr-fg/nvexec.log"
     if [ -d "$dir/$BACKUP" ]; then
         cp -a "$dir/$BACKUP/." "$dir/" && rm -rf "${dir:?}/$BACKUP"
     fi
@@ -323,9 +324,11 @@ if [ "$ACTION" = remove ]; then
     say ""
     installed_in "$TARGET" || die "HelixSR Scaler isn't installed in this game"
     ask "Remove it?" || exit 0
+    oldname=$(sed -n 's/^name=//p' "$TARGET/$MANIFEST" | head -n 1)
     remove_from "$TARGET"
     say ""
-    say "  ${D}You can take WINEDLLOVERRIDES out of the game's launch options now.${N}"
+    [ "${oldname:-dxgi.dll}" = dxgi.dll ] ||
+        say "  ${D}You can take WINEDLLOVERRIDES out of the game's launch options now.${N}"
     say ""
     pause
     exit 0
@@ -364,8 +367,15 @@ ok "HelixSR: ${D}$HELIX${N}"
 
 # Copy HelixSR out of the game before removing an older install, which would delete it
 TMP_HELIX=$(mktemp)
-trap 'rm -f "$TMP_HELIX"' EXIT
+TMP_FG=$(mktemp -d)
+trap 'rm -f "$TMP_HELIX"; rm -rf "$TMP_FG"' EXIT
 cp -f "$HELIX" "$TMP_HELIX"
+# Frame generation: the helixsr-fg folder HelixSR's setup made next to its DLL (a reinstall: the game's own copy)
+for d in "$(dirname "$HELIX")/helixsr-fg" "$(dirname "$HELIX")/dlss-loader/helixsr-fg"; do
+    if [ -f "$d/nvexec64.dll" ] && [ -f "$d/_nvngx.dll" ] && [ -f "$d/nvngx_dlssg.dll" ]; then
+        cp -f "$d"/*.dll "$TMP_FG/" && break
+    fi
+done
 
 # Name for OptiScaler.dll: the one used before, else dxgi.dll unless the game has its own dxgi.dll
 if [ -z "$NAME" ] && installed_in "$TARGET"; then
@@ -392,7 +402,7 @@ fi
 
 # The download's files go to a staging folder first: the download may have been extracted into the game itself
 STAGE=$(mktemp -d)
-trap 'rm -f "$TMP_HELIX"; rm -rf "$STAGE"' EXIT
+trap 'rm -f "$TMP_HELIX"; rm -rf "$STAGE" "$TMP_FG"' EXIT
 if [ -f "$HERE/$PACKAGE_LIST" ]; then
     tr -d '\r' <"$HERE/$PACKAGE_LIST" >"$STAGE/.list"
 elif [ "$HERE" = "$TARGET" ]; then
@@ -439,6 +449,12 @@ while IFS= read -r rel; do
     copy_one "$STAGE/$rel" "$dest"
 done <"$STAGE/.list"
 copy_one "$TMP_HELIX" "HelixSR/helixsr.dll"
+FG=0
+for f in "$TMP_FG"/*.dll; do
+    [ -f "$f" ] || continue
+    copy_one "$f" "HelixSR/helixsr-fg/$(basename "$f")"
+    FG=1
+done
 if [ -n "$SETTINGS" ]; then
     cp -f "$SETTINGS" "$TARGET/OptiScaler.ini"
     rm -f "$SETTINGS"
@@ -448,24 +464,34 @@ mv -f "$TARGET/$MANIFEST.tmp" "$TARGET/$MANIFEST"
 
 ok "HelixSR Scaler installed as ${B}$NAME${N}"
 [ $backed_up -gt 0 ] && ok "$backed_up of the game's own files kept in ${D}$BACKUP${N}"
-
-# Launch options: Proton loads its own DLL unless told to use the game's
-DLL="${NAME%.*}"
-OPTS="WINEDLLOVERRIDES=\"$DLL=n,b\" %command%"
-say ""
-say "  ${B}One last step: Steam launch options${N}"
-say ""
-say "  In Steam: right-click ${B}$GAME_TITLE${N} > Properties > General > Launch Options, and paste:"
-say ""
-say "      ${T}${B}$OPTS${N}"
-say ""
-if copy_to_clipboard "$OPTS"; then
-    ok "Copied to the clipboard"
-    say ""
+if [ $FG = 1 ]; then
+    ok "Frame generation included"
+else
+    say "  ${D}Frame generation isn't set up (no helixsr-fg folder next to HelixSR's DLL): upscaling only${N}"
 fi
-say "  ${D}Heroic or Lutris: add the environment variable WINEDLLOVERRIDES with the value $DLL=n,b${N}"
+
+# Launch options: Proton takes the game's own dxgi.dll by itself; for the other names it has to be told
+DLL="${NAME%.*}"
+if [ "$NAME" = dxgi.dll ]; then
+    say ""
+    ok "No launch options needed"
+else
+    OPTS="WINEDLLOVERRIDES=\"$DLL=n,b\" %command%"
+    say ""
+    say "  ${B}One last step: Steam launch options${N}"
+    say ""
+    say "  In Steam: right-click ${B}$GAME_TITLE${N} > Properties > General > Launch Options, and paste:"
+    say ""
+    say "      ${T}${B}$OPTS${N}"
+    say ""
+    if copy_to_clipboard "$OPTS"; then
+        ok "Copied to the clipboard"
+        say ""
+    fi
+    say "  ${D}Heroic or Lutris: add the environment variable WINEDLLOVERRIDES with the value $DLL=n,b${N}"
+fi
 say ""
-say "  Then start the game and turn on ${V}DLSS${N} (or FSR or XeSS) in its graphics settings."
+say "  Then start the game and turn on ${V}DLSS${N} (and DLSS Frame Generation if it has it) in its graphics settings."
 say "  Press ${B}Insert${N} for the menu: the upscaler list shows ${T}HelixSR${N}."
 say "  ${D}Steam Deck: it has no Insert key. In the game's controller settings, set a back button to Insert.${N}"
 say ""
