@@ -233,10 +233,11 @@ struct Managed
 // frame generation: Best = full size (HelixSR's default), Fast = QuickFlow
 const Managed kManaged[] = { { "Compatibility", "WaveSize" }, { "FrameGeneration", "Mode", "FrameGen" } };
 // earlier keys, taken out of helixsr.ini: sharpening (OptiScaler's now) and int8 (HelixSR's own choice now)
-const Managed kRetired[] = { { "Sharpening", "Sharpness" }, { "Sharpening", "UseGameSlider" }, { "Upscaling", "Int8" } };
+const Managed kRetired[] = { { "Sharpening", "Sharpness" },
+                             { "Sharpening", "UseGameSlider" },
+                             { "Upscaling", "Int8" } };
 
 fs::path HelixIniPath() { return folder / kIni; }
-
 
 // The value of each managed key from OptiScaler's config, nullopt for auto (HelixSR's default)
 std::optional<std::string> ConfigValue(const std::string& key)

@@ -14,8 +14,8 @@ namespace HelixSR::detail
 // helixsr.ini, as the menu shows it
 struct Settings
 {
-    int wave = 0;      // Auto, 64, 32
-    int frameGen = 0;  // Best, Fast
+    int wave = 0;     // Auto, 64, 32
+    int frameGen = 0; // Best, Fast
 };
 
 // The last start of the upscaler, from helixsr.log
