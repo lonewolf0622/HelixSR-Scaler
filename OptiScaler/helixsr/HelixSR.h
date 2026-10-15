@@ -34,7 +34,7 @@ bool IsActive();
 // Selects HelixSR (OptiScaler's DLSS upscaler with HelixSR's DLL) as the DirectX 12 upscaler
 void Choose();
 
-// HelixSR's settings, drawn under the upscaler list while HelixSR is the upscaler: speed boost (int8),
+// HelixSR's settings, drawn under the upscaler list while HelixSR is the upscaler:
 // GPU mode and the folder button. Writes helixsr.ini; the game has to restart for them to apply.
 void RenderSettings(float scale, ImVec4 (*color)(const ImVec4&));
 

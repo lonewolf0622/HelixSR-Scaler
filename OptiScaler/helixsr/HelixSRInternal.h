@@ -14,7 +14,6 @@ namespace HelixSR::detail
 // helixsr.ini, as the menu shows it
 struct Settings
 {
-    int int8 = 0;      // Auto, On, Off
     int wave = 0;      // Auto, 64, 32
 };
 
@@ -40,13 +39,9 @@ struct MenuState
     bool saveFailed = false;
 };
 
-extern const char* const kInt8[];
 extern const char* const kWave[];
-inline constexpr int kInt8Count = 3;
 inline constexpr int kWaveCount = 3;
 
-inline constexpr const char* kInt8Help = "Faster math (int8) on graphics cards that support it. Auto turns it on "
-                                         "where it helps. If the picture shimmers or flickers, try Off.";
 inline constexpr const char* kWaveHelp = "How many threads HelixSR runs together (wave size). Auto is right for most "
                                          "cards. For AMD RX 7000 / 9000 with a broken picture, try 64.";
 
