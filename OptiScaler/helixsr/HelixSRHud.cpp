@@ -12,6 +12,7 @@
 #include "resource.h"
 #include "misc/IdentifyGpu.h"
 #include "proxies/NVNGX_Proxy.h"
+#include "upscalers/ffx/FFXFeature.h"
 
 #include <algorithm>
 #include <cctype>
@@ -153,9 +154,10 @@ bool HudButton(ImDrawList* dl, ImVec2 p, const char* label)
 
 struct UpscalerEntry
 {
-    const char* name;
+    std::string name;
     ::Upscaler upscaler;
-    bool helixsr; // HelixSR: OptiScaler's DLSS upscaler with HelixSR's DLL
+    bool helixsr;      // HelixSR: OptiScaler's DLSS upscaler with HelixSR's DLL
+    int ffxIndex = -1; // FSR from the FFX SDK: its index in the SDK's version list (as OptiScaler's FFX Upscaler list)
 };
 
 std::vector<UpscalerEntry> Dx12Upscalers()
@@ -164,7 +166,20 @@ std::vector<UpscalerEntry> Dx12Upscalers()
     const bool helixDlss = found && NVNGXProxy::HelixSRDlss();
     if (helixDlss)
         list.push_back({ "HelixSR", ::Upscaler::DLSS, true });
-    list.push_back({ "FSR", ::Upscaler::FFX, false });
+
+    // every FSR the FFX SDK reports (FSR 4, FSR 3.1, ...), newest first, as OptiScaler's own upscaler list names them
+    FFXFeature::EnsureVersionsDx12();
+    const auto& versions = State::Instance().ffxUpscalerVersionsDx12;
+    std::vector<int> order(versions.names.size());
+    for (size_t i = 0; i < order.size(); i++)
+        order[i] = (int) i;
+    std::stable_sort(order.begin(), order.end(), [&versions](int a, int b)
+                     { return feature_version(versions.names[b]) < feature_version(versions.names[a]); });
+    for (int n : order)
+        list.push_back({ std::string("FSR ") + versions.names[n], ::Upscaler::FFX, false, n });
+    if (order.empty())
+        list.push_back({ "FSR", ::Upscaler::FFX, false });
+
     list.push_back({ "XeSS", ::Upscaler::XeSS, false });
     if (!helixDlss && IdentifyGpu::getPrimaryGpu().dlssCapable && Config::Instance()->DLSSEnabled.value_or_default())
         list.push_back({ "DLSS", ::Upscaler::DLSS, false });
@@ -346,16 +361,20 @@ void RenderHud(float scale, ImVec4 (*color)(const ImVec4&))
         {
             const auto list = Dx12Upscalers();
             const ::Upscaler current = Backend();
-            const float rowH = 25 * k, rowW = 290 * k;
+            const int ffxIndex = cfg->FfxUpscalerIndex.value_or_default();
+            // rows shrink when the list is long (many FSR versions), so it stays inside the panel
+            const float rowH = std::min(25 * k, (row1 - 44 * k) / (float) std::max<size_t>(list.size(), 1)),
+                        rowW = 290 * k;
             for (size_t i = 0; i < list.size(); i++)
             {
                 const auto& u = list[i];
                 const bool isHelix = u.helixsr;
-                const bool on = isHelix ? active : (!active && current == u.upscaler);
+                const bool sameFfx = u.ffxIndex < 0 || u.ffxIndex == ffxIndex;
+                const bool on = isHelix ? active : (!active && current == u.upscaler && sameFfx);
                 const float ry = ly + i * rowH;
 
                 ImGui::SetCursorScreenPos(ImVec2(lx, ry - 3 * k));
-                ImGui::PushID(u.name);
+                ImGui::PushID(u.name.c_str());
                 const bool clicked = ImGui::InvisibleButton("##up", ImVec2(rowW, rowH - 3 * k));
                 const bool hovered = ImGui::IsItemHovered();
                 ImGui::PopID();
@@ -370,7 +389,7 @@ void RenderHud(float scale, ImVec4 (*color)(const ImVec4&))
                      Upper(u.name).c_str());
                 if (on)
                     Text(dl, ImVec2(lx + 208 * k, ry + 2 * k), smallSize, Col(kTeal), "ACTIVE");
-                else if (state.newBackend == u.upscaler && !on)
+                else if (state.newBackend == u.upscaler && sameFfx && !on)
                     Text(dl, ImVec2(lx + 208 * k, ry + 2 * k), smallSize, Col(kAmber), "LOADING");
 
                 if (clicked && !on)
@@ -378,7 +397,11 @@ void RenderHud(float scale, ImVec4 (*color)(const ImVec4&))
                     if (isHelix)
                         ChooseHelixSR();
                     else
+                    {
+                        if (u.ffxIndex >= 0)
+                            cfg->FfxUpscalerIndex = u.ffxIndex; // which FSR the FFX SDK runs
                         ChooseBackend(u.upscaler);
+                    }
                 }
             }
 
