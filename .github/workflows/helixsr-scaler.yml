@@ -1,6 +1,8 @@
 # HelixSR Scaler: builds the DLL on every push and pull request, packs the Windows zip and the Linux / Steam Deck
 # tar.gz (same DLL, run through Proton; tested under Wine here), and attaches both to a draft release when a v* tag
-# is pushed (git tag v1.0.0 && git push origin v1.0.0). Publish the draft on GitHub when it's tested.
+# is pushed (git tag v1.0.0 && git push origin v1.0.0), or when the workflow is started by hand with "release" ticked
+# (Actions > HelixSR Scaler > Run workflow): the draft gets the tag v<HELIXSR_SCALER_VERSION> on the commit it built.
+# Publish the draft on GitHub when it's tested.
 
 name: HelixSR Scaler
 
@@ -11,6 +13,11 @@ on:
   pull_request:
     branches: [ "helixsr" ]
   workflow_dispatch:
+    inputs:
+      release:
+        description: 'Make a draft release v<version> (the version in OptiScaler/resource.h)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -36,7 +43,7 @@ jobs:
           ($h | Select-String "#define HELIXSR_SCALER_VERSION_$_\s+(\d+)").Matches[0].Groups[1].Value
         }) -join '.'
         $name = "HelixSR-Scaler-$v"
-        if (-not $env:GITHUB_REF.StartsWith('refs/tags/')) { $name += '-' + $env:GITHUB_SHA.Substring(0, 7) }
+        if (-not $env:GITHUB_REF.StartsWith('refs/tags/') -and "${{ inputs.release }}" -ne "true") { $name += '-' + $env:GITHUB_SHA.Substring(0, 7) }
         "version=$v" >> $env:GITHUB_OUTPUT
         "name=$name" >> $env:GITHUB_OUTPUT
         Write-Output "HelixSR Scaler $v ($name)"
@@ -139,7 +146,7 @@ jobs:
         if-no-files-found: error
 
   release:
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || inputs.release
     needs: [build, linux]
     runs-on: ubuntu-24.04
 
@@ -159,6 +166,8 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         draft: true
+        tag_name: v${{ needs.build.outputs.version }}
+        target_commitish: ${{ github.sha }}
         name: HelixSR Scaler ${{ needs.build.outputs.version }}
         files: |
           ${{ needs.build.outputs.name }}.zip
