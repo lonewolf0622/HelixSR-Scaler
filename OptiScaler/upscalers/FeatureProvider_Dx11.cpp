@@ -57,6 +57,14 @@ bool FeatureProvider_Dx11::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NG
         break;
 
     case Upscaler::DLSS:
+        // HelixSR Scaler: HelixSR's DLSS DLL is DirectX 12 only, DirectX 11 games run it through the Dx12 interop
+        if (NVNGXProxy::HelixSRDlss())
+        {
+            *feature = std::make_unique<DLSSFeatureDx11On12>(handleId, parameters);
+            upscaler = Upscaler::DLSS_on12;
+            break;
+        }
+
         if (primaryGpu.dlssCapable && state.NVNGX_DLSS_Path.has_value())
         {
             *feature = std::make_unique<DLSSFeatureDx11>(handleId, parameters);
@@ -70,7 +78,7 @@ bool FeatureProvider_Dx11::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NG
         }
 
     case Upscaler::DLSS_on12:
-        if (primaryGpu.dlssCapable && state.NVNGX_DLSS_Path.has_value())
+        if ((primaryGpu.dlssCapable && state.NVNGX_DLSS_Path.has_value()) || NVNGXProxy::HelixSRDlss())
         {
             *feature = std::make_unique<DLSSFeatureDx11On12>(handleId, parameters);
             break;
@@ -128,7 +136,7 @@ bool FeatureProvider_Dx11::ChangeFeature(Upscaler upscaler, ID3D11Device* device
     State& state = State::Instance();
     Config& cfg = *Config::Instance();
 
-    const bool dlssOnNonCapable = !IdentifyGpu::getPrimaryGpu().dlssCapable &&
+    const bool dlssOnNonCapable = !IdentifyGpu::getPrimaryGpu().dlssCapable && !NVNGXProxy::HelixSRDlss() &&
                                   (state.newBackend == Upscaler::DLSS || state.newBackend == Upscaler::DLSS_on12);
     if (state.newBackend == Upscaler::Reset || dlssOnNonCapable)
         state.newBackend = cfg.Dx11Upscaler.value_or_default();

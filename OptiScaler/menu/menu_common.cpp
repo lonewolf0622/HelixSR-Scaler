@@ -664,11 +664,19 @@ static bool IsOn12(Upscaler upscaler)
     }
 }
 
+// HelixSR Scaler: OptiScaler's DLSS upscaler with HelixSR's DLSS DLL (DirectX 12; DirectX 11 through the Dx12 interop)
+static bool IsHelixSR(Upscaler upscaler, API api)
+{
+    return ((upscaler == Upscaler::DLSS && api == API::DX12) ||
+            (upscaler == Upscaler::DLSS_on12 && api == API::DX11)) &&
+           NVNGXProxy::HelixSRDlss();
+}
+
 // Name without the w/Dx12 suffix, that one is shown as a tag in the list instead
 static std::string ShortUpscalerName(Upscaler upscaler, API api, int ffxIndex)
 {
     // HelixSR Scaler: DLSS is HelixSR's DLSS DLL on GPUs without DLSS
-    if (upscaler == Upscaler::DLSS && api == API::DX12 && NVNGXProxy::HelixSRDlss())
+    if (IsHelixSR(upscaler, api))
         return "HelixSR";
 
     if (auto versions = GetFfxVersionList(upscaler, api);
@@ -754,8 +762,7 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
     for (auto opt : options)
     {
         // Check if GPU is capable of a given backend
-        if ((opt == Upscaler::DLSS || opt == Upscaler::DLSS_on12) && !primaryGpu.dlssCapable &&
-            !(opt == Upscaler::DLSS && api == API::DX12 && NVNGXProxy::HelixSRDlss()))
+        if ((opt == Upscaler::DLSS || opt == Upscaler::DLSS_on12) && !primaryGpu.dlssCapable && !IsHelixSR(opt, api))
             continue;
 
         // Not all Intel GPUs support native DX11 XeSS but don't think we have a good way to check exactly
