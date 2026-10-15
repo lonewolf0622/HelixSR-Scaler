@@ -42,7 +42,7 @@ bool FeatureProvider_Dx12::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NG
         break;
 
     case Upscaler::DLSS:
-        if (primaryGpu.dlssCapable && state.NVNGX_DLSS_Path.has_value())
+        if ((primaryGpu.dlssCapable && state.NVNGX_DLSS_Path.has_value()) || NVNGXProxy::HelixSRDlss())
         {
             *feature = std::make_unique<DLSSFeatureDx12>(handleId, parameters);
             break;
@@ -103,7 +103,8 @@ bool FeatureProvider_Dx12::ChangeFeature(Upscaler upscaler, ID3D12Device* device
     if (!state.changeBackend[handleId])
         return false;
 
-    const bool dlssOnNonCapable = !IdentifyGpu::getPrimaryGpu().dlssCapable && state.newBackend == Upscaler::DLSS;
+    const bool dlssOnNonCapable =
+        !IdentifyGpu::getPrimaryGpu().dlssCapable && !NVNGXProxy::HelixSRDlss() && state.newBackend == Upscaler::DLSS;
     if (state.newBackend == Upscaler::Reset || dlssOnNonCapable)
         state.newBackend = cfg.Dx12Upscaler.value_or_default();
 

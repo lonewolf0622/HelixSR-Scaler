@@ -35,6 +35,7 @@
 #include <memory>
 #include <type_traits>
 #include <misc/IdentifyGpu.h>
+#include <proxies/NVNGX_Proxy.h>
 #include <hooks/Xell_Hooks.h>
 #include <low_latency/input/input_common.h>
 #include <hooks/Vulkan_Hooks.h>
@@ -749,7 +750,8 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
     for (auto opt : options)
     {
         // Check if GPU is capable of a given backend
-        if ((opt == Upscaler::DLSS || opt == Upscaler::DLSS_on12) && !primaryGpu.dlssCapable)
+        if ((opt == Upscaler::DLSS || opt == Upscaler::DLSS_on12) && !primaryGpu.dlssCapable &&
+            !(opt == Upscaler::DLSS && api == API::DX12 && NVNGXProxy::HelixSRDlss()))
             continue;
 
         // Not all Intel GPUs support native DX11 XeSS but don't think we have a good way to check exactly
@@ -1855,7 +1857,7 @@ void MenuCommon::HandleMenuShortcuts(RenderMenuContext& ctx)
                 auto optiPath = std::filesystem::path(Config::Instance()->MainDllPath.value());
                 state.artursFgFileAvailable = enablerExists.Get(optiPath / L"dlss-enabler-headless.dll");
                 state.nukemsFgFileAvailable = nukemsExists.Get(optiPath / L"dlssg_to_fsr3_amd_is_better.dll");
-                state.helixsrFgFileAvailable = helixsrExists.Get(optiPath / L"helixsr_fg.dll");
+                state.helixsrFgFileAvailable = helixsrExists.Get(optiPath / L"helixsr.dll");
 
                 if (State::Instance().currentFeature != nullptr)
                 {
@@ -3658,7 +3660,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
                                                       "FFX used for the middle fake frame, Enabler for the rest\n\n"
                                                       "2x - FFX\n3x - Enabler\n4x - FFX + Enabler\n5x - Enabler\n6x - FFX + Enabler\n\n"
                                                       "Due to pacing, only odd number of fake frames are able to use FFX"},
-        { FGNvngxReplacement::HelixSR, "HelixSR", "DLSS FG network on any GPU (requires helixsr_fg.dll)" },
+        { FGNvngxReplacement::HelixSR, "HelixSR", "DLSS FG network on any GPU (requires helixsr.dll)" },
     };
 
     // clang-format on
@@ -3704,7 +3706,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         "Missing amd_fidelityfx_framegeneration_dx12.dll\nor missing dlss-enabler-headless.dll");
 
     auto constexpr fgNvngxHelixSRIndex = (uint32_t) FGNvngxReplacement::HelixSR;
-    nvngxOptions[fgNvngxHelixSRIndex].set_disabled(!state.helixsrFgFileAvailable, "Missing helixsr_fg.dll");
+    nvngxOptions[fgNvngxHelixSRIndex].set_disabled(!state.helixsrFgFileAvailable, "Missing helixsr.dll");
 
     // TODO: Automatically switch to any other option
 
@@ -5070,12 +5072,12 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         else if (activeNvngxFg == FGNvngxReplacement::HelixSR)
         {
             SeparatorWithHelpMarker("Frame Generation (DLSS FG network via HelixSR)",
-                                    "HelixSR frame generation as helixsr_fg.dll");
+                                    "HelixSR frame generation as helixsr.dll");
 
             if (!state.helixsrFgFileAvailable)
             {
                 ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)),
-                                   "Please put helixsr_fg.dll into OptiScaler folder");
+                                   "Please put helixsr.dll into OptiScaler folder");
             }
         }
 

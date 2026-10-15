@@ -2,7 +2,7 @@
 #include "Nvngx_DllProxy.h"
 
 // HelixSR's frame generation as the DLSSG provider: NVIDIA's DLSS Frame Generation network run by HelixSR on any GPU
-// (helixsr_fg.dll in OptiScaler's folder, with its helixsr-fg folder next to it)
+// (helixsr.dll in OptiScaler's folder, with its helixsr-fg folder next to it)
 class Nvngx_HelixSR : public Nvngx_DllProxy
 {
   protected:

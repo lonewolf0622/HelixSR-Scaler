@@ -5,7 +5,7 @@ void Nvngx_HelixSR::LoadLibraries()
 {
     HMODULE memModule = nullptr;
     auto& optiPath = Config::Instance()->MainDllPath.value();
-    Util::LoadProxyLibrary(L"helixsr_fg.dll", L"", optiPath, &memModule, &dll);
+    Util::LoadProxyLibrary(L"helixsr.dll", L"", optiPath, &memModule, &dll);
 
     if (dll == nullptr && memModule != nullptr)
         dll = memModule;
@@ -50,6 +50,6 @@ void Nvngx_HelixSR::LoadLibraries()
     }
     else
     {
-        LOG_WARN("HelixSR frame generation enabled but helixsr_fg.dll cannot be loaded");
+        LOG_WARN("HelixSR frame generation enabled but helixsr.dll cannot be loaded");
     }
 }
