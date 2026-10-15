@@ -215,7 +215,6 @@ struct IniFile
 
 // Sharpening is OptiScaler's own (RCAS, its menu and [CAS] / [Sharpness]); HelixSR's sharpener stays off
 extern const char* const kWave[] = { "Auto", "64", "32" };
-extern const char* const kFrameGen[] = { "Best", "Fast" };
 
 // --- Settings: OptiScaler.ini, with HelixSR's part copied to helixsr.ini ------------------------------------------
 // HelixSR reads only helixsr.ini next to its DLL. OptiScaler.ini is the one file people edit: [HelixSR] for HelixSR's
@@ -227,15 +226,13 @@ struct Managed
 {
     const char* section; // in helixsr.ini
     const char* key;
-    const char* opti = nullptr; // its key in OptiScaler.ini [HelixSR] when it differs
-    const char* Opti() const { return opti ? opti : key; }
 };
-// frame generation: Best = full size (HelixSR's default), Fast = QuickFlow
-const Managed kManaged[] = { { "Compatibility", "WaveSize" }, { "FrameGeneration", "Mode", "FrameGen" } };
+const Managed kManaged[] = { { "Compatibility", "WaveSize" } };
 // earlier keys, taken out of helixsr.ini: sharpening (OptiScaler's now) and int8 (HelixSR's own choice now)
 const Managed kRetired[] = { { "Sharpening", "Sharpness" },
                              { "Sharpening", "UseGameSlider" },
-                             { "Upscaling", "Int8" } };
+                             { "Upscaling", "Int8" },
+                             { "FrameGeneration", "Mode" } };
 
 fs::path HelixIniPath() { return folder / kIni; }
 
@@ -245,15 +242,13 @@ std::optional<std::string> ConfigValue(const std::string& key)
     auto cfg = Config::Instance();
     if (key == "WaveSize" && cfg->HelixSRWaveSize.has_value())
         return std::to_string(cfg->HelixSRWaveSize.value());
-    if (key == "FrameGen" && cfg->HelixSRFrameGen.has_value() && Lower(cfg->HelixSRFrameGen.value()) == "fast")
-        return std::string("fast");
     return std::nullopt;
 }
 
 const char* kHelixIniHeader[] = {
     "; HelixSR's settings, written by HelixSR Scaler from OptiScaler.ini each time the game starts. Change them in",
     "; OptiScaler.ini ([HelixSR]) or in the menu (Insert key). Sharpening is OptiScaler's, so HelixSR's sharpener",
-    "; stays off. WaveSize and Mode here are replaced; other HelixSR settings you add to this file are kept.",
+    "; stays off. WaveSize here is replaced; other HelixSR settings you add to this file are kept.",
 };
 
 // helixsr.ini from OptiScaler's config
@@ -272,7 +267,7 @@ bool WriteHelixIni()
     for (const auto& m : kRetired)
         ini.Set(m.section, m.key, std::nullopt);
     for (const auto& m : kManaged)
-        ini.Set(m.section, m.key, ConfigValue(m.Opti()));
+        ini.Set(m.section, m.key, ConfigValue(m.key));
 
     return ini.Save(HelixIniPath());
 }
@@ -286,7 +281,7 @@ bool WriteOptiScalerIni()
     ini.separator = "=";
 
     for (const auto& m : kManaged)
-        ini.Set("HelixSR", m.Opti(), ConfigValue(m.Opti()).value_or("auto"));
+        ini.Set("HelixSR", m.key, ConfigValue(m.key).value_or("auto"));
     for (const char* key : { "Sharpener", "Sharpness", "UseGameSlider", "Int8" }) // earlier versions' keys
         ini.Set("HelixSR", key, std::nullopt);
 
@@ -322,8 +317,6 @@ Settings ReadSettings()
     if (cfg->HelixSRWaveSize.has_value())
         s.wave = cfg->HelixSRWaveSize.value() == 64 ? 1 : cfg->HelixSRWaveSize.value() == 32 ? 2 : 0;
 
-    s.frameGen = ConfigValue("FrameGen").has_value() ? 1 : 0;
-
     return s;
 }
 
@@ -334,7 +327,6 @@ bool WriteSettings(const Settings& s)
     cfg->HelixSRWaveSize = s.wave == 1   ? std::optional<int>(64)
                            : s.wave == 2 ? std::optional<int>(32)
                                          : std::optional<int>();
-    cfg->HelixSRFrameGen = s.frameGen == 1 ? std::optional<std::string>("fast") : std::optional<std::string>();
 
     const bool opti = WriteOptiScalerIni();
     const bool helix = WriteHelixIni();
@@ -492,7 +484,7 @@ void SaveMenuSettings()
     auto& m = Menu();
     m.saveFailed = !WriteSettings(m.settings);
     if (!m.saveFailed)
-        m.restartNeeded = m.settings.wave != m.initial.wave || m.settings.frameGen != m.initial.frameGen;
+        m.restartNeeded = m.settings.wave != m.initial.wave;
     m.saved = m.settings;
 }
 
@@ -637,9 +629,6 @@ void RenderSettings(float scale, ImVec4 (*color)(const ImVec4&))
     const auto& status = m.status;
     const float labelWidth = 130.0f * scale;
     bool changed = false;
-
-    changed |= Choice("Frame generation", &settings.frameGen, kFrameGen, kFrameGenCount, labelWidth);
-    Help(kFrameGenHelp);
 
     changed |= Choice("GPU mode", &settings.wave, kWave, kWaveCount, labelWidth);
     Help(kWaveHelp);

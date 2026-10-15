@@ -38,8 +38,6 @@ INSTALLING BY HAND
 IN THE MENU (Insert key)
 
 In the HELIXSR CONFIG panel at the top (pick HelixSR in the UPSCALER panel next to it):
-- Frame gen: Best (full quality) or Fast (QuickFlow: faster, for lower-end GPUs). Pick DLSS Frame
-  Generation in the game to use it.
 - GPU mode: Auto is right for most cards.
 - The STATUS panel shows if HelixSR runs, and opens the HelixSR folder (helixsr.log tells what it did).
 Under them is everything from OptiScaler, its sharpening (RCAS) too.

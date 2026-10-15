@@ -14,8 +14,7 @@ namespace HelixSR::detail
 // helixsr.ini, as the menu shows it
 struct Settings
 {
-    int wave = 0;     // Auto, 64, 32
-    int frameGen = 0; // Best, Fast
+    int wave = 0; // Auto, 64, 32
 };
 
 // The last start of the upscaler, from helixsr.log
@@ -41,13 +40,8 @@ struct MenuState
 };
 
 extern const char* const kWave[];
-extern const char* const kFrameGen[];
 inline constexpr int kWaveCount = 3;
-inline constexpr int kFrameGenCount = 2;
 
-inline constexpr const char* kFrameGenHelp =
-    "Frame generation (pick DLSS Frame Generation in the game). Best: full quality. Fast: QuickFlow, a faster motion "
-    "estimate for lower-end GPUs, slightly softer in-between frames.";
 inline constexpr const char* kWaveHelp = "How many threads HelixSR runs together (wave size). Auto is right for most "
                                          "cards. For AMD RX 7000 / 9000 with a broken picture, try 64.";
 

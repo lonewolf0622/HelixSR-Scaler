@@ -3,7 +3,7 @@
 **HelixSR in games that only have DLSS, XeSS or FSR 2.** HelixSR Scaler is [OptiScaler](https://github.com/optiscaler/OptiScaler)
 with [HelixSR](https://github.com/lonewolf0622/HelixSR) built in.
 
-- **HelixSR is in the upscaler list**, next to XeSS, FSR and DLSS, with its settings under it: frame generation (Best or Fast) and GPU mode. Everything else OptiScaler does is still there, its sharpening (RCAS) too.
+- **HelixSR is in the upscaler list**, next to XeSS, FSR and DLSS, with its setting under it: GPU mode. Everything else OptiScaler does is still there, its sharpening (RCAS) too.
 - **No setup files to edit.** Put the `HelixSR` folder next to it and HelixSR is the upscaler.
 - **Windows, Linux and Steam Deck.** On Linux the same DLL runs through Proton or Wine; the Linux download has a setup
   that finds your Steam games, installs, and gives you the launch options.
