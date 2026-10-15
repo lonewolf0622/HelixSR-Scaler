@@ -46,11 +46,12 @@ sed -i 's/^FrameGeneration=off/FrameGeneration=on/' "$G/OptiScaler.ini"
 (cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
 check "FrameGeneration=on brings helixsr-fg back" '[ -f "$G/HelixSR/helixsr-fg/nvexec64.dll" ] && [ ! -e "$G/HelixSR/helixsr-fg.off" ]'
 # a GPU without 32-lane waves (RX 580): HelixSR's log says so, HelixSR Scaler switches frame generation off for good
-sed -i 's/^FrameGeneration=on/FrameGeneration=auto/' "$G/OptiScaler.ini"
+sed -i 's/^FrameGeneration=on/FrameGeneration=auto/; s/^WaveSize=64/WaveSize=auto/' "$G/OptiScaler.ini"
 printf '[13:52:43.487] fg: frame generation NOT available on this GPU: no 32-lane waves (e.g. AMD Vega / Polaris); (waves 64-64 lanes); the game is told it is unavailable\r\n' \
     >"$G/HelixSR/helixsr.log"
 (cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
 check "unsupported GPU: frame generation off by itself" '[ -d "$G/HelixSR/helixsr-fg.off" ] && [ ! -e "$G/HelixSR/helixsr-fg" ]'
+check "auto wave size: 32 lanes in helixsr.ini (all GPUs, as HelixSR 1.8.1)" 'grep -q "^WaveSize = 32" "$G/HelixSR/helixsr.ini" && grep -q "^WaveSize=auto" "$G/OptiScaler.ini"'
 check "unsupported GPU: saved in OptiScaler.ini" 'grep -q "^FrameGeneration=off" "$G/OptiScaler.ini"'
 check "no second copy of HelixSR's DLL (one DLL for DLSS)" '[ ! -e "$G/HelixSR/helixsr_upscaler.dll" ]'
 

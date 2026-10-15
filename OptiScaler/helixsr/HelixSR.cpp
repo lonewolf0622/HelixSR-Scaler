@@ -240,6 +240,12 @@ const Managed kRetired[] = { { "Sharpening", "Sharpness" },
 
 fs::path HelixIniPath() { return folder / kIni; }
 
+// Auto wave size, as HelixSR Scaler gives it to HelixSR: 32-lane network kernels on every GPU, as HelixSR 1.8.1 ran
+// them. HelixSR 1.9.0's own auto runs them at 64 lanes on RDNA 3 and newer (RX 7000 / 9000, Ryzen with RDNA 3 / 3.5
+// graphics), which was much slower on a Legion Go 2 (Z2 Extreme). NVIDIA, Intel and RDNA 1 / 2 get 32 from HelixSR's
+// auto too; a GPU without 32-lane waves (Vega) still runs 64, HelixSR falls back by itself.
+constexpr const char* kAutoWaveSize = "32";
+
 // The value of each managed key from OptiScaler's config, nullopt for auto (HelixSR's default)
 std::optional<std::string> ConfigValue(const std::string& key)
 {
@@ -273,7 +279,12 @@ bool WriteHelixIni()
     for (const auto& m : kRetired)
         ini.Set(m.section, m.key, std::nullopt);
     for (const auto& m : kManaged)
-        ini.Set(m.section, m.key, ConfigValue(m.key));
+    {
+        auto value = ConfigValue(m.key);
+        if (!value.has_value() && std::string(m.key) == "WaveSize")
+            value = kAutoWaveSize;
+        ini.Set(m.section, m.key, value);
+    }
 
     return ini.Save(HelixIniPath());
 }

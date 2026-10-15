@@ -56,8 +56,8 @@ inline constexpr const char* kFrameGenHelp =
     "stutters with it. Restart the game after changing it.";
 bool FrameGenInstalled(); // the HelixSR folder has frame generation, switched on or off
 
-inline constexpr const char* kWaveHelp = "How many threads HelixSR runs together (wave size). Auto is right for most "
-                                         "cards. For AMD RX 7000 / 9000 with a broken picture, try 64.";
+inline constexpr const char* kWaveHelp = "How many threads HelixSR runs together (wave size). Auto (32) is right for "
+                                         "most cards. For AMD RX 7000 / 9000 with a broken picture, try 64.";
 
 extern std::filesystem::path folder;
 extern bool found;
