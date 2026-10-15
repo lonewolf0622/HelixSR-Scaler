@@ -1,10 +1,13 @@
 #include "pch.h"
 #include "Nvngx_HelixSR.h"
+#include "helixsr/HelixSR.h"
 
 void Nvngx_HelixSR::LoadLibraries()
 {
     HMODULE memModule = nullptr;
-    auto& optiPath = Config::Instance()->MainDllPath.value();
+    // the HelixSR folder next to the game (HelixSR Scaler), else OptiScaler's folder
+    const std::wstring optiPath =
+        HelixSR::Found() ? HelixSR::Folder().wstring() : Config::Instance()->MainDllPath.value();
     Util::LoadProxyLibrary(L"helixsr.dll", L"", optiPath, &memModule, &dll);
 
     if (dll == nullptr && memModule != nullptr)

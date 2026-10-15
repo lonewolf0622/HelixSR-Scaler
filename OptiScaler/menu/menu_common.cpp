@@ -36,6 +36,7 @@
 #include <type_traits>
 #include <misc/IdentifyGpu.h>
 #include <proxies/NVNGX_Proxy.h>
+#include <helixsr/HelixSR.h> // HelixSR Scaler
 #include <hooks/Xell_Hooks.h>
 #include <low_latency/input/input_common.h>
 #include <hooks/Vulkan_Hooks.h>
@@ -248,7 +249,6 @@ struct FsExistsCache
 
 static FsExistsCache nukemsExists;
 static FsExistsCache enablerExists;
-static FsExistsCache helixsrExists;
 
 struct FlagDefinition
 {
@@ -667,6 +667,10 @@ static bool IsOn12(Upscaler upscaler)
 // Name without the w/Dx12 suffix, that one is shown as a tag in the list instead
 static std::string ShortUpscalerName(Upscaler upscaler, API api, int ffxIndex)
 {
+    // HelixSR Scaler: DLSS is HelixSR's DLSS DLL on GPUs without DLSS
+    if (upscaler == Upscaler::DLSS && api == API::DX12 && NVNGXProxy::HelixSRDlss())
+        return "HelixSR";
+
     if (auto versions = GetFfxVersionList(upscaler, api);
         versions != nullptr && ffxIndex >= 0 && ffxIndex < versions->names.size())
         return StrFmt("FSR %s", versions->names[ffxIndex]);
@@ -1669,6 +1673,10 @@ void MenuCommon::ApplyThemeStyle()
     c[ImGuiCol_NavWindowingDimBg] = dimBg;
     c[ImGuiCol_ModalWindowDimBg] = modalDimBg;
 
+    // HelixSR Scaler: the HUD's square corners and accent lines
+    if (HelixSR::HudEnabled())
+        HelixSR::ApplyHudStyle();
+
     _hdrTonemapApplied = false;
     MenuHdrCheck(ImGui::GetIO());
 }
@@ -1857,7 +1865,7 @@ void MenuCommon::HandleMenuShortcuts(RenderMenuContext& ctx)
                 auto optiPath = std::filesystem::path(Config::Instance()->MainDllPath.value());
                 state.artursFgFileAvailable = enablerExists.Get(optiPath / L"dlss-enabler-headless.dll");
                 state.nukemsFgFileAvailable = nukemsExists.Get(optiPath / L"dlssg_to_fsr3_amd_is_better.dll");
-                state.helixsrFgFileAvailable = helixsrExists.Get(optiPath / L"helixsr.dll");
+                state.helixsrFgFileAvailable = HelixSR::FrameGenFound(); // HelixSR Scaler
 
                 if (State::Instance().currentFeature != nullptr)
                 {
@@ -2048,7 +2056,7 @@ void MenuCommon::RenderSplashWindow(RenderMenuContext& ctx)
                 else
                     ImGui::SetWindowFontScale(splashScale);
 
-                ImGui::Text("OptiScaler - %s for menu",
+                ImGui::Text("HelixSR Scaler - %s for menu", // HelixSR Scaler
                             Keybind::KeyNameFromVirtualKeyCode(config->ShortcutKey.value_or_default()).c_str());
                 ImGui::TextColored(toneMapColor(ImVec4(1.0f, 1.0f, 1.0f, 0.7f)), splashMessage.c_str());
 
@@ -3660,7 +3668,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
                                                       "FFX used for the middle fake frame, Enabler for the rest\n\n"
                                                       "2x - FFX\n3x - Enabler\n4x - FFX + Enabler\n5x - Enabler\n6x - FFX + Enabler\n\n"
                                                       "Due to pacing, only odd number of fake frames are able to use FFX"},
-        { FGNvngxReplacement::HelixSR, "HelixSR", "DLSS FG network on any GPU (requires helixsr.dll)" },
+        { FGNvngxReplacement::HelixSR, "HelixSR", "DLSS FG network on any GPU (requires the HelixSR folder)" },
     };
 
     // clang-format on
@@ -3706,7 +3714,8 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         "Missing amd_fidelityfx_framegeneration_dx12.dll\nor missing dlss-enabler-headless.dll");
 
     auto constexpr fgNvngxHelixSRIndex = (uint32_t) FGNvngxReplacement::HelixSR;
-    nvngxOptions[fgNvngxHelixSRIndex].set_disabled(!state.helixsrFgFileAvailable, "Missing helixsr.dll");
+    nvngxOptions[fgNvngxHelixSRIndex].set_disabled(!state.helixsrFgFileAvailable,
+                                                   "Missing the HelixSR folder (helixsr.dll, helixsr-fg)");
 
     // TODO: Automatically switch to any other option
 
@@ -5072,12 +5081,12 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         else if (activeNvngxFg == FGNvngxReplacement::HelixSR)
         {
             SeparatorWithHelpMarker("Frame Generation (DLSS FG network via HelixSR)",
-                                    "HelixSR frame generation as helixsr.dll");
+                                    "HelixSR frame generation (HelixSR folder next to the game)");
 
             if (!state.helixsrFgFileAvailable)
             {
                 ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)),
-                                   "Please put helixsr.dll into OptiScaler folder");
+                                   "Put the HelixSR folder (helixsr.dll, helixsr-fg) next to the game");
             }
         }
 
@@ -9263,11 +9272,16 @@ void MenuCommon::RenderMainMenuWindow(RenderMenuContext& ctx)
     ImGuiWindowFlags mainFlags = ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse |
                                  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
-    const float menuWidth = std::min(680.0f * menuResScale, io.DisplaySize.x - 20.0f);
+    // HelixSR Scaler: the HUD draws its own header and is wider than OptiScaler's menu
+    const bool hud = HelixSR::HudEnabled();
+    if (hud)
+        mainFlags |= ImGuiWindowFlags_NoTitleBar;
+
+    const float menuWidth = std::min((hud ? 1010.0f : 680.0f) * menuResScale, io.DisplaySize.x - 20.0f);
     const float maxMenuHeight = io.DisplaySize.y - 20.0f;
     const float minMenuHeight = std::min(300.0f * menuResScale, maxMenuHeight);
     const float menuHeight =
-        std::clamp(config->MenuHeight.value_or(815.0f) * menuResScale, minMenuHeight, maxMenuHeight);
+        std::clamp(config->MenuHeight.value_or(hud ? 1040.0f : 815.0f) * menuResScale, minMenuHeight, maxMenuHeight);
 
     ImGui::SetNextWindowSize(ImVec2(menuWidth, menuHeight), ImGuiCond_Always);
     ImGui::SetNextWindowSizeConstraints(ImVec2(menuWidth, minMenuHeight), ImVec2(menuWidth, maxMenuHeight));
@@ -9283,6 +9297,10 @@ void MenuCommon::RenderMainMenuWindow(RenderMenuContext& ctx)
     {
         // Update and config notices shown above the tabs.
         RenderMainMenuHeaderMessages(ctx);
+
+        // HelixSR Scaler: the HUD (upscaler, HelixSR's settings, timings, state) above OptiScaler's settings
+        if (hud)
+            HelixSR::RenderHud(menuResScale, toneMapColor);
 
         // Tabs on the left, tab content on the right.
         RenderMainMenuTabs(ctx);

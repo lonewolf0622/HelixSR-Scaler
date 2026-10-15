@@ -51,6 +51,7 @@
 #include <version_check.h>
 #include <misc/IdentifyGpu.h>
 #include <sha1/sha1.hpp>
+#include "helixsr/HelixSR.h" // HelixSR Scaler
 
 static std::vector<HMODULE> _asiHandles;
 static std::vector<std::filesystem::directory_entry> _lateLoadingEntries;
@@ -1563,6 +1564,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         spdlog::warn("OptiScaler is freely downloadable from");
         spdlog::warn("GitHub : https://github.com/optiscaler/OptiScaler/releases");
         spdlog::warn("Nexus  : https://www.nexusmods.com/site/mods/986");
+        spdlog::warn("HelixSR Scaler (based on OptiScaler): https://github.com/lonewolf0622/HelixSR-Scaler");
         spdlog::warn("If you paid for these files, you've been scammed!");
         spdlog::warn("DO NOT USE IN MULTIPLAYER GAMES");
         spdlog::info("");
@@ -1585,7 +1587,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         spdlog::info("Setting DllPath to {}", wstring_to_string(Config::Instance()->MainDllPath.value()));
         spdlog::info("");
 
-#ifdef VER_PRE_RELEASE
+        // HelixSR Scaler: point OptiScaler at the HelixSR folder
+        HelixSR::ApplyDefaults();
+        spdlog::info("");
+
+// HelixSR Scaler: the update check looks at HelixSR Scaler's own releases, also when based on an OptiScaler pre-release
+#if 0
         spdlog::info("Pre-release build, disabling update checks");
         Config::Instance()->CheckForUpdate.set_volatile_value(false);
 #endif

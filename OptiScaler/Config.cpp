@@ -485,6 +485,10 @@ bool Config::Reload(std::filesystem::path iniPath)
             MenuBGColorG.set_from_config(readFloat("Menu", "BGColorG"));
             MenuBGColorB.set_from_config(readFloat("Menu", "BGColorB"));
             MenuBGColorA.set_from_config(readFloat("Menu", "BGColorA"));
+
+            // HelixSR Scaler: HelixSR's settings
+            HelixSRInt8.set_from_config(readString("HelixSR", "Int8", true));
+            HelixSRWaveSize.set_from_config(readInt("HelixSR", "WaveSize"));
             MenuBlur.set_from_config(readBool("Menu", "Blur"));
 
             if (auto setting = readFloat("Menu", "BlurStrength"); setting.has_value())
@@ -1300,6 +1304,10 @@ bool Config::SaveIni()
         ini.SetValue("Menu", "BGColorG", GetFloatValue(Instance()->MenuBGColorG.value_for_config()).c_str());
         ini.SetValue("Menu", "BGColorB", GetFloatValue(Instance()->MenuBGColorB.value_for_config()).c_str());
         ini.SetValue("Menu", "BGColorA", GetFloatValue(Instance()->MenuBGColorA.value_for_config()).c_str());
+
+        // HelixSR Scaler: HelixSR's settings
+        ini.SetValue("HelixSR", "Int8", Instance()->HelixSRInt8.value_for_config_or("auto").c_str());
+        ini.SetValue("HelixSR", "WaveSize", GetIntValue(Instance()->HelixSRWaveSize.value_for_config()).c_str());
         ini.SetValue("Menu", "Blur", GetBoolValue(Instance()->MenuBlur.value_for_config()).c_str());
         ini.SetValue("Menu", "BlurStrength", GetFloatValue(Instance()->MenuBlurStrength.value_for_config()).c_str());
         ini.SetValue("Menu", "CustomTabEnabled", GetBoolValue(Instance()->CustomTabEnabled.value_for_config()).c_str());

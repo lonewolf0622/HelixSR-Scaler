@@ -5,6 +5,8 @@
 #include "State.h"
 #include "resource.h"
 
+#define HELIXSR_SCALER_REPO_W L"lonewolf0622/HelixSR-Scaler" // HelixSR Scaler
+
 #include <json.hpp>
 
 #include <winhttp.h>
@@ -24,7 +26,11 @@ struct LatestReleaseInfo
     std::string url;
 };
 
-feature_version CurrentVersion() { return { VER_MAJOR_VERSION, VER_MINOR_VERSION, VER_HOTFIX_VERSION }; }
+// HelixSR Scaler: its own version and releases
+feature_version CurrentVersion()
+{
+    return { HELIXSR_SCALER_VERSION_MAJOR, HELIXSR_SCALER_VERSION_MINOR, HELIXSR_SCALER_VERSION_PATCH };
+}
 
 std::optional<LatestReleaseInfo> FetchLatestRelease()
 {
@@ -73,7 +79,7 @@ std::optional<LatestReleaseInfo> FetchLatestRelease()
         return std::nullopt;
     }
 
-    request = WinHttpOpenRequest(connection, L"GET", L"/repos/optiscaler/optiscaler/releases/latest", nullptr,
+    request = WinHttpOpenRequest(connection, L"GET", L"/repos/" HELIXSR_SCALER_REPO_W L"/releases/latest", nullptr,
                                  WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
     if (request == nullptr)
     {
@@ -82,7 +88,8 @@ std::optional<LatestReleaseInfo> FetchLatestRelease()
         return std::nullopt;
     }
 
-    LPCWSTR headers = L"User-Agent: OptiScaler\r\nAccept: application/vnd.github+json\r\nAccept-Encoding: identity\r\n";
+    LPCWSTR headers =
+        L"User-Agent: HelixSR-Scaler\r\nAccept: application/vnd.github+json\r\nAccept-Encoding: identity\r\n";
     if (!WinHttpSendRequest(request, headers, (DWORD) -1, WINHTTP_NO_REQUEST_DATA, 0, 0, 0))
     {
         LOG_WARN("Version check failed to send request: {}", GetLastError());
@@ -216,13 +223,13 @@ void RunVersionCheck()
 
     if (updateAvailable)
     {
-        LOG_WARN("New OptiScaler release available: {} (current {}.{}.{}).", release->tag, VER_MAJOR_VERSION,
-                 VER_MINOR_VERSION, VER_HOTFIX_VERSION);
+        LOG_WARN("New HelixSR Scaler release available: {} (current {}.{}.{}).", release->tag,
+                 HELIXSR_SCALER_VERSION_MAJOR, HELIXSR_SCALER_VERSION_MINOR, HELIXSR_SCALER_VERSION_PATCH);
     }
     else
     {
-        LOG_INFO("OptiScaler is up to date (current {}.{}.{})", VER_MAJOR_VERSION, VER_MINOR_VERSION,
-                 VER_HOTFIX_VERSION);
+        LOG_INFO("HelixSR Scaler is up to date (current {}.{}.{})", HELIXSR_SCALER_VERSION_MAJOR,
+                 HELIXSR_SCALER_VERSION_MINOR, HELIXSR_SCALER_VERSION_PATCH);
     }
 }
 } // namespace
@@ -230,7 +237,8 @@ void RunVersionCheck()
 const std::string& VersionCheck::CurrentVersionString()
 {
     static const std::string version =
-        std::format("{}.{}.{}", VER_MAJOR_VERSION, VER_MINOR_VERSION, VER_HOTFIX_VERSION);
+        std::format("{}.{}.{}", HELIXSR_SCALER_VERSION_MAJOR, HELIXSR_SCALER_VERSION_MINOR,
+                    HELIXSR_SCALER_VERSION_PATCH); // HelixSR Scaler
     return version;
 }
 

@@ -14,6 +14,7 @@
 
 #include <filesystem>
 #include "misc/IdentifyGpu.h"
+#include "helixsr/HelixSR.h"
 #include <vulkan/vulkan.h>
 
 inline const char* project_id_override = "24480451-f00d-face-1304-0308dabad187";
@@ -430,16 +431,15 @@ class NVNGXProxy
     }
 
   public:
-    // HelixSR's DLSS DLL (helixsr.dll in the OptiScaler folder) as the DLSS upscaler on GPUs without DLSS
+    // HelixSR's DLSS DLL (HelixSR\helixsr.dll next to the game) as the DLSS upscaler on GPUs without DLSS
     // ([DLSS] HelixSR = true, the default)
     static bool HelixSRDlss()
     {
         static int state = -1;
         if (state < 0)
         {
-            const auto path = std::filesystem::path(Config::Instance()->MainDllPath.value()) / L"helixsr.dll";
-            state = Config::Instance()->HelixSRDlss.value_or_default() && !IdentifyGpu::getPrimaryGpu().dlssCapable &&
-                    std::filesystem::exists(path);
+            state = Config::Instance()->HelixSRDlss.value_or_default() && HelixSR::Found() &&
+                    !IdentifyGpu::getPrimaryGpu().dlssCapable;
             LOG_INFO("HelixSR DLSS upscaler: {}", state ? "helixsr.dll in use" : "not used");
         }
         return state == 1;
@@ -466,6 +466,9 @@ class NVNGXProxy
             dllNames = { L"helixsr.dll" };
 
         auto optiPath = Config::Instance()->MainDllPath.value();
+
+        if (HelixSRDlss())
+            optiPath = HelixSR::Folder().wstring(); // HelixSR Scaler
         auto overridePath = Config::Instance()->NvngxPath.value_or(L"");
 
         if (_module.dll == nullptr)

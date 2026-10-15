@@ -53,5 +53,13 @@
     STRINGIZE(VER_MAJOR_VERSION) "." STRINGIZE(VER_MINOR_VERSION) "." STRINGIZE(VER_HOTFIX_VERSION) "-final (" VER_BUILD_COMMIT ")"
 #endif // VER_PRE_RELEASE
 
-#define VER_PRODUCT_NAME "OptiScaler v" VER_PRODUCT_VERSION_STR
+#define VER_PRODUCT_NAME "HelixSR Scaler v" HELIXSR_SCALER_VERSION_STR " (OptiScaler v" VER_PRODUCT_VERSION_STR ")"
 #endif // OPTISCALER_BUILD_METADATA
+
+// HelixSR Scaler: own version (update check against its GitHub releases), OptiScaler's version in brackets
+#define HELIXSR_SCALER_VERSION_MAJOR 1
+#define HELIXSR_SCALER_VERSION_MINOR 0
+#define HELIXSR_SCALER_VERSION_PATCH 0
+#define HELIXSR_SCALER_VERSION_STR                                                                                     \
+    STRINGIZE(HELIXSR_SCALER_VERSION_MAJOR) "." STRINGIZE(HELIXSR_SCALER_VERSION_MINOR) "." STRINGIZE(HELIXSR_SCALER_VERSION_PATCH)
+#define HELIXSR_SCALER_REPO "lonewolf0622/HelixSR-Scaler"

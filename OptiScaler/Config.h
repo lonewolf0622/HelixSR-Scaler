@@ -375,13 +375,19 @@ class Config
     CustomOptional<int> FGShortcutKey { VK_END };
     CustomOptional<bool> LightTheme { false };
     CustomOptional<bool> OverlaysUseTheme { false };
-    CustomOptional<float> MenuAccentColorR { 0.00f };
-    CustomOptional<float> MenuAccentColorG { 0.40f };
-    CustomOptional<float> MenuAccentColorB { 0.77f };
-    CustomOptional<float> MenuBGColorR { 0.0f };
-    CustomOptional<float> MenuBGColorG { 0.0f };
-    CustomOptional<float> MenuBGColorB { 0.0f };
+    CustomOptional<float> MenuAccentColorR { 0.176f }; // HelixSR Scaler: teal #2dd4bf (HelixSR FSR colour)
+    CustomOptional<float> MenuAccentColorG { 0.831f };
+    CustomOptional<float> MenuAccentColorB { 0.749f };
+    CustomOptional<float> MenuBGColorR { 0.078f }; // HelixSR Scaler: ink #141826
+    CustomOptional<float> MenuBGColorG { 0.094f };
+    CustomOptional<float> MenuBGColorB { 0.149f };
     CustomOptional<float> MenuBGColorA { 0.93f };
+
+    // HelixSR Scaler: HelixSR's settings, [HelixSR] in OptiScaler.ini. HelixSR Scaler writes them to
+    // HelixSR\helixsr.ini, the file HelixSR reads, when the game starts and when they change in the menu.
+    // Sharpening is OptiScaler's (RCAS, [Sharpness] and [CAS]); HelixSR's own sharpener stays off.
+    CustomOptional<std::string, NoDefault> HelixSRInt8; // on, off
+    CustomOptional<int, NoDefault> HelixSRWaveSize;     // 64, 32
     CustomOptional<bool> MenuBlur { true };
     CustomOptional<float> MenuBlurStrength { 1.0f };
     CustomOptional<bool> CustomTabEnabled { true };
@@ -700,6 +706,7 @@ class Config
 
     bool LoadFromPath(const wchar_t* InPath);
     bool SaveIni();
+    const std::filesystem::path& IniPath() const { return absoluteFileName; } // HelixSR Scaler
     bool SaveXeFG();
 
     void CheckUpscalerFiles();
