@@ -520,8 +520,8 @@ bool Generate(IFGFeature_Dx12* fg, const Frame& f, bool generated[kMaxGenerated]
 
     // One evaluation per generated frame, in present order, on this command list (as Streamline records them):
     // index 1 also runs the once-per-real-frame part (and the HUD cutoff), the last one moves the history on. The
-    // reset applies to the first. An index that fails leaves its slot to the real frame; after a failed first index
-    // the others are not evaluated (they need its part).
+    // reset applies to the first. From an index that fails on, the slots show the real frame (later indices are not
+    // evaluated: a generated frame after a real one would step back in time).
     bool any = false;
     const bool reset = SlBool(current.reset) || f.reset;
     NVSDK_NGX_Result lastResult = NVSDK_NGX_Result_Success;
@@ -540,11 +540,10 @@ bool Generate(IFGFeature_Dx12* fg, const Frame& f, bool generated[kMaxGenerated]
 
         if (!generated[i])
         {
+            // the later frames lie after this one: the caller shows the real frame from here on
             LOG_WARN("HelixSR FG present: frame {} index {} of {} not generated: {:X}", f.frameID, i + 1, count,
                      (UINT) lastResult);
-
-            if (i == 0)
-                break;
+            break;
         }
     }
 

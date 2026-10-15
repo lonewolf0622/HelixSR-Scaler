@@ -354,6 +354,10 @@ bool FSRFG_Dx12::Dispatch()
         return false;
     }
 
+    // HelixSR Scaler: HelixSR's frame generation without HelixSR's swapchain (released): nothing to configure
+    if (_hxActive && !HxRoute())
+        return false;
+
     UINT64 willDispatchFrame = 0;
     auto fIndex = GetDispatchIndex(willDispatchFrame);
     if (fIndex < 0)
@@ -930,6 +934,15 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
     }
 
     // HelixSR Scaler: HelixSR generates the frame ([HelixSR] FGPresent = optiscaler), this swapchain presents it
+    // HelixSR Scaler: HelixSR's swapchain but the route was switched off meanwhile: only the real frame (there is no
+    // FidelityFX context to dispatch to)
+    if (HxRoute() && !HelixSRPresent::Active())
+    {
+        params->numGeneratedFrames = 0;
+        _lastFrameId = params->frameID;
+        return FFX_API_RETURN_OK;
+    }
+
     if (HelixSRPresent::Active())
     {
         // the swapchain asks for numGeneratedFrames (1 with the FidelityFX swapchain, up to 3 with HelixSR's)
@@ -954,12 +967,16 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
             HelixSRPresent::Generate(this, frame, generated);
         }
 
-        // A slot without a generated frame shows the real frame, never an unwritten image. If even that copy is not
-        // possible, the presented slots end before it.
+        // Generated frames are shown up to the first one that failed; that slot and the later ones show the real
+        // frame (never an unwritten image, never a step back in time, the same number of presents). If even that
+        // copy is not possible, the presented slots end before it.
         uint32_t presented = 0;
+        bool failed = false;
         for (uint32_t i = 0; i < count; i++)
         {
-            if (!generated[i] && !ShowRealFrame(params, i))
+            failed = failed || !generated[i];
+
+            if (failed && !ShowRealFrame(params, i))
                 break;
 
             presented++;
@@ -1200,7 +1217,9 @@ bool FSRFG_Dx12::HxDispatch(int fIndex, UINT64 willDispatchFrame)
 
     HelixSRSwapchainConfig c {};
     c.frameGenerationEnabled = _isActive;
-    c.allowAsyncWorkloads = config->FGAsync.value_or_default();
+    // the generation on a compute queue (FGAsync) is not checked for this route yet: the game's inputs are moved
+    // between states a compute list may not use
+    c.allowAsyncWorkloads = false;
     c.onlyPresentGenerated = state.fgOnlyGenerated;
     c.generatedFrames = HxGeneratedFrames();
     c.frameID = willDispatchFrame;
@@ -1436,7 +1455,8 @@ bool FSRFG_Dx12::ReleaseSwapchain(HWND hwnd)
 
     MenuOverlayDx::CleanupRenderTarget(true, NULL);
 
-    if (_fgContext != nullptr)
+    // (HelixSR's swapchain: Deactivate turns its frame generation off and waits for its presents first)
+    if (_fgContext != nullptr || _hxActive)
         DestroyFGContext();
 
     if (!State::Instance().isShuttingDown)

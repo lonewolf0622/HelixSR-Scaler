@@ -442,9 +442,10 @@ class HelixSRSwapChainDX12 : public IDXGISwapChain4
     UINT refreshCap = 0;           // 0 = none yet
     UINT refreshCapFrames = 0;
 
-    HRESULT presentImpl(UINT SyncInterval, UINT Flags);
+    HRESULT presentImpl(UINT SyncInterval, UINT Flags, bool present1);
     void presentPassthrough(UINT SyncInterval, UINT Flags);
-    HRESULT resizeImpl(UINT BufferCount, UINT Width, UINT Height, DXGI_FORMAT NewFormat, UINT SwapChainFlags);
+    HRESULT resizeImpl(UINT BufferCount, UINT Width, UINT Height, DXGI_FORMAT NewFormat, UINT SwapChainFlags,
+                       bool resize1);
 
     UINT dispatchGeneration(UINT requested, ID3D12Resource* realFrame);
     void presentInterpolated(UINT SyncInterval, UINT Flags);

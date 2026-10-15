@@ -50,6 +50,8 @@ using namespace hxsc;
 
 namespace
 {
+const DXGI_PRESENT_PARAMETERS kEmptyPresentParameters {};
+
 IDXGIFactory* getDXGIFactoryFromSwapChain(IDXGISwapChain* swapChain)
 {
     IDXGIFactory* factory = nullptr;
@@ -793,27 +795,40 @@ HRESULT HelixSRSwapChainDX12::init(HWND hWnd, const DXGI_SWAP_CHAIN_DESC1* desc,
         getMonitorLuminanceRange(presentInfo.swapChain, &minLuminance, &maxLuminance);
 
         presentInfo.device->CreateFence(gameFenceValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&presentInfo.gameFence));
-        presentInfo.gameFence->SetName(L"HelixSR GameFence");
+        if (presentInfo.gameFence)
+            presentInfo.gameFence->SetName(L"HelixSR GameFence");
 
         presentInfo.device->CreateFence(interpolationFenceValue, D3D12_FENCE_FLAG_NONE,
                                         IID_PPV_ARGS(&presentInfo.interpolationFence));
-        presentInfo.interpolationFence->SetName(L"HelixSR InterpolationFence");
+        if (presentInfo.interpolationFence)
+            presentInfo.interpolationFence->SetName(L"HelixSR InterpolationFence");
 
         presentInfo.device->CreateFence(framesSentForPresentation, D3D12_FENCE_FLAG_NONE,
                                         IID_PPV_ARGS(&presentInfo.presentFence));
-        presentInfo.presentFence->SetName(L"HelixSR PresentFence");
+        if (presentInfo.presentFence)
+            presentInfo.presentFence->SetName(L"HelixSR PresentFence");
 
         presentInfo.device->CreateFence(framesSentForPresentation, D3D12_FENCE_FLAG_NONE,
                                         IID_PPV_ARGS(&presentInfo.replacementBufferFence));
-        presentInfo.replacementBufferFence->SetName(L"HelixSR ReplacementBufferFence");
+        if (presentInfo.replacementBufferFence)
+            presentInfo.replacementBufferFence->SetName(L"HelixSR ReplacementBufferFence");
 
         presentInfo.device->CreateFence(framesSentForPresentation, D3D12_FENCE_FLAG_NONE,
                                         IID_PPV_ARGS(&presentInfo.compositionFenceGPU));
-        presentInfo.compositionFenceGPU->SetName(L"HelixSR CompositionFence GPU");
+        if (presentInfo.compositionFenceGPU)
+            presentInfo.compositionFenceGPU->SetName(L"HelixSR CompositionFence GPU");
 
         presentInfo.device->CreateFence(framesSentForPresentation, D3D12_FENCE_FLAG_NONE,
                                         IID_PPV_ARGS(&presentInfo.compositionFenceCPU));
-        presentInfo.compositionFenceCPU->SetName(L"HelixSR CompositionFence CPU");
+        if (presentInfo.compositionFenceCPU)
+            presentInfo.compositionFenceCPU->SetName(L"HelixSR CompositionFence CPU");
+
+        if (!presentInfo.gameFence || !presentInfo.interpolationFence || !presentInfo.presentFence ||
+            !presentInfo.replacementBufferFence || !presentInfo.compositionFenceGPU || !presentInfo.compositionFenceCPU)
+        {
+            LOG_ERROR("HelixSR swapchain: fences not created");
+            return E_FAIL;
+        }
 
         if ((desc->Flags & DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT) ==
             DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT)
@@ -1098,6 +1113,9 @@ HRESULT STDMETHODCALLTYPE HelixSRSwapChainDX12::QueryInterface(REFIID riid, void
                                       IID_IDXGISwapChain,  IID_IDXGISwapChain1, IID_IDXGISwapChain2,
                                       IID_IDXGISwapChain3, IID_IDXGISwapChain4, IID_IHelixSRSwapChain };
 
+    if (ppvObject == nullptr)
+        return E_POINTER;
+
     for (auto guid : guidReplacements)
     {
         if (IsEqualGUID(riid, guid) == TRUE)
@@ -1108,6 +1126,7 @@ HRESULT STDMETHODCALLTYPE HelixSRSwapChainDX12::QueryInterface(REFIID riid, void
         }
     }
 
+    *ppvObject = nullptr;
     return E_NOINTERFACE;
 }
 
@@ -1350,10 +1369,13 @@ void HelixSRSwapChainDX12::presentInterpolated(UINT SyncInterval, UINT)
     }
 }
 
-HRESULT HelixSRSwapChainDX12::presentImpl(UINT SyncInterval, UINT Flags)
+// present1: called through Present1. The two entry points must stay different functions: OptiScaler detours both
+// vtable slots, and a linker folding identical functions (/OPT:ICF) would make both slots one address.
+HRESULT HelixSRSwapChainDX12::presentImpl(UINT SyncInterval, UINT Flags, bool present1)
 {
     if (Flags & DXGI_PRESENT_TEST)
-        return presentInfo.swapChain->Present(SyncInterval, Flags);
+        return present1 ? presentInfo.swapChain->Present1(SyncInterval, Flags, &kEmptyPresentParameters)
+                        : presentInfo.swapChain->Present(SyncInterval, Flags);
 
     setConfig(nextConfig);
 
@@ -1375,7 +1397,9 @@ HRESULT HelixSRSwapChainDX12::presentImpl(UINT SyncInterval, UINT Flags)
         lastPresentQpc = now;
     }
 
-    const bool runInterpolation = interpolationEnabled && frameGenerationCallback != nullptr;
+    // (no interpolation thread: CreateThread failed, the frames are presented without generation)
+    const bool runInterpolation =
+        interpolationEnabled && frameGenerationCallback != nullptr && interpolationThreadHandle != NULL;
 
     // the presenter has queued the copies of every earlier present (CPU fence) before the game queue waits on the
     // GPU fence: no GPU wait is queued for a value that is not queued to be signaled
@@ -1420,13 +1444,13 @@ HRESULT HelixSRSwapChainDX12::presentImpl(UINT SyncInterval, UINT Flags)
 
 HRESULT STDMETHODCALLTYPE HelixSRSwapChainDX12::Present(UINT SyncInterval, UINT Flags)
 {
-    return presentImpl(SyncInterval, Flags);
+    return presentImpl(SyncInterval, Flags, false);
 }
 
 HRESULT STDMETHODCALLTYPE HelixSRSwapChainDX12::Present1(UINT SyncInterval, UINT PresentFlags,
                                                          const DXGI_PRESENT_PARAMETERS*)
 {
-    return presentImpl(SyncInterval, PresentFlags);
+    return presentImpl(SyncInterval, PresentFlags, true);
 }
 
 HRESULT STDMETHODCALLTYPE HelixSRSwapChainDX12::GetBuffer(UINT Buffer, REFIID riid, void** ppSurface)
@@ -1434,8 +1458,11 @@ HRESULT STDMETHODCALLTYPE HelixSRSwapChainDX12::GetBuffer(UINT Buffer, REFIID ri
     EnterCriticalSection(&criticalSection);
 
     HRESULT hr = E_FAIL;
+    if (ppSurface != nullptr)
+        *ppSurface = nullptr;
 
-    if (riid == IID_ID3D12Resource || riid == IID_ID3D12Resource1 || riid == IID_ID3D12Resource2)
+    if (ppSurface != nullptr &&
+        (riid == IID_ID3D12Resource || riid == IID_ID3D12Resource1 || riid == IID_ID3D12Resource2))
     {
         if (Buffer < gameBufferCount && verifyBackbufferDuplicateResources() &&
             replacementSwapBuffers[Buffer].resource != nullptr)
@@ -1484,13 +1511,16 @@ HRESULT STDMETHODCALLTYPE HelixSRSwapChainDX12::GetDesc(DXGI_SWAP_CHAIN_DESC* pD
 HRESULT STDMETHODCALLTYPE HelixSRSwapChainDX12::ResizeBuffers(UINT BufferCount, UINT Width, UINT Height,
                                                               DXGI_FORMAT NewFormat, UINT SwapChainFlags)
 {
-    return resizeImpl(BufferCount, Width, Height, NewFormat, SwapChainFlags);
+    return resizeImpl(BufferCount, Width, Height, NewFormat, SwapChainFlags, false);
 }
 
 // (ResizeBuffers and ResizeBuffers1 are hooked by OptiScaler: neither calls the other)
 HRESULT HelixSRSwapChainDX12::resizeImpl(UINT BufferCount, UINT Width, UINT Height, DXGI_FORMAT NewFormat,
-                                         UINT SwapChainFlags)
+                                         UINT SwapChainFlags, bool resize1)
 {
+    if (resize1)
+        LOG_INFO("HelixSR swapchain: ResizeBuffers1 as ResizeBuffers (one present queue of its own)");
+
     destroyReplacementResources();
 
     EnterCriticalSection(&criticalSection);
@@ -1670,7 +1700,7 @@ HRESULT STDMETHODCALLTYPE HelixSRSwapChainDX12::ResizeBuffers1(UINT BufferCount,
                                                                const UINT*, IUnknown* const*)
 {
     // one present queue of our own: the per-buffer queues and node masks the game asks for do not apply
-    return resizeImpl(BufferCount, Width, Height, Format, SwapChainFlags);
+    return resizeImpl(BufferCount, Width, Height, Format, SwapChainFlags, true);
 }
 
 HRESULT STDMETHODCALLTYPE HelixSRSwapChainDX12::SetHDRMetaData(DXGI_HDR_METADATA_TYPE Type, UINT Size, void* pMetaData)

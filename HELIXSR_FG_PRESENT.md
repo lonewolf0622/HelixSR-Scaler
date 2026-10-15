@@ -102,11 +102,13 @@ files). It makes up to 3 generated frames per real frame (2x, 3x, 4x):
   `HelixSRPresent::Generate` runs one NGX evaluation per generated frame on that list, with `DLSSG.MultiFrameCount = N`
   and `DLSSG.MultiFrameIndex = 1..N`. `DLSSG.Reset` is only set at index 1. `DLSSG.BackbufferFrameID` moves on once
   per real frame (the earlier code moved it on per call). The feature is created with `DLSSG.MultiFrameCountMax` = what
-  helixsr.dll offers, so switching between 2x, 3x and 4x keeps it. If an index fails, the real frame is copied into
-  that slot. If index 1 fails, the later indices are not evaluated.
+  helixsr.dll offers, so switching between 2x, 3x and 4x keeps it. After an index fails, the later indices are not
+  evaluated.
 - The presenter shows the N generated frames, then the real one. Each is paced at
-  `(average real frame time - 2 x variance x varianceFactor) / (N + 1) - safety margin`. For N = 1 this is AMD's
-  `average / 2 - variance x factor`.
+  `(average real frame time - 2 x variance x varianceFactor) / P - safety margin`, where P is the number of presents
+  of that real frame (N + 1; N with onlyPresentGenerated). For N = 1 this is AMD's `average / 2 - variance x factor`.
+- Generated frames are shown up to the first index that failed. That slot and the later ones show the real frame, so
+  the number of presents stays the same and the picture never steps back in time.
 - Refresh cap: with VSync, or on a display without tearing, N is lowered so that (N + 1) x real fps stays at most the
   refresh rate (2 % slack). A lower cap applies after 30 real frames in a row, a higher one after 120. The log line is
   "HelixSR swapchain: ... at most N generated frame(s) per real frame".
@@ -146,7 +148,13 @@ Deadlock checks:
 - No entry (onlyPresentGenerated and 0 generated): framesSent does not change, and every wait is for values already
   signaled.
 - Disable, resize and queue change call waitForPresents first (gameFence, interpolationFence, presentFence >= what
-  was queued) and only then stop the threads. The threads only stop after their current entry.
+  was queued) and only then stop the threads. A stopping presenter drops an entry it has not started. That is safe only
+  because waitForPresents has already waited for every scheduled present. If the interpolation thread cannot be
+  created, Present presents without generation (it would otherwise wait for an event that never comes).
+- The generation always runs on the game queue for now (FGAsync is ignored in this route). On a compute list the
+  game's inputs would go through states a compute list may not use.
+- Present / Present1 and ResizeBuffers / ResizeBuffers1 have different bodies. OptiScaler detours each vtable slot,
+  and a linker folding identical functions would make two slots one address.
 
 ### One command list vs one submission per index
 
