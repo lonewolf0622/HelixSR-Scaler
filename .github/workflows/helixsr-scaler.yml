@@ -150,6 +150,14 @@ jobs:
     - name: Test setup_linux.sh
       run: helixsr/tests/test_setup_linux.sh "linux/$name"
 
+    - name: Test startup recovery without graphics
+      run: |
+        out="$RUNNER_TEMP/startup-recovery"
+        mkdir -p "$out"
+        x86_64-w64-mingw32-g++ -std=c++17 -O2 -static -IOptiScaler/helixsr helixsr/tests/startup_recovery.cpp -o "$out/recovery-test.exe"
+        cd "$out"
+        DISPLAY= WAYLAND_DISPLAY= WINEDEBUG=-all WINEPREFIX="$out/prefix" wine ./recovery-test.exe
+
     - name: Test under Wine
       run: helixsr/tests/test_wine.sh "linux/$name"
 

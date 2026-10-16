@@ -2,6 +2,7 @@
 
 #include "HelixSR.h"
 #include "HelixSRInternal.h"
+#include "StartupRecovery.h"
 
 #include "Config.h"
 #include "State.h"
@@ -38,6 +39,7 @@ const wchar_t* kLog = L"helixsr.log";
 
 fs::path folder;
 bool found = false;
+bool frameGenRecovery = false;
 
 std::string Lower(std::string s)
 {
@@ -677,6 +679,18 @@ void ApplyDefaults()
 
     LOG_INFO("HelixSR Scaler {}: HelixSR found in {}", Version(), wstring_to_string(folder.wstring()));
 
+    frameGenRecovery = IncompleteStart(folder);
+    if (frameGenRecovery)
+    {
+        // Keep the user's saved settings. Recovery suppresses the entire FG route for this launch, before hooks
+        // and plugin selection, without renaming a folder or refusing any DLL load.
+        cfg->FGInput.set_volatile_value(::FGInput::NoFG);
+        cfg->FGOutput.set_volatile_value(::FGOutput::NoFG);
+        cfg->FGNvngxReplacement.set_volatile_value(::FGNvngxReplacement::None);
+        LOG_WARN("HelixSR Scaler: the previous startup was interrupted; frame generation is off for this launch. "
+                 "Upscaling remains available. A successful launch clears the startup marker.");
+    }
+
     // HelixSR's settings live in OptiScaler.ini [HelixSR]; helixsr.ini is written from them for HelixSR
     ImportHelixIni();
     if (!WriteHelixIni())
@@ -770,7 +784,7 @@ bool Found() { return found; }
 bool FrameGenFound()
 {
     std::error_code ec;
-    return found && fs::is_directory(folder / kFGFolder, ec);
+    return found && !frameGenRecovery && fs::is_directory(folder / kFGFolder, ec);
 }
 
 bool detail::FrameGenInstalled()
