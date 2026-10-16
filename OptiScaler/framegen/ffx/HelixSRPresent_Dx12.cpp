@@ -371,10 +371,13 @@ bool Requested()
     return v == "optiscaler";
 }
 
+// set when HelixSR's frame generation could not start: FSR FG then generates by itself and keeps its own name
+static bool unavailable = false;
+
 bool Labeled()
 {
     const auto& state = State::Instance();
-    return Requested() && state.activeFgInput == FGInput::DLSSG && state.activeFgOutput == FGOutput::FSRFG &&
+    return Requested() && !unavailable && state.activeFgInput == FGInput::DLSSG && state.activeFgOutput == FGOutput::FSRFG &&
            state.activeFgNvngx == FGNvngxReplacement::HelixSR;
 }
 
@@ -406,6 +409,7 @@ void Init(ID3D12Device* device)
     if (State::Instance().activeFgNvngx != FGNvngxReplacement::HelixSR || !Nvngx_FG::isDx12Available())
     {
         LOG_WARN("HelixSR FG present: HelixSR's frame generation (helixsr.dll with helixsr-fg) is not available");
+        unavailable = true;
         return;
     }
 
