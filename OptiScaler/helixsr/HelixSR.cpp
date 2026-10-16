@@ -682,102 +682,23 @@ void ApplyDefaults()
     if (!WriteHelixIni())
         LOG_WARN("HelixSR Scaler: could not write {}", wstring_to_string(HelixIniPath().wstring()));
 
-    SwitchFrameGeneration();
-
-    // OptiScaler.ini wins when it sets these; set_volatile_value keeps them out of OptiScaler.ini when it is saved.
-    // HelixSR is the DLSS upscaler (on GPUs without DLSS, see NVNGXProxy::HelixSRDlss) and, with its helixsr-fg
-    // folder, the provider of DLSS frame generation.
+    // This release provides upscaling only. Override settings saved by an earlier release,
+    // and do not inspect, move or load any leftover frame-generation engine files.
+    cfg->HelixSRFrameGeneration.set_volatile_value(false);
+    cfg->FGInput.set_volatile_value(::FGInput::NoFG);
+    cfg->FGOutput.set_volatile_value(::FGOutput::NoFG);
+    cfg->FGNvngxReplacement.set_volatile_value(::FGNvngxReplacement::None);
     if (!cfg->Dx12Upscaler.has_value())
         cfg->Dx12Upscaler.set_volatile_value(::Upscaler::DLSS);
+    LOG_INFO("HelixSR Scaler: upscaling only; HelixSR frame generation is not included in this release.");
 
-    if (!cfg->FGNvngxReplacement.has_value() && FrameGenFound())
-        cfg->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::HelixSR);
-
-    // A game with its own DLSS Frame Generation (Streamline's sl.dlss_g.dll): its frame generation goes to HelixSR
-    // (FGInput = nvngxfg), paced by the game's own Streamline
-    const bool optiPresent = cfg->HelixSRFGPresent.value_or("optiscaler") == "optiscaler";
-    const bool inputWasAuto = !cfg->FGInput.has_value();
-    if (inputWasAuto && FrameGenFound() && optiPresent && GameHasDlssg())
-    {
-        // [HelixSR] FGPresent = optiscaler: the game's DLSS FG inputs (FGInput = dlssg), OptiScaler's FSR FG swapchain
-        // presents and paces (FGOutput = fsrfg), HelixSR generates the frames (see HELIXSR_FG_PRESENT.md)
-        cfg->FGInput.set_volatile_value(::FGInput::DLSSG);
-        LOG_INFO("HelixSR Scaler: the game has DLSS Frame Generation, HelixSR generates and OptiScaler presents "
-                 "(FGPresent = optiscaler: FGInput = dlssg)");
-    }
-
-    // FGPresent = optiscaler with the DLSSG input (set above, or FGInput = dlssg by hand): the output must be
-    // OptiScaler's FSR FG swapchain. auto or dlssg (a DLSSG output needs Streamline's own files and would present with
-    // sl.dlss_g) become fsrfg; another explicit output is kept (then HelixSR does not generate through OptiScaler).
-    if (optiPresent && FrameGenFound() && cfg->FGInput.value_or_default() == ::FGInput::DLSSG)
-    {
-        const bool outputAuto = !cfg->FGOutput.has_value();
-        const auto output = cfg->FGOutput.value_or_default();
-
-        if (outputAuto || output == ::FGOutput::DLSSG)
-        {
-            cfg->FGOutput.set_volatile_value(::FGOutput::FSRFG);
-            LOG_INFO("HelixSR Scaler: FGPresent = optiscaler: FGOutput {} -> fsrfg (OptiScaler's FSR FG swapchain "
-                     "presents HelixSR's frames)",
-                     outputAuto ? "auto" : "dlssg");
-        }
-        else if (output != ::FGOutput::FSRFG)
-        {
-            LOG_WARN("HelixSR Scaler: FGPresent = optiscaler needs FGOutput = fsrfg (or auto); FGOutput = {} kept, "
-                     "HelixSR's frame generation is not used",
-                     magic_enum::enum_name(output));
-        }
-
-        if (cfg->FGNvngxReplacement.value_or_default() != FGNvngxReplacement::HelixSR)
-        {
-            cfg->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::HelixSR);
-            LOG_INFO("HelixSR Scaler: FGPresent = optiscaler: FGNvngxReplacement -> helixsr");
-        }
-
-        LOG_INFO("HelixSR Scaler: FGPresent = optiscaler: FGInput = dlssg, FGOutput = {}, generation by HelixSR",
-                 magic_enum::enum_name(cfg->FGOutput.value_or_default()));
-    }
-    else if (optiPresent && FrameGenFound() && !inputWasAuto)
-    {
-        LOG_INFO("HelixSR Scaler: FGPresent = optiscaler is used with FGInput = dlssg only (FGInput = {}): HelixSR's "
-                 "frames are presented by Streamline",
-                 magic_enum::enum_name(cfg->FGInput.value_or_default()));
-    }
-
-    const bool optiRoute = optiPresent && cfg->FGInput.value_or_default() == ::FGInput::DLSSG;
-    if (inputWasAuto && FrameGenFound() && !optiRoute)
-    {
-        if (GameHasDlssg())
-        {
-            cfg->FGInput.set_volatile_value(::FGInput::NvngxFG);
-            LOG_INFO("HelixSR Scaler: the game has DLSS Frame Generation, it runs HelixSR's (FGInput = nvngxfg)");
-        }
-        else
-        {
-            LOG_INFO("HelixSR Scaler: no sl.dlss_g.dll (DLSS Frame Generation) found in the game's folder; if the "
-                     "game has DLSS Frame Generation, set FGInput=nvngxfg in OptiScaler.ini [FrameGen]");
-        }
-    }
-    else if (!FrameGenInstalled()) // (switched off: parked in helixsr-fg.off, logged above)
-    {
-        LOG_INFO("HelixSR Scaler: no {} folder next to {}: frame generation is off (copy HelixSR's {} folder there)",
-                 wstring_to_string(kFGFolder), wstring_to_string(kDll), wstring_to_string(kFGFolder));
-    }
 }
 
 bool Found() { return found; }
 
-bool FrameGenFound()
-{
-    std::error_code ec;
-    return found && fs::is_directory(folder / kFGFolder, ec);
-}
+bool FrameGenFound() { return false; }
 
-bool detail::FrameGenInstalled()
-{
-    std::error_code ec;
-    return found && (fs::is_directory(folder / kFGFolder, ec) || fs::is_directory(folder / kFGFolderOff, ec));
-}
+bool detail::FrameGenInstalled() { return false; }
 
 fs::path DllPath() { return found ? folder / kDll : fs::path(); }
 
