@@ -261,7 +261,7 @@ std::optional<std::string> ConfigValue(const std::string& key)
     if (key == "MultiFrame" && cfg->HelixSRMultiFrame.has_value())
         return std::to_string(std::clamp(cfg->HelixSRMultiFrame.value(), 1, 3));
     if (key == "QuickFlow" && cfg->HelixSRQuickFlow.has_value())
-        return std::string(cfg->HelixSRQuickFlow.value() ? "on" : "off");
+        return std::string(cfg->HelixSRQuickFlow.value() == 2 ? "fastest" : cfg->HelixSRQuickFlow.value() == 1 ? "on" : "off");
     return std::nullopt;
 }
 
@@ -337,8 +337,8 @@ void ImportHelixIni()
         if (auto v = old.Get("FrameGeneration", "MultiFrame"); v.has_value() && (v.value() == "2" || v.value() == "3"))
             cfg->HelixSRMultiFrame = std::stoi(v.value());
         if (auto v = old.Get("FrameGeneration", "QuickFlow");
-            v.has_value() && (Lower(v.value()) == "on" || Lower(v.value()) == "off"))
-            cfg->HelixSRQuickFlow = Lower(v.value()) == "on";
+            v.has_value() && (Lower(v.value()) == "on" || Lower(v.value()) == "off" || Lower(v.value()) == "fastest"))
+            cfg->HelixSRQuickFlow = Lower(v.value()) == "fastest" ? 2 : Lower(v.value()) == "on" ? 1 : 0;
         LOG_INFO("HelixSR Scaler: moved the settings in helixsr.ini to OptiScaler.ini");
     }
 
@@ -796,8 +796,8 @@ void SetMultiFrame(int count)
              count, opti, helix);
 }
 
-// The QuickFlow setting the game started with (restart note)
-bool quickFlowAtStart = false;
+// The QuickFlow setting the game started with (restart note): 0 Best, 1 Fast, 2 Fastest
+int quickFlowAtStart = 0;
 bool quickFlowAtStartSet = false;
 
 void RenderQuickFlow()
@@ -806,21 +806,21 @@ void RenderQuickFlow()
         return;
 
     auto cfg = Config::Instance();
-    const bool fast = cfg->HelixSRQuickFlow.value_or(false);
+    const int now = std::clamp(cfg->HelixSRQuickFlow.value_or(0), 0, 2);
 
     if (!quickFlowAtStartSet)
     {
-        quickFlowAtStart = fast;
+        quickFlowAtStart = now;
         quickFlowAtStartSet = true;
     }
 
-    const char* names[] = { "Best", "Fast" };
-    int pick = fast ? 1 : 0;
+    const char* names[] = { "Best", "Fast", "Fastest" };
+    int pick = now;
 
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8.0f);
     if (ImGui::BeginCombo("Frame generation quality", names[pick]))
     {
-        for (int i = 0; i < 2; i++)
+        for (int i = 0; i < 3; i++)
         {
             if (ImGui::Selectable(names[i], i == pick))
                 pick = i;
@@ -830,20 +830,21 @@ void RenderQuickFlow()
 
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Best: full quality.\nFast: QuickFlow, a faster motion estimate for lower-end GPUs, slightly "
-                          "softer in-between frames.\n\nFast takes effect after restarting the game, and only with 2x "
-                          "(QuickFlow is not used with 3x / 4x).");
+                          "softer in-between frames.\nFastest: QuickFlow at half size, upscaled with detail restore. The "
+                          "fastest; it can shimmer (mostly at 4K).\n\nFast and Fastest take effect after restarting the "
+                          "game, and only with 2x (QuickFlow is not used with 3x / 4x).");
 
-    if ((pick == 1) != fast)
+    if (pick != now)
     {
-        cfg->HelixSRQuickFlow = pick == 1;
+        cfg->HelixSRQuickFlow = pick;
         const bool opti = WriteOptiScalerIni();
         const bool helix = WriteHelixIni();
         LOG_INFO("HelixSR Scaler: QuickFlow = {} saved (OptiScaler.ini {}, helixsr.ini {}); it applies at the next game "
                  "start",
-                 pick == 1 ? "on" : "off", opti, helix);
+                 pick == 2 ? "fastest" : pick == 1 ? "on" : "off", opti, helix);
     }
 
-    if (cfg->HelixSRQuickFlow.value_or(false) != quickFlowAtStart)
+    if (std::clamp(cfg->HelixSRQuickFlow.value_or(0), 0, 2) != quickFlowAtStart)
         ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "Restart the game to use the new quality");
 }
 

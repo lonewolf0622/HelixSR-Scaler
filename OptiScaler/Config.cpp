@@ -500,10 +500,12 @@ bool Config::Reload(std::filesystem::path iniPath)
             HelixSRMultiFrame.set_from_config(readInt("HelixSR", "MultiFrame"));
             if (auto qf = readString("HelixSR", "QuickFlow", true); qf.has_value())
             {
-                if (qf.value() == "on" || qf.value() == "true" || qf.value() == "1")
-                    HelixSRQuickFlow.set_from_config(true);
+                if (qf.value() == "fastest")
+                    HelixSRQuickFlow.set_from_config(2);
+                else if (qf.value() == "on" || qf.value() == "true" || qf.value() == "1")
+                    HelixSRQuickFlow.set_from_config(1);
                 else if (qf.value() == "off" || qf.value() == "false" || qf.value() == "0")
-                    HelixSRQuickFlow.set_from_config(false);
+                    HelixSRQuickFlow.set_from_config(0);
             }
             FGHelixSRInterpolationCount.set_from_config(readInt("HelixSR", "FGInterpolationCount"));
             if (FGHelixSRInterpolationCount.has_value() &&
@@ -1335,7 +1337,7 @@ bool Config::SaveIni()
         ini.SetValue("HelixSR", "FGPresent", Instance()->HelixSRFGPresent.value_for_config_or("streamline").c_str());
         ini.SetValue("HelixSR", "MultiFrame", GetIntValue(Instance()->HelixSRMultiFrame.value_for_config()).c_str());
         if (auto qf = Instance()->HelixSRQuickFlow.value_for_config(); qf.has_value())
-            ini.SetValue("HelixSR", "QuickFlow", qf.value() ? "on" : "off");
+            ini.SetValue("HelixSR", "QuickFlow", qf.value() == 2 ? "fastest" : qf.value() == 1 ? "on" : "off");
         else
             ini.SetValue("HelixSR", "QuickFlow", "auto");
         ini.SetValue("HelixSR", "FGInterpolationCount",

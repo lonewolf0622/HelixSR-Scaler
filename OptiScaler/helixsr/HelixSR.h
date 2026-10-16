@@ -38,7 +38,7 @@ void Choose();
 // menu: saved to OptiScaler.ini and helixsr.ini; HelixSR's frame generation reads it at the next game start
 void SetMultiFrame(int count);
 
-// Frame generation quality Best / Fast ([HelixSR] QuickFlow = auto | on | off, auto = off; helixsr.ini
+// Frame generation quality Best / Fast / Fastest ([HelixSR] QuickFlow = auto | on | off | fastest, auto = off; helixsr.ini
 // [FrameGeneration] QuickFlow), drawn in the menu's frame generation section. Applies at the next game start, 2x only.
 void RenderQuickFlow();
 
