@@ -415,6 +415,10 @@ class Config
     // HelixSR's frame generation quality: 0 off (Best), 1 on (Fast: QuickFlow), 2 fastest (QuickFlow at half size);
     // auto = off. helixsr.ini [FrameGeneration] QuickFlow, read at the game start
     CustomOptional<int, NoDefault> HelixSRQuickFlow;
+    // Vulkan games through OptiScaler's Dx12 bridge: create the bridge's DirectX 12 queue as a compute queue (true), so
+    // it has a Vulkan queue to itself. Off by default: it only helps with a vkd3d-proton that waits for shared fences
+    // on the GPU (see the ini)
+    CustomOptional<bool, NoDefault> HelixSRVulkanComputeQueue;
     CustomOptional<bool> MenuBlur { true };
     CustomOptional<float> MenuBlurStrength { 1.0f };
     CustomOptional<bool> CustomTabEnabled { true };

@@ -1902,6 +1902,15 @@ HRESULT IFeature_VkwDx12::CreateDx12Device()
 
     if (Dx12CommandQueue == nullptr)
     {
+        // HelixSR Scaler: opt-in ([HelixSR] VulkanComputeQueue = true). A compute queue gets a Vulkan queue to itself
+        // in vkd3d-proton, which lets a vkd3d-proton that waits for shared fences on the GPU keep the GPU busy (the
+        // allocators and command lists below use the same type; the bridge only needs compute states)
+        if (Config::Instance()->HelixSRVulkanComputeQueue.value_or(false))
+        {
+            Dx12CommandListType = D3D12_COMMAND_LIST_TYPE_COMPUTE;
+            LOG_INFO("HelixSR Scaler: the Dx12 bridge uses a compute queue");
+        }
+
         D3D12_COMMAND_QUEUE_DESC queueDesc = {};
         queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
         queueDesc.Type = Dx12CommandListType;
