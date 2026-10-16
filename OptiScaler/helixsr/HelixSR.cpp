@@ -235,7 +235,8 @@ struct Managed
 };
 const Managed kManaged[] = { { "Upscaling", "Int8" },
                              { "Compatibility", "WaveSize" },
-                             { "FrameGeneration", "QuickFlow" } };
+                             { "FrameGeneration", "QuickFlow" },
+                             { "ModelE", "UseReactiveMask" } };
 // earlier keys, taken out of helixsr.ini: sharpening (OptiScaler's now) and frame generation's old mode
 const Managed kRetired[] = { { "Sharpening", "Sharpness" },
                              { "Sharpening", "UseGameSlider" },
@@ -262,6 +263,10 @@ std::optional<std::string> ConfigValue(const std::string& key)
         const int qf = cfg->HelixSRQuickFlow.value();
         return std::string(qf == 2 ? "fastest" : qf == 1 ? "on" : "off");
     }
+    // OptiScaler's "Disable Reactive Mask" (InitFlags): unticked gives the game's reactive mask to HelixSR's network
+    // (its bias-current-colour input: particles, hair and other things without good motion vectors)
+    if (key == "UseReactiveMask" && cfg->DisableReactiveMask.has_value())
+        return std::string(cfg->DisableReactiveMask.value() ? "false" : "true");
     return std::nullopt;
 }
 
