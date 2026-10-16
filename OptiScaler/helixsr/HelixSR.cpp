@@ -696,7 +696,6 @@ void ApplyDefaults()
              magic_enum::enum_name(cfg->FGInput.value_or_default()),
              magic_enum::enum_name(cfg->FGOutput.value_or_default()),
              magic_enum::enum_name(cfg->FGNvngxReplacement.value_or_default()));
-
 }
 
 bool Found() { return found; }
