@@ -62,23 +62,6 @@ class NtdllHooks
         if (LibraryLoadHooks::IsApiSetName(name))
             return o_LdrLoadDll(PathToFile, Flags, ModuleFileName, ModuleHandle);
 
-        // Linux (Wine / Proton): Wine's built-in Kerberos.dll can stall in its start-up code (the host's login and network
-        // lookups) while it holds the loader lock, which freezes a game at start with a black screen (seen in games with
-        // Streamline). Games do not need it: the load is refused as if it were not there (the same as the Wine DLL override
-        // Kerberos=d).
-        if (State::Instance().isRunningOnLinux &&
-            (LibraryLoadHooks::EndsWithInsensitive(name, std::wstring_view(L"kerberos.dll")) ||
-             LibraryLoadHooks::EndsWithInsensitive(name, std::wstring_view(L"kerberos"))))
-        {
-            static bool told = false;
-            if (!told)
-            {
-                told = true;
-                LOG_INFO("Wine's Kerberos.dll is not loaded (it can freeze the game at start)");
-            }
-            return STATUS_DLL_NOT_FOUND;
-        }
-
         if (State::SkipDllChecks())
         {
             const std::wstring skip = string_to_wstring(State::SkipDllName());
