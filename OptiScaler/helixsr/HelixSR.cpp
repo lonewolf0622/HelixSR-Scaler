@@ -695,7 +695,7 @@ void ApplyDefaults()
 
     // A game with its own DLSS Frame Generation (Streamline's sl.dlss_g.dll): its frame generation goes to HelixSR
     // (FGInput = nvngxfg), paced by the game's own Streamline
-    const bool optiPresent = cfg->HelixSRFGPresent.value_or("streamline") == "optiscaler";
+    const bool optiPresent = cfg->HelixSRFGPresent.value_or("optiscaler") == "optiscaler";
     const bool inputWasAuto = !cfg->FGInput.has_value();
     if (inputWasAuto && FrameGenFound() && optiPresent && GameHasDlssg())
     {
