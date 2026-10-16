@@ -44,25 +44,31 @@ check "leftover HelixSR engine files are untouched" '[ -f "$G/HelixSR/helixsr-fg
 # Verify actual startup configuration for alternative FG routes and every supported provider.
 route() {
     local input=$1 output=$2 provider=$3 expected=$4
-    sed -i "s/^FGInput=.*/FGInput=$input/; s/^FGOutput=.*/FGOutput=$output/; s/^FGNvngxReplacement=.*/FGNvngxReplacement=$provider/; s/^Enabled=.*/Enabled=true/; s/^FrameGeneration=.*/FrameGeneration=on/" "$G/OptiScaler.ini"
+    sed -i "s/^FGInput=.*/FGInput=$input/; s/^FGOutput=.*/FGOutput=$output/; s/^FGNvngxReplacement=.*/FGNvngxReplacement=$provider/; s/^FrameGeneration=.*/FrameGeneration=on/" "$G/OptiScaler.ini"
+    awk '{ sub(/\r$/, "") } /^\[/ { section=$0 } section=="[FrameGen]" && /^Enabled=/ { $0="Enabled=true" } { print }' "$G/OptiScaler.ini" >"$W/route.ini"
+    mv "$W/route.ini" "$G/OptiScaler.ini"
     cp "$G/OptiScaler.ini" "$W/requested.ini"
     (cd "$G" && timeout 180 wine TestGame.exe >"$W/run.txt" 2>&1)
     check "$input/$output/$provider preserves alternative routing" "grep -q 'alternative FG settings: input=$input, output=$output, provider=$expected' \"\$G/OptiScaler.log\""
     check "$input/$output/$provider preserves saved choices" 'cmp -s "$W/requested.ini" "$G/OptiScaler.ini"'
     check "HelixSR engine never initialized" '! grep -q "HelixSR frame generation initialized" "$G/OptiScaler.log"'
 }
-route Upscaler FSRFG FFX FFX
-route DLSSG FSRFG Nukems Nukems
+# NVNGX provider selection applies to NvngxFG input or DLSSG output only.
+route Upscaler FSRFG auto Nukems
+route DLSSG FSRFG auto Nukems
+route NvngxFG NoFG Nukems Nukems
 route NvngxFG NoFG Arturs Arturs
 route DLSSG DLSSG Combo Combo
-route XeFG XeFG None None
-route DLSSG FSRFG HelixSR FFX
+route XeFG XeFG auto Nukems
+route Upscaler DLSSG FFX FFX
+route DLSSG DLSSG None None
+route NvngxFG NoFG HelixSR FFX
 
 # An old unsupported-GPU log must not disable alternative frame generation.
 sed -i 's/^WaveSize=64/WaveSize=auto/' "$G/OptiScaler.ini"
 printf '%s\r\n' 'fg: frame generation NOT available on this GPU: no 32-lane waves' >"$G/HelixSR/helixsr.log"
 (cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
-check "old HelixSR GPU log leaves alternatives available" 'grep -q "alternative FG settings: input=DLSSG, output=FSRFG, provider=FFX" "$G/OptiScaler.log"'
+check "old HelixSR GPU log leaves alternatives available" 'grep -q "alternative FG settings: input=NvngxFG, output=NoFG, provider=FFX" "$G/OptiScaler.log"'
 check "auto wave size remains 32 lanes" 'grep -q "^WaveSize = 32" "$G/HelixSR/helixsr.ini" && grep -q "^WaveSize=auto" "$G/OptiScaler.ini"'
 check "no second copy of HelixSR's DLL (one DLL for DLSS)" '[ ! -e "$G/HelixSR/helixsr_upscaler.dll" ]'
 
