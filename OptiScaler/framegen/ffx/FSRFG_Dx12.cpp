@@ -1217,9 +1217,17 @@ bool FSRFG_Dx12::HxDispatch(int fIndex, UINT64 willDispatchFrame)
 
     HelixSRSwapchainConfig c {};
     c.frameGenerationEnabled = _isActive;
-    // the generation on a compute queue (FGAsync) is not checked for this route yet: the game's inputs are moved
-    // between states a compute list may not use
-    c.allowAsyncWorkloads = false;
+    // FSRFG AllowAsync (as with the FidelityFX swapchain): the generation on the swapchain's async compute queue. The
+    // game's inputs are copied on the game queue first (HelixSRPresent::StageInputs); the compute list reads the copies
+    c.allowAsyncWorkloads = config->FGAsync.value_or_default();
+    c.stageInputsCallbackUserContext = this;
+    c.stageInputsCallback = [](ID3D12GraphicsCommandList* gameList, uint64_t frameID, void* pUserCtx) -> bool
+    {
+        if (pUserCtx == nullptr)
+            return false;
+
+        return HelixSRPresent::StageInputs(reinterpret_cast<FSRFG_Dx12*>(pUserCtx), gameList, frameID);
+    };
     c.onlyPresentGenerated = state.fgOnlyGenerated;
     c.generatedFrames = HxGeneratedFrames();
     c.frameID = willDispatchFrame;

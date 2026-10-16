@@ -30,6 +30,8 @@
 //   no registered interpolation command lists: every frame is copied as it is into the swapchain image
 // - the interpolation fence is signaled after the generation queue waited for the game's frame even when the frame
 //   generation callback fails, so the real frame is never shown before the game finished rendering it
+// - generation on the async compute queue (allowAsyncWorkloads): the game's inputs are first copied on the game queue
+//   (stageInputsCallback), the compute list only reads those copies; no copies, no generation for that frame
 // See HELIXSR_FG_PRESENT.md (multi-frame generation) for the fence review.
 
 #pragma once
@@ -358,6 +360,11 @@ struct ReplacementResource
 };
 } // namespace hxsc
 
+// Async generation: records the copies of the game's inputs of frameID on a list of the game queue (run after the
+// game's frame, before the generation queue's wait on it). False: nothing usable was recorded, the frame is not
+// generated.
+typedef bool (*HelixSRStageInputsFunc)(ID3D12GraphicsCommandList* gameList, uint64_t frameID, void* userContext);
+
 // What the FG output sets for the next Present (applied at that Present, as AMD's FfxFrameGenerationConfig)
 struct HelixSRSwapchainConfig
 {
@@ -369,6 +376,8 @@ struct HelixSRSwapchainConfig
     FfxApiRect2D generationRect {};
     FfxApiFrameGenerationDispatchFunc frameGenerationCallback = nullptr;
     void* frameGenerationCallbackUserContext = nullptr;
+    HelixSRStageInputsFunc stageInputsCallback = nullptr; // needed for allowAsyncWorkloads
+    void* stageInputsCallbackUserContext = nullptr;
 };
 
 struct HelixSRSwapchainPacingTuning
@@ -434,6 +443,8 @@ class HelixSRSwapChainDX12 : public IDXGISwapChain4
 
     FfxApiFrameGenerationDispatchFunc frameGenerationCallback = nullptr;
     void* frameGenerationCallbackContext = nullptr;
+    HelixSRStageInputsFunc stageInputsCallback = nullptr;
+    void* stageInputsCallbackContext = nullptr;
 
     // refresh cap (VSync / fixed refresh): (generated + 1) x real frame rate stays at most the refresh rate
     double refreshRate = 0.0;      // Hz, 0 = unknown
@@ -447,6 +458,7 @@ class HelixSRSwapChainDX12 : public IDXGISwapChain4
     HRESULT resizeImpl(UINT BufferCount, UINT Width, UINT Height, DXGI_FORMAT NewFormat, UINT SwapChainFlags,
                        bool resize1);
 
+    bool stageInputs();
     UINT dispatchGeneration(UINT requested, ID3D12Resource* realFrame);
     void presentInterpolated(UINT SyncInterval, UINT Flags);
 

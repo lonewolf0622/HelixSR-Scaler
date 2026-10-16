@@ -52,6 +52,22 @@ ID3D12Resource* outputReal = nullptr;
 bool hudlessSeen = false;
 bool uiSeen = false;
 
+// Async generation (StageInputs / Generate on a compute list): our copies of the game's inputs, one set. A new copy
+// is recorded on the game queue only after the previous frame's generation finished (the swapchain's game queue wait
+// on the interpolation fence), so one set is enough.
+enum StagedSlot
+{
+    StagedDepth,
+    StagedMvecs,
+    StagedHudless,
+    StagedUi,
+    StagedCount
+};
+ID3D12Resource* stagedImages[StagedCount] {};
+Input stagedInputs[StagedCount] {};
+uint64_t stagedFrameID = 0;
+bool stagedValid = false;
+
 // Features and resources replaced (resize): released after enough frames for the GPU to be done with them
 struct Retired
 {
@@ -184,6 +200,76 @@ struct Transitions
         list->ResourceBarrier(static_cast<UINT>(back.size()), back.data());
     }
 };
+
+// The states a compute command list may transition a resource from and to
+bool ComputeLegal(D3D12_RESOURCE_STATES state)
+{
+    constexpr D3D12_RESOURCE_STATES kAllowed =
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE |
+        D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT | D3D12_RESOURCE_STATE_COPY_DEST | D3D12_RESOURCE_STATE_COPY_SOURCE;
+
+    // COMMON (= PRESENT) is 0
+    return (state & ~kAllowed) == 0;
+}
+
+bool ComputeLegal(const Transitions& t)
+{
+    for (const auto& b : t.to)
+    {
+        if (!ComputeLegal(b.Transition.StateBefore) || !ComputeLegal(b.Transition.StateAfter))
+        {
+            LOG_ERROR("HelixSR FG present: state {:X} -> {:X} not allowed on a compute list",
+                      (UINT) b.Transition.StateBefore, (UINT) b.Transition.StateAfter);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// An image of our own with the source's description (CopyResource needs the same size, format, mips and arrays),
+// created in COPY_DEST
+bool EnsureStagedImage(ID3D12Device* device, ID3D12Resource* source, ID3D12Resource*& image)
+{
+    auto desc = source->GetDesc();
+
+    if (image != nullptr)
+    {
+        const auto d = image->GetDesc();
+        if (d.Dimension == desc.Dimension && d.Width == desc.Width && d.Height == desc.Height &&
+            d.DepthOrArraySize == desc.DepthOrArraySize && d.MipLevels == desc.MipLevels && d.Format == desc.Format &&
+            d.SampleDesc.Count == desc.SampleDesc.Count)
+        {
+            return true;
+        }
+
+        Retire(nullptr, image);
+        image = nullptr;
+    }
+
+    desc.Layout = desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER ? D3D12_TEXTURE_LAYOUT_ROW_MAJOR
+                                                                     : D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    desc.Alignment = 0;
+    desc.Flags &= ~(D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE | D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS |
+                    D3D12_RESOURCE_FLAG_ALLOW_CROSS_ADAPTER);
+
+    D3D12_HEAP_PROPERTIES heap {};
+    heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+    auto hr = device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COPY_DEST,
+                                              nullptr, IID_PPV_ARGS(&image));
+
+    if (hr != S_OK || image == nullptr)
+    {
+        LOG_ERROR("HelixSR FG present: input copy ({}x{} format {}) not created: {:X}", desc.Width, desc.Height,
+                  (UINT) desc.Format, (UINT) hr);
+        image = nullptr;
+        return false;
+    }
+
+    image->SetName(L"HelixSRPresent_StagedInput");
+    return true;
+}
 
 bool EnsureOutputReal(ID3D12Device* device, ID3D12Resource* like)
 {
@@ -331,6 +417,68 @@ void Init(ID3D12Device* device)
     LOG_INFO("HelixSR FG present: NGX init {:X}", (UINT) result);
 }
 
+bool StageInputs(IFGFeature_Dx12* fg, ID3D12GraphicsCommandList* gameList, uint64_t frameID)
+{
+    stagedValid = false;
+
+    if (fg == nullptr || gameList == nullptr)
+        return false;
+
+    const int fIndex = static_cast<int>(frameID % BUFFER_COUNT);
+
+    const Input sources[StagedCount] = {
+        GetInput(fg, FG_ResourceType::Depth, fIndex),
+        GetInput(fg, FG_ResourceType::Velocity, fIndex),
+        GetInput(fg, FG_ResourceType::HudlessColor, fIndex),
+        GetInput(fg, FG_ResourceType::UIColor, fIndex),
+    };
+
+    ID3D12Device* device = nullptr;
+    if (gameList->GetDevice(IID_PPV_ARGS(&device)) != S_OK || device == nullptr)
+        return false;
+
+    bool ok = true;
+    for (int i = 0; i < StagedCount && ok; i++)
+    {
+        if (sources[i].resource != nullptr)
+            ok = EnsureStagedImage(device, sources[i].resource, stagedImages[i]);
+    }
+
+    device->Release();
+
+    if (!ok)
+        return false;
+
+    // the game's images: from their state (valid on the game queue at Present) to COPY_SOURCE and back; ours stay in
+    // COPY_DEST (Generate moves them to NON_PIXEL_SHADER_RESOURCE and back on the compute list)
+    Transitions t;
+    for (int i = 0; i < StagedCount; i++)
+    {
+        if (sources[i].resource != nullptr)
+            t.Add(sources[i].resource, sources[i].state, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    }
+
+    t.Apply(gameList);
+
+    for (int i = 0; i < StagedCount; i++)
+    {
+        stagedInputs[i] = sources[i];
+
+        if (sources[i].resource == nullptr)
+            continue;
+
+        gameList->CopyResource(stagedImages[i], sources[i].resource);
+        stagedInputs[i].resource = stagedImages[i];
+        stagedInputs[i].state = D3D12_RESOURCE_STATE_COPY_DEST;
+    }
+
+    t.Revert(gameList);
+
+    stagedFrameID = frameID;
+    stagedValid = true;
+    return true;
+}
+
 uint32_t MaxGenerated()
 {
     if (State::Instance().activeFgNvngx != FGNvngxReplacement::HelixSR)
@@ -388,10 +536,21 @@ bool Generate(IFGFeature_Dx12* fg, const Frame& f, bool generated[kMaxGenerated]
         flags = optionFlags;
     }
 
-    const Input depth = GetInput(fg, FG_ResourceType::Depth, fIndex);
-    const Input mvecs = GetInput(fg, FG_ResourceType::Velocity, fIndex);
-    const Input hudless = GetInput(fg, FG_ResourceType::HudlessColor, fIndex);
-    const Input ui = GetInput(fg, FG_ResourceType::UIColor, fIndex);
+    // On a compute list (async generation) only our copies of this frame's inputs are read (StageInputs, recorded on
+    // the game queue before the generation queue's wait on the game's frame)
+    const bool computeList = f.cmdList->GetType() == D3D12_COMMAND_LIST_TYPE_COMPUTE;
+    if (computeList && (!stagedValid || stagedFrameID != f.frameID))
+    {
+        device->Release();
+        LOG_WARN("HelixSR FG present: no input copies for frame {} on the compute queue", f.frameID);
+        return false;
+    }
+
+    const Input depth = computeList ? stagedInputs[StagedDepth] : GetInput(fg, FG_ResourceType::Depth, fIndex);
+    const Input mvecs = computeList ? stagedInputs[StagedMvecs] : GetInput(fg, FG_ResourceType::Velocity, fIndex);
+    const Input hudless =
+        computeList ? stagedInputs[StagedHudless] : GetInput(fg, FG_ResourceType::HudlessColor, fIndex);
+    const Input ui = computeList ? stagedInputs[StagedUi] : GetInput(fg, FG_ResourceType::UIColor, fIndex);
 
     // The required inputs: never generate with a missing binding
     if (depth.resource == nullptr || mvecs.resource == nullptr)
@@ -516,6 +675,12 @@ bool Generate(IFGFeature_Dx12* fg, const Frame& f, bool generated[kMaxGenerated]
     t.Add(mvecs.resource, mvecs.state, kRead);
     t.Add(hudless.resource, hudless.state, hudCutoff ? D3D12_RESOURCE_STATE_COPY_DEST : kRead);
     t.Add(ui.resource, ui.state, kRead);
+
+    // a compute list: every transition between states it may use (our copies, our images, the swapchain's real
+    // frame in PRESENT)
+    if (computeList && !ComputeLegal(t))
+        return false;
+
     t.Apply(f.cmdList);
 
     // One evaluation per generated frame, in present order, on this command list (as Streamline records them):
@@ -575,6 +740,13 @@ void Release()
     featureFormat = DXGI_FORMAT_UNKNOWN;
     hudlessSeen = false;
     uiSeen = false;
+
+    for (auto& image : stagedImages)
+    {
+        Retire(nullptr, image);
+        image = nullptr;
+    }
+    stagedValid = false;
 
     std::scoped_lock lock(dataMutex);
     for (auto& set : constantsSet)

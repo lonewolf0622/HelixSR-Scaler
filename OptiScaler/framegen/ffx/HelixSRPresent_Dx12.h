@@ -54,9 +54,18 @@ struct Frame
 uint32_t MaxGenerated();
 
 // Records HelixSR's generation of frame.outputs[0 .. count - 1] on frame.cmdList: one NGX evaluation per generated
-// frame (MultiFrameIndex 1 .. count), all on this one command list. generated[i]: output i was written by HelixSR;
+// frame (MultiFrameIndex 1 .. count), all on this one command list. On a compute list it uses the copies made by
+// StageInputs for this frame id and only moves resources between states a compute list may use. generated[i]: output i was written by HelixSR;
 // for the others the caller shows the real frame in that slot. False: nothing was generated.
 bool Generate(IFGFeature_Dx12* fg, const Frame& frame, bool generated[kMaxGenerated]);
+
+// Generation on the async compute queue (FSRFG AllowAsync): records on the game queue's list, after the game's frame
+// and before the generation queue waits for it, copies of the game's depth, motion vectors, HUD-less and UI images of
+// frameID into images of our own (left in COPY_DEST). Generate on a compute list reads only these copies: the game's
+// images are never transitioned on a compute list, and the game may render its next frame into them while the frame
+// is generated. False: an input could not be copied (that frame is not generated). The caller makes sure the previous
+// generation finished reading the copies before this list runs.
+bool StageInputs(IFGFeature_Dx12* fg, ID3D12GraphicsCommandList* gameList, uint64_t frameID);
 
 // Release the NGX feature and owned resources (FG context destroyed)
 void Release();

@@ -26,7 +26,8 @@
 // Fences (values only grow, also across resizes and generation queue changes: no fence is ever moved back):
 //   gameFence              game queue -> generation queue / present queue: the game's frame is rendered
 //   interpolationFence     generation queue: this real frame's generation list (all N frames) finished; signaled
-//                          once per real frame, also when the callback failed (after the wait on gameFence)
+//                          once per real frame, also when the callback failed (after the wait on gameFence); with
+//                          async generation the game queue waits for the previous value before the input copies
 //   compositionFenceGPU    present queue: frame presentIndex was copied into the swapchain image (its output image
 //                          can be written again)
 //   compositionFenceCPU    presenter thread, right after queuing that copy (Present waits for it before it queues a
@@ -1001,6 +1002,8 @@ void HelixSRSwapChainDX12::setConfig(const HelixSRSwapchainConfig& config)
         EnterCriticalSection(&criticalSection);
 
         currentFrameID = config.frameID;
+        stageInputsCallback = config.stageInputsCallback;
+        stageInputsCallbackContext = config.stageInputsCallbackUserContext;
         presentInterpolatedOnly = config.onlyPresentGenerated;
         interpolationRect = config.generationRect;
         generatedFrames = std::clamp(config.generatedFrames, 1u, kMaxGeneratedFrames);
@@ -1012,6 +1015,8 @@ void HelixSRSwapChainDX12::setConfig(const HelixSRSwapchainConfig& config)
             // new generation queue: everything on the old one completed (waitForPresents); the interpolation fence
             // keeps its value (never moved back, see destroyReplacementResources) and the new queue signals the next
             presentInfo.interpolationQueue = inputInterpolationQueue;
+            LOG_INFO("HelixSR swapchain: frame generation on the {} queue",
+                     inputInterpolationQueue == presentInfo.gameQueue ? "game" : "async compute");
         }
 
         if (interpolationEnabled != config.frameGenerationEnabled ||
@@ -1209,6 +1214,35 @@ void HelixSRSwapChainDX12::presentPassthrough(UINT SyncInterval, UINT Flags)
     presentInfo.gameQueue->Wait(presentInfo.presentFence, framesSentForPresentation);
 }
 
+// Async generation: the copies of the game's inputs, on the game queue after the game's frame (before gameFence is
+// signaled). The game queue first waits until the previous frame's generation finished (the copies are one set of
+// images): that value was queued to be signaled on the generation queue at the previous Present, and the game queue
+// already waits for it indirectly through compositionFenceGPU >= previous presents. False: no copies for this frame.
+bool HelixSRSwapChainDX12::stageInputs()
+{
+    if (stageInputsCallback == nullptr)
+        return false;
+
+    auto commands = presentInfo.commandPool.get(presentInfo.gameQueue, L"HelixSR input copies");
+    if (commands == nullptr)
+    {
+        LOG_ERROR("HelixSR swapchain: no free command list for the input copies");
+        return false;
+    }
+
+    presentInfo.gameQueue->Wait(presentInfo.interpolationFence, interpolationFenceValue);
+
+    auto list = commands->reset();
+    if (stageInputsCallback(list, currentFrameID, stageInputsCallbackContext))
+    {
+        commands->execute(true);
+        return true;
+    }
+
+    commands->drop(true);
+    return false;
+}
+
 // Records the frame generation of this real frame: one command list on the generation queue for all requested
 // generated frames (outputs[0 .. requested - 1] of the current set). Returns the frames generated (0: none, show
 // only the real frame). The interpolation fence is signaled once, whatever happened.
@@ -1217,10 +1251,11 @@ UINT HelixSRSwapChainDX12::dispatchGeneration(UINT requested, ID3D12Resource* re
     UINT generated = 0;
     UINT count = std::clamp(requested, 1u, kMaxGeneratedFrames);
 
-    if (!ensureOutputs(count))
+    // requested 0: only the real frame (the interpolation fence is still signaled below)
+    if (requested > 0 && !ensureOutputs(count))
         count = outputsCreated;
 
-    if (count > 0 && realFrame != nullptr)
+    if (requested > 0 && count > 0 && realFrame != nullptr)
     {
         // the images of this set are written again only after the presenter copied them for their last present
         UINT64 freeValue = 0;
@@ -1279,7 +1314,13 @@ void HelixSRSwapChainDX12::presentInterpolated(UINT SyncInterval, UINT)
 {
     const bool bVsync = SyncInterval > 0;
 
-    // the generation waits for the game's frame
+    // async generation: the game's inputs copied on the game queue first (the compute list reads only the copies);
+    // without them this frame is not generated
+    const bool async = presentInfo.interpolationQueue != presentInfo.gameQueue;
+    const bool inputsReady = !async || stageInputs();
+
+    // the generation waits for the game's frame (and the input copies); the game queue never waits for this frame's
+    // generation
     presentInfo.gameQueue->Signal(presentInfo.gameFence, ++gameFenceValue);
     presentInfo.interpolationQueue->Wait(presentInfo.gameFence, gameFenceValue);
 
@@ -1312,7 +1353,7 @@ void HelixSRSwapChainDX12::presentInterpolated(UINT SyncInterval, UINT)
     }
 
     ID3D12Resource* realFrame = replacementSwapBuffers[replacementSwapBufferIndex].resource;
-    const UINT generated = dispatchGeneration(requested, realFrame);
+    const UINT generated = dispatchGeneration(inputsReady ? requested : 0, realFrame);
 
     EnterCriticalSection(&presentInfo.criticalSectionScheduledFrame);
 

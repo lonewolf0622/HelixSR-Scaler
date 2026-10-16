@@ -73,7 +73,8 @@ The NGX feature is created on the swapchain's command list on first use (sl.dlss
 the backbuffer size or format changes. Old handles and textures are released `BUFFER_COUNT+4` frames later. NGX init
 goes through `Nvngx_FG::D3D12_Init_Ext` when the FSR FG objects are created. helixsr.dll counts inits, so the game's
 own NGX init is harmless. Threading: everything runs on the FidelityFX present thread, the same thread sl.dlss_g used.
-It works on the direct queue and on the async compute queue (`FGAsync`); helixsr.dll supports both list types. With
+It works on the direct queue and on the async compute queue (`FGAsync`, see "Async generation" below);
+helixsr.dll records on both list types. With
 HelixSR's own swapchain (below) FSR's "prepare" dispatch no longer runs.
 
 Config wiring: if `FGPresent = optiscaler`, the game has sl.dlss_g, and the user hasn't set `FGInput`, HelixSR.cpp sets
@@ -128,8 +129,8 @@ base+N+1 the real one.
 
 | Fence | Signaled by | Value | Waited by |
 |---|---|---|---|
-| gameFence | game queue at each Present | ++gameFenceValue | generation queue (before generation), present queue (passthrough), CPU (waitForPresents, shutdown) |
-| interpolationFence | generation queue, once per real frame, after its wait on gameFence; **also when the callback fails** (AMD skipped it, so the real frame could be copied before the game finished it) | ++interpolationFenceValue | interpolation thread (CPU, then lets the next Present go), present queue before each copy |
+| gameFence | game queue at each Present (after the input copies when async) | ++gameFenceValue | generation queue (before generation), present queue (passthrough), CPU (waitForPresents, shutdown) |
+| interpolationFence | generation queue, once per real frame, after its wait on gameFence; **also when the callback fails or the frame is not generated** (AMD skipped it, so the real frame could be copied before the game finished it) | ++interpolationFenceValue | interpolation thread (CPU, then lets the next Present go), present queue before each copy, game queue before the next input copies (async only: the previous frame's value) |
 | compositionFenceGPU | present queue after the copy of present i (always, also when no command list was free) | presentIndex | game queue at the next Present (all earlier presents), generation queue before writing an output set (its last presentIndices) |
 | compositionFenceCPU | presenter thread right after queuing that copy | presentIndex | Present (CPU), before it queues the game queue's GPU wait on compositionFenceGPU: no GPU wait is ever queued for a value nobody has queued a signal for |
 | presentFence | present queue after DXGI Present of present i; at the start of an entry also its base (a replaced entry) | presentIndex | waitForPresents, frame-latency waitable object, passthrough game queue wait |
@@ -151,10 +152,56 @@ Deadlock checks:
   was queued) and only then stop the threads. A stopping presenter drops an entry it has not started. That is safe only
   because waitForPresents has already waited for every scheduled present. If the interpolation thread cannot be
   created, Present presents without generation (it would otherwise wait for an event that never comes).
-- The generation always runs on the game queue for now (FGAsync is ignored in this route). On a compute list the
-  game's inputs would go through states a compute list may not use.
+- Async generation is described in the next section.
 - Present / Present1 and ResizeBuffers / ResizeBuffers1 have different bodies. OptiScaler detours each vtable slot,
   and a linker folding identical functions would make two slots one address.
+
+### Async generation (FSRFG AllowAsync)
+
+`[FSRFG] AllowAsync` (FGAsync, the menu's async option) is honoured as with the FidelityFX swapchain: true puts the
+generation on the swapchain's own compute queue (high priority), so the 6-8 ms of generation at 4K runs next to the
+game's next frame instead of after it. auto = false, as everywhere in OptiScaler; the old FidelityFX route only used
+async when it was set to true, and the same setting now does the same here. Switching it at runtime waits for all
+queued presents first (waitForPresents) and then changes the queue; no fence value is moved.
+
+State handling. A compute list may only use COMMON/PRESENT, UNORDERED_ACCESS, NON_PIXEL_SHADER_RESOURCE,
+INDIRECT_ARGUMENT, COPY_SOURCE and COPY_DEST. The game's tagged images can be in RENDER_TARGET, DEPTH_WRITE,
+PIXEL_SHADER_RESOURCE and so on, and the game renders its next frame into them while the generation runs. So:
+
+1. At Present, on a list of the game queue (after the game's frame, before gameFence is signaled),
+   `HelixSRPresent::StageInputs` copies depth, motion vectors, HUD-less and UI into images of our own with the same
+   description (CopyResource). The game's images go from their tagged state to COPY_SOURCE and back on that direct
+   list. Our copies stay in COPY_DEST.
+2. `Generate` on the compute list (`GetType() == COMPUTE`) reads only these copies, for the same frame id. Its
+   transitions are COPY_DEST <-> NON_PIXEL_SHADER_RESOURCE (copies), PRESENT <-> NON_PIXEL_SHADER_RESOURCE (the
+   swapchain's real frame), UNORDERED_ACCESS (our outputs and OutputReal). The HUD cutoff (Nvngx_FG HudCopy) uses
+   COPY_* / NON_PIXEL_SHADER_RESOURCE / UNORDERED_ACCESS and a compute shader. `ShowRealFrame` uses PRESENT <->
+   COPY_SOURCE and UNORDERED_ACCESS <-> COPY_DEST. Before recording, every transition is checked against the compute
+   list's states; anything else fails the frame (the real frame is shown) instead of recording an illegal barrier.
+3. No copies for the frame (no free list, an image not created): the frame is not generated (requested 0). The
+   generation queue still waits on gameFence and signals interpolationFence, so the chain stays the same.
+
+The copies are one set of images. The game queue waits on interpolationFence >= the previous frame's value before
+the copy list runs (the previous generation finished reading them). That value was queued on the generation queue at
+the previous Present, before this wait is queued, and the game queue already waits for it through compositionFenceGPU
+(the present copies of the previous frame wait on it), so it adds no new wait in practice. The swapchain's own real
+frame (its replacement back buffer) is read on the compute list directly: the game gets that buffer back only after
+replacementBufferFence, which the present queue signals after copying it, after its wait on interpolationFence.
+
+Order per real frame k with async:
+```
+game queue:    [game frame k] wait I(k-1) -> input copies k -> signal G(k) | [game frame k+1] wait C>=last(k) ...
+compute queue: wait G(k) -> wait C>=set availability -> generation k -> signal I(k)
+present queue: wait I(k) -> copy/present generated 1..N, real -> signal C, P, R
+```
+The game queue never waits for the generation of its current frame. It waits for I(k-1) (copies reused) and for the
+previous frame's presents (C >= last(k-1), the same wait AMD's swapchain queues), so frame k+1 renders while
+generation k runs. Every GPU wait is queued after the signal it waits for is queued: G(k) is signaled before the
+compute queue's wait is queued (same CPU thread, in order); I(k-1) was queued at the previous Present; C values are
+waited for on the CPU (compositionFenceCPU) before the GPU wait is queued; the compute queue's availability wait is for
+presents of an earlier frame, already queued. No cycle: the compute queue waits on the game queue (G) and the present
+queue (C of earlier frames); the present queue waits on compute (I); the game queue waits on compute (I(k-1)) and
+present (C of k-1). All of those are earlier frames, signaled without depending on anything queued later.
 
 ### One command list vs one submission per index
 
@@ -183,7 +230,8 @@ and no DLSS-G matrices, so the parameters would be our own construction. That is
    a. FG off.
    b. FGPresent = streamline (today).
    c. FGPresent = optiscaler, with FGAsync off.
-   d. Optional: c with FGAsync on.
+   d. c with FGAsync on (`[FSRFG] AllowAsync = true`): expected to be at least as fast as the old FidelityFX route
+      with async; the log says "HelixSR swapchain: frame generation on the async compute queue".
    Compare average FPS, 1% / 0.1% lows, frame-time standard deviation, and the share of frames more than 2x the median.
    Check the log for "CPU pacer" lines (expected to be gone in c) and for "HelixSR FG present" errors.
 4. Pass criteria for making optiscaler the default: gate 1 identical, image identical by eye, and c has better lows and
