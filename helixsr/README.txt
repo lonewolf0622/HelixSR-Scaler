@@ -1,4 +1,8 @@
-HelixSR Scaler 1.0.6
+HelixSR Scaler 1.0.7
+
+New in 1.0.7: DirectX 11 games get HelixSR too (pick DLSS in the game; OptiScaler runs it through its
+DirectX 12 interop, and falls back to FSR 2.2 if HelixSR does not start). Vulkan games through OptiScaler
+have an optional setting, [HelixSR] VulkanComputeQueue (see OptiScaler.ini). It is off by default.
 
 HelixSR frame generation is not included. Alternative Scaler frame generation
 remains available, including FSR, XeSS and other supported providers.

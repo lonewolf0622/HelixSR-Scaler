@@ -489,6 +489,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             // HelixSR Scaler: HelixSR's settings
             HelixSRInt8.set_from_config(readString("HelixSR", "Int8", true));
             HelixSRWaveSize.set_from_config(readInt("HelixSR", "WaveSize"));
+            HelixSRVulkanComputeQueue.set_from_config(readBool("HelixSR", "VulkanComputeQueue"));
             HelixSRFGPresent.set_from_config(readString("HelixSR", "FGPresent", true));
             if (auto fg = readString("HelixSR", "FrameGeneration", true); fg.has_value())
             {
@@ -1330,6 +1331,10 @@ bool Config::SaveIni()
         else
             ini.SetValue("HelixSR", "FrameGeneration", "auto");
         ini.SetValue("HelixSR", "FGPresent", Instance()->HelixSRFGPresent.value_for_config_or("optiscaler").c_str());
+        if (auto vcq = Instance()->HelixSRVulkanComputeQueue.value_for_config(); vcq.has_value())
+            ini.SetValue("HelixSR", "VulkanComputeQueue", vcq.value() ? "true" : "false");
+        else
+            ini.SetValue("HelixSR", "VulkanComputeQueue", "auto");
         if (auto qf = Instance()->HelixSRQuickFlow.value_for_config(); qf.has_value())
             ini.SetValue("HelixSR", "QuickFlow", qf.value() == 2 ? "fastest" : qf.value() == 1 ? "on" : "off");
         else

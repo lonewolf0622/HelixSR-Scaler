@@ -31,7 +31,7 @@ const char* Version();
 // HelixSR is the upscaler running right now
 bool IsActive();
 
-// Selects HelixSR (OptiScaler's DLSS upscaler with HelixSR's DLL) as the DirectX 12 upscaler
+// Selects HelixSR (OptiScaler's DLSS upscaler with HelixSR's DLL; DLSS w/Dx12 in DirectX 11 games) as the upscaler
 void Choose();
 
 // Frame generation quality Best / Fast / Fastest ([HelixSR] QuickFlow = auto | on | off | fastest, auto = off;
