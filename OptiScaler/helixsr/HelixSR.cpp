@@ -682,15 +682,20 @@ void ApplyDefaults()
     if (!WriteHelixIni())
         LOG_WARN("HelixSR Scaler: could not write {}", wstring_to_string(HelixIniPath().wstring()));
 
-    // This release provides upscaling only. Override settings saved by an earlier release,
-    // and do not inspect, move or load any leftover frame-generation engine files.
+    // Only HelixSR's provider is withdrawn. Preserve the user's FG input, output,
+    // enabled state and other providers so FSR, XeSS and external mods still work.
     cfg->HelixSRFrameGeneration.set_volatile_value(false);
-    cfg->FGInput.set_volatile_value(::FGInput::NoFG);
-    cfg->FGOutput.set_volatile_value(::FGOutput::NoFG);
-    cfg->FGNvngxReplacement.set_volatile_value(::FGNvngxReplacement::None);
+    if (cfg->FGNvngxReplacement.value_or_default() == ::FGNvngxReplacement::HelixSR)
+    {
+        cfg->FGNvngxReplacement.set_volatile_value(::FGNvngxReplacement::FFX);
+        LOG_WARN("HelixSR frame generation is not included; using the FFX provider instead.");
+    }
     if (!cfg->Dx12Upscaler.has_value())
         cfg->Dx12Upscaler.set_volatile_value(::Upscaler::DLSS);
-    LOG_INFO("HelixSR Scaler: upscaling only; HelixSR frame generation is not included in this release.");
+    LOG_INFO("HelixSR frame generation is not included; alternative FG settings: input={}, output={}, provider={}",
+             magic_enum::enum_name(cfg->FGInput.value_or_default()),
+             magic_enum::enum_name(cfg->FGOutput.value_or_default()),
+             magic_enum::enum_name(cfg->FGNvngxReplacement.value_or_default()));
 
 }
 

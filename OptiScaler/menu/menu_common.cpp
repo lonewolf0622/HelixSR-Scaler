@@ -3723,8 +3723,8 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         "Missing amd_fidelityfx_framegeneration_dx12.dll\nor missing dlss-enabler-headless.dll");
 
     auto constexpr fgNvngxHelixSRIndex = (uint32_t) FGNvngxReplacement::HelixSR;
-    nvngxOptions[fgNvngxHelixSRIndex].set_disabled(!state.helixsrFgFileAvailable,
-                                                   "Missing the HelixSR folder (helixsr.dll, helixsr-fg)");
+    nvngxOptions[fgNvngxHelixSRIndex].set_disabled(true,
+                                                   "HelixSR frame generation is not included in this release");
 
     // TODO: Automatically switch to any other option
 
