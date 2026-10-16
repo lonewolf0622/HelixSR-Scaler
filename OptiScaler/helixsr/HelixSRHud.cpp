@@ -481,8 +481,8 @@ void RenderHud(float scale, ImVec4 (*color)(const ImVec4&))
                                kFrameGenCount, &m.settings.frameGen, found);
         else
         {
-            Text(dl, ImVec2(lx, a.y + 116 * k), fs * 0.93f, Col(kMuted, 0.5f), "FRAME GEN");
-            Text(dl, ImVec2(lx + 150 * k, a.y + 116 * k), fs * 0.93f, Col(kMuted), "NOT INSTALLED");
+            Text(dl, ImVec2(lx, a.y + 116 * k), fs * 0.93f, Col(kMuted, 0.5f), "HELIXSR FG");
+            Text(dl, ImVec2(lx + 150 * k, a.y + 116 * k), fs * 0.93f, Col(kMuted), "NOT INCLUDED");
         }
         if (changed)
             SaveMenuSettings();

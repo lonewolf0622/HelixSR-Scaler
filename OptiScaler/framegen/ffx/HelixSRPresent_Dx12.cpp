@@ -278,7 +278,7 @@ bool EnsureFeature(ID3D12GraphicsCommandList* list, ID3D12Resource* backbuffer, 
 
 bool Requested()
 {
-    auto v = Config::Instance()->HelixSRFGPresent.value_or("streamline");
+    auto v = Config::Instance()->HelixSRFGPresent.value_or("optiscaler");
     return v == "optiscaler";
 }
 

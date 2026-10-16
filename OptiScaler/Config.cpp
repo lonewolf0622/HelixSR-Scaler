@@ -1329,7 +1329,7 @@ bool Config::SaveIni()
             ini.SetValue("HelixSR", "FrameGeneration", fg.value() ? "on" : "off");
         else
             ini.SetValue("HelixSR", "FrameGeneration", "auto");
-        ini.SetValue("HelixSR", "FGPresent", Instance()->HelixSRFGPresent.value_for_config_or("streamline").c_str());
+        ini.SetValue("HelixSR", "FGPresent", Instance()->HelixSRFGPresent.value_for_config_or("optiscaler").c_str());
         if (auto qf = Instance()->HelixSRQuickFlow.value_for_config(); qf.has_value())
             ini.SetValue("HelixSR", "QuickFlow", qf.value() == 2 ? "fastest" : qf.value() == 1 ? "on" : "off");
         else

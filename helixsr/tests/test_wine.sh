@@ -38,21 +38,38 @@ check "logs as HelixSR Scaler" 'grep -q "HelixSR Scaler v" "$G/OptiScaler.log"'
 check "finds the HelixSR folder" 'grep -q "HelixSR found in" "$G/OptiScaler.log"'
 check "writes helixsr.ini from OptiScaler.ini" 'grep -q "^WaveSize = 64" "$G/HelixSR/helixsr.ini" && grep -q "^Int8 = on" "$G/HelixSR/helixsr.ini"'
 check "HelixSR's own sharpener off" 'grep -q "^Sharpener = off" "$G/HelixSR/helixsr.ini"'
-check "FrameGeneration=off parks helixsr-fg" '[ ! -e "$G/HelixSR/helixsr-fg" ] && [ -f "$G/HelixSR/helixsr-fg.off/nvexec64.dll" ]'
-check "no frame generation set up when off" '! grep -q "FGInput = nvngxfg" "$G/OptiScaler.log"'
+check "only HelixSR frame generation is unavailable" 'grep -q "HelixSR frame generation is not included; alternative FG settings:" "$G/OptiScaler.log"'
+check "leftover HelixSR engine files are untouched" '[ -f "$G/HelixSR/helixsr-fg/nvexec64.dll" ] && [ ! -e "$G/HelixSR/helixsr-fg.off" ]'
 
-# switched back on: the folder comes back on the next start
-sed -i 's/^FrameGeneration=off/FrameGeneration=on/' "$G/OptiScaler.ini"
+# Verify actual startup configuration for alternative FG routes and every supported provider.
+route() {
+    local input=$1 output=$2 provider=$3 expected=$4
+    sed -i "s/^FGInput=.*/FGInput=$input/; s/^FGOutput=.*/FGOutput=$output/; s/^FGNvngxReplacement=.*/FGNvngxReplacement=$provider/; s/^FrameGeneration=.*/FrameGeneration=on/" "$G/OptiScaler.ini"
+    awk '{ sub(/\r$/, "") } /^\[/ { section=$0 } section=="[FrameGen]" && /^Enabled=/ { $0="Enabled=true" } { print }' "$G/OptiScaler.ini" >"$W/route.ini"
+    mv "$W/route.ini" "$G/OptiScaler.ini"
+    cp "$G/OptiScaler.ini" "$W/requested.ini"
+    (cd "$G" && timeout 180 wine TestGame.exe >"$W/run.txt" 2>&1)
+    check "$input/$output/$provider preserves alternative routing" "grep -q 'alternative FG settings: input=$input, output=$output, provider=$expected' \"\$G/OptiScaler.log\""
+    check "$input/$output/$provider preserves saved choices" 'cmp -s "$W/requested.ini" "$G/OptiScaler.ini"'
+    check "HelixSR engine never initialized" '! grep -q "HelixSR frame generation initialized" "$G/OptiScaler.log"'
+}
+# NVNGX provider selection applies to NvngxFG input or DLSSG output only.
+route Upscaler FSRFG auto Nukems
+route DLSSG FSRFG auto Nukems
+route NvngxFG NoFG Nukems Nukems
+route NvngxFG NoFG Arturs Arturs
+route DLSSG DLSSG Combo Combo
+route XeFG XeFG auto Nukems
+route Upscaler DLSSG FFX FFX
+route DLSSG DLSSG None None
+route NvngxFG NoFG HelixSR FFX
+
+# An old unsupported-GPU log must not disable alternative frame generation.
+sed -i 's/^WaveSize=64/WaveSize=auto/' "$G/OptiScaler.ini"
+printf '%s\r\n' 'fg: frame generation NOT available on this GPU: no 32-lane waves' >"$G/HelixSR/helixsr.log"
 (cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
-check "FrameGeneration=on brings helixsr-fg back" '[ -f "$G/HelixSR/helixsr-fg/nvexec64.dll" ] && [ ! -e "$G/HelixSR/helixsr-fg.off" ]'
-# a GPU without 32-lane waves (RX 580): HelixSR's log says so, HelixSR Scaler switches frame generation off for good
-sed -i 's/^FrameGeneration=on/FrameGeneration=auto/; s/^WaveSize=64/WaveSize=auto/' "$G/OptiScaler.ini"
-printf '[13:52:43.487] fg: frame generation NOT available on this GPU: no 32-lane waves (e.g. AMD Vega / Polaris); (waves 64-64 lanes); the game is told it is unavailable\r\n' \
-    >"$G/HelixSR/helixsr.log"
-(cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
-check "unsupported GPU: frame generation off by itself" '[ -d "$G/HelixSR/helixsr-fg.off" ] && [ ! -e "$G/HelixSR/helixsr-fg" ]'
-check "auto wave size: 32 lanes in helixsr.ini (all GPUs, as HelixSR 1.8.1)" 'grep -q "^WaveSize = 32" "$G/HelixSR/helixsr.ini" && grep -q "^WaveSize=auto" "$G/OptiScaler.ini"'
-check "unsupported GPU: saved in OptiScaler.ini" 'grep -q "^FrameGeneration=off" "$G/OptiScaler.ini"'
+check "old HelixSR GPU log leaves alternatives available" 'grep -q "alternative FG settings: input=NvngxFG, output=NoFG, provider=FFX" "$G/OptiScaler.log"'
+check "auto wave size remains 32 lanes" 'grep -q "^WaveSize = 32" "$G/HelixSR/helixsr.ini" && grep -q "^WaveSize=auto" "$G/OptiScaler.ini"'
 check "no second copy of HelixSR's DLL (one DLL for DLSS)" '[ ! -e "$G/HelixSR/helixsr_upscaler.dll" ]'
 
 if [ $fails != 0 ] && [ -f "$G/OptiScaler.log" ]; then
