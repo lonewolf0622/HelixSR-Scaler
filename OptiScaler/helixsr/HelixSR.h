@@ -34,6 +34,11 @@ bool IsActive();
 // Selects HelixSR (OptiScaler's DLSS upscaler with HelixSR's DLL) as the DirectX 12 upscaler
 void Choose();
 
+// Frame generation quality Best / Fast / Fastest ([HelixSR] QuickFlow = auto | on | off | fastest, auto = off;
+// helixsr.ini [FrameGeneration] QuickFlow), drawn in the menu's frame generation section. Applies at the next game
+// start.
+void RenderQuickFlow();
+
 // HelixSR's settings, drawn under the upscaler list while HelixSR is the upscaler:
 // speed boost (int8), GPU mode and the folder button. Writes helixsr.ini; the game has to restart for them to apply.
 void RenderSettings(float scale, ImVec4 (*color)(const ImVec4&));

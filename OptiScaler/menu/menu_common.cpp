@@ -5097,6 +5097,10 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)),
                                    "Put the HelixSR folder (helixsr.dll, helixsr-fg) next to the game");
             }
+            else
+            {
+                HelixSR::RenderQuickFlow(); // HelixSR Scaler
+            }
         }
 
         if (state.activeFgInput == FGInput::NvngxFG)

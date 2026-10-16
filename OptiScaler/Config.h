@@ -412,6 +412,9 @@ class Config
     // Who presents HelixSR's generated frames: streamline (the game's sl.dlss_g, FGInput = nvngxfg) or optiscaler
     // (OptiScaler's FSR FG swapchain with its pacing, FGInput = dlssg, FGOutput = fsrfg; see HELIXSR_FG_PRESENT.md)
     CustomOptional<std::string, NoDefault> HelixSRFGPresent;
+    // HelixSR's frame generation quality: 0 off (Best), 1 on (Fast: QuickFlow), 2 fastest (QuickFlow at half size);
+    // auto = off. helixsr.ini [FrameGeneration] QuickFlow, read at the game start
+    CustomOptional<int, NoDefault> HelixSRQuickFlow;
     CustomOptional<bool> MenuBlur { true };
     CustomOptional<float> MenuBlurStrength { 1.0f };
     CustomOptional<bool> CustomTabEnabled { true };

@@ -497,6 +497,15 @@ bool Config::Reload(std::filesystem::path iniPath)
                 else if (fg.value() == "off" || fg.value() == "false" || fg.value() == "0")
                     HelixSRFrameGeneration.set_from_config(false);
             }
+            if (auto qf = readString("HelixSR", "QuickFlow", true); qf.has_value())
+            {
+                if (qf.value() == "fastest")
+                    HelixSRQuickFlow.set_from_config(2);
+                else if (qf.value() == "on" || qf.value() == "true" || qf.value() == "1")
+                    HelixSRQuickFlow.set_from_config(1);
+                else if (qf.value() == "off" || qf.value() == "false" || qf.value() == "0")
+                    HelixSRQuickFlow.set_from_config(0);
+            }
             MenuBlur.set_from_config(readBool("Menu", "Blur"));
 
             if (auto setting = readFloat("Menu", "BlurStrength"); setting.has_value())
@@ -1321,6 +1330,10 @@ bool Config::SaveIni()
         else
             ini.SetValue("HelixSR", "FrameGeneration", "auto");
         ini.SetValue("HelixSR", "FGPresent", Instance()->HelixSRFGPresent.value_for_config_or("streamline").c_str());
+        if (auto qf = Instance()->HelixSRQuickFlow.value_for_config(); qf.has_value())
+            ini.SetValue("HelixSR", "QuickFlow", qf.value() == 2 ? "fastest" : qf.value() == 1 ? "on" : "off");
+        else
+            ini.SetValue("HelixSR", "QuickFlow", "auto");
         ini.SetValue("Menu", "Blur", GetBoolValue(Instance()->MenuBlur.value_for_config()).c_str());
         ini.SetValue("Menu", "BlurStrength", GetFloatValue(Instance()->MenuBlurStrength.value_for_config()).c_str());
         ini.SetValue("Menu", "CustomTabEnabled", GetBoolValue(Instance()->CustomTabEnabled.value_for_config()).c_str());
