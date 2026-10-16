@@ -413,6 +413,9 @@ class Config
     // (OptiScaler's FSR FG swapchain with its pacing, FGInput = dlssg, FGOutput = fsrfg; see HELIXSR_FG_PRESENT.md)
     CustomOptional<std::string, NoDefault> HelixSRFGPresent;
     CustomOptional<int, NoDefault> HelixSRMultiFrame; // 1, 2, 3: most generated frames per real frame
+    // HelixSR's frame generation quality: QuickFlow on (Fast) or off (Best); auto = off. helixsr.ini [FrameGeneration]
+    // QuickFlow, read at the game start, used with 2x only
+    CustomOptional<bool, NoDefault> HelixSRQuickFlow;
     // Generated frames per real frame with HelixSR's own presenting swapchain (FGPresent = optiscaler), set by the
     // menu's frame generation slider (FG mode Default follows the game's DLSS FG setting instead)
     CustomOptional<int> FGHelixSRInterpolationCount { 1 };

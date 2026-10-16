@@ -233,8 +233,10 @@ struct Managed
     const char* section; // in helixsr.ini
     const char* key;
 };
-const Managed kManaged[] = { { "Upscaling", "Int8" }, { "Compatibility", "WaveSize" },
-                             { "FrameGeneration", "MultiFrame" } };
+const Managed kManaged[] = { { "Upscaling", "Int8" },
+                             { "Compatibility", "WaveSize" },
+                             { "FrameGeneration", "MultiFrame" },
+                             { "FrameGeneration", "QuickFlow" } };
 // earlier keys, taken out of helixsr.ini: sharpening (OptiScaler's now) and frame generation's old mode
 const Managed kRetired[] = { { "Sharpening", "Sharpness" },
                              { "Sharpening", "UseGameSlider" },
@@ -258,13 +260,16 @@ std::optional<std::string> ConfigValue(const std::string& key)
         return std::to_string(cfg->HelixSRWaveSize.value());
     if (key == "MultiFrame" && cfg->HelixSRMultiFrame.has_value())
         return std::to_string(std::clamp(cfg->HelixSRMultiFrame.value(), 1, 3));
+    if (key == "QuickFlow" && cfg->HelixSRQuickFlow.has_value())
+        return std::string(cfg->HelixSRQuickFlow.value() ? "on" : "off");
     return std::nullopt;
 }
 
 const char* kHelixIniHeader[] = {
     "; HelixSR's settings, written by HelixSR Scaler from OptiScaler.ini each time the game starts. Change them in",
     "; OptiScaler.ini ([HelixSR]) or in the menu (Insert key). Sharpening is OptiScaler's, so HelixSR's sharpener",
-    "; stays off. Int8 and WaveSize here are replaced; other HelixSR settings you add to this file are kept.",
+    "; stays off. Int8, WaveSize, MultiFrame and QuickFlow here are replaced; other HelixSR settings you add to this",
+    "; file are kept.",
 };
 
 // helixsr.ini from OptiScaler's config
@@ -331,6 +336,9 @@ void ImportHelixIni()
             cfg->HelixSRWaveSize = std::stoi(v.value());
         if (auto v = old.Get("FrameGeneration", "MultiFrame"); v.has_value() && (v.value() == "2" || v.value() == "3"))
             cfg->HelixSRMultiFrame = std::stoi(v.value());
+        if (auto v = old.Get("FrameGeneration", "QuickFlow");
+            v.has_value() && (Lower(v.value()) == "on" || Lower(v.value()) == "off"))
+            cfg->HelixSRQuickFlow = Lower(v.value()) == "on";
         LOG_INFO("HelixSR Scaler: moved the settings in helixsr.ini to OptiScaler.ini");
     }
 
@@ -786,6 +794,57 @@ void SetMultiFrame(int count)
     const bool helix = WriteHelixIni();
     LOG_INFO("HelixSR Scaler: MultiFrame = {} saved (OptiScaler.ini {}, helixsr.ini {}); it applies at the next game start",
              count, opti, helix);
+}
+
+// The QuickFlow setting the game started with (restart note)
+bool quickFlowAtStart = false;
+bool quickFlowAtStartSet = false;
+
+void RenderQuickFlow()
+{
+    if (!FrameGenFound())
+        return;
+
+    auto cfg = Config::Instance();
+    const bool fast = cfg->HelixSRQuickFlow.value_or(false);
+
+    if (!quickFlowAtStartSet)
+    {
+        quickFlowAtStart = fast;
+        quickFlowAtStartSet = true;
+    }
+
+    const char* names[] = { "Best", "Fast" };
+    int pick = fast ? 1 : 0;
+
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8.0f);
+    if (ImGui::BeginCombo("Frame generation quality", names[pick]))
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            if (ImGui::Selectable(names[i], i == pick))
+                pick = i;
+        }
+        ImGui::EndCombo();
+    }
+
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Best: full quality.\nFast: QuickFlow, a faster motion estimate for lower-end GPUs, slightly "
+                          "softer in-between frames.\n\nFast takes effect after restarting the game, and only with 2x "
+                          "(QuickFlow is not used with 3x / 4x).");
+
+    if ((pick == 1) != fast)
+    {
+        cfg->HelixSRQuickFlow = pick == 1;
+        const bool opti = WriteOptiScalerIni();
+        const bool helix = WriteHelixIni();
+        LOG_INFO("HelixSR Scaler: QuickFlow = {} saved (OptiScaler.ini {}, helixsr.ini {}); it applies at the next game "
+                 "start",
+                 pick == 1 ? "on" : "off", opti, helix);
+    }
+
+    if (cfg->HelixSRQuickFlow.value_or(false) != quickFlowAtStart)
+        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "Restart the game to use the new quality");
 }
 
 bool IsActive()
