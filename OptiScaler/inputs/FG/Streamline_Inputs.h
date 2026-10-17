@@ -33,6 +33,7 @@ class Sl_Inputs
     void reportEngineType(sl::EngineType type) { engineType = type; };
     bool dispatchFG();
     void markPresent(uint64_t frameId);
+    uint32_t CurrentFrameId() const { return _currentFrameId; } // the Streamline frame tags without one belong to
 
     // TODO: some shutdown and cleanup methods
 };

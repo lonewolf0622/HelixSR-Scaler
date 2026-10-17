@@ -9,6 +9,7 @@
 #include <misc/IdentifyGpu.h>
 #include <framegen/nvngx/Nvngx_FG.h>
 #include <framegen/ffx/HelixSRPresent_Dx12.h>
+#include <framegen/ffx/HelixSRDlssg_Dx12.h>
 #include <framegen/xefg/XeFG_Dx12.h>
 #include <proxies/KernelBase_Proxy.h>
 #include <imgui/ImGuiNotify.hpp>
@@ -412,6 +413,7 @@ static sl::Result dummy_slDLSSGSetOptions(const sl::ViewportHandle& viewport, co
 
     // HelixSR Scaler: the game's options for HelixSR's DLSS-G parameters (version 1 fields)
     HelixSRPresent::StoreOptions(options);
+    HelixSRDlssg::SetDlssgViewport((uint32_t) viewport);
 
     // Only reading v1 fields, safe for any struct version
     const bool enabled = options.mode != sl::DLSSGMode::eOff;
@@ -539,6 +541,9 @@ sl::Result StreamlineHooks::hkslSetTag(const sl::ViewportHandle& viewport, const
              tags[i].type == sl::kBufferTypeBidirectionalDistortionField))
         {
             State::Instance().slFGInputs.reportResource(tags[i], cmdBuffer, 0);
+
+            // HelixSR Scaler: the tag as sl.dlss_g keeps it (the last one per type and frame, this viewport)
+            HelixSRDlssg::Tag((uint32_t) viewport, State::Instance().slFGInputs.CurrentFrameId(), tags[i], cmdBuffer);
         }
         else if (State::Instance().activeFgInput == FGInput::NvngxFG)
         {
@@ -618,6 +623,9 @@ sl::Result StreamlineHooks::hkslSetTagForFrame(const sl::FrameToken& frame, cons
              resources[i].type == sl::kBufferTypeBidirectionalDistortionField))
         {
             State::Instance().slFGInputs.reportResource(resources[i], cmdBuffer, (uint32_t) frame);
+
+            // HelixSR Scaler: the tag as sl.dlss_g keeps it (the last one per type and frame, this viewport)
+            HelixSRDlssg::Tag((uint32_t) viewport, (uint32_t) frame, resources[i], cmdBuffer);
         }
         else if (State::Instance().activeFgInput == FGInput::NvngxFG)
         {
@@ -1305,6 +1313,7 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
 
     // HelixSR Scaler: the game's options for HelixSR's DLSS-G parameters (version 1 fields)
     HelixSRPresent::StoreOptions(options);
+    HelixSRDlssg::SetDlssgViewport((uint32_t) viewport);
 
     lastDlssgViewport = viewport;
     lastDlssgOptions = options;
