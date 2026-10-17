@@ -28,6 +28,14 @@ bool FrameGenFound();
 // "1.0.0"
 const char* Version();
 
+// Menu name of a FidelityFX upscaler or frame-generation version: "FSR <name>", except HelixSR's own entry, which is
+// shown as its name alone ("HelixSR", not "FSR HelixSR")
+inline std::string FfxVersionLabel(const char* name)
+{
+    const std::string n = name ? name : "";
+    return n.rfind("HelixSR", 0) == 0 ? n : "FSR " + n;
+}
+
 // HelixSR is the upscaler running right now
 bool IsActive();
 

@@ -682,7 +682,7 @@ static std::string ShortUpscalerName(Upscaler upscaler, API api, int ffxIndex)
 
     if (auto versions = GetFfxVersionList(upscaler, api);
         versions != nullptr && ffxIndex >= 0 && ffxIndex < versions->names.size())
-        return StrFmt("FSR %s", versions->names[ffxIndex]);
+        return HelixSR::FfxVersionLabel(versions->names[ffxIndex]); // HelixSR Scaler
 
     switch (upscaler)
     {
@@ -3009,8 +3009,10 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
             ImGui::Spacing();
 
             const int ffxIndex = config->FfxUpscalerIndex.value_or_default();
-            auto currentName =
-                ffxIndex >= 0 && ffxIndex < versions->names.size() ? StrFmt("FSR %s", versions->names[ffxIndex]) : "";
+            // HelixSR Scaler: HelixSR's own entry without the FSR prefix
+            auto currentName = ffxIndex >= 0 && ffxIndex < versions->names.size()
+                                   ? HelixSR::FfxVersionLabel(versions->names[ffxIndex])
+                                   : "";
 
             ImGui::PushItemWidth(150.0f * menuResScale);
 
@@ -3018,7 +3020,8 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
             {
                 for (auto n : FfxVersionsNewestFirst(*versions))
                 {
-                    if (ImGui::Selectable(StrFmt("FSR %s##%d", versions->names[n], n).c_str(), ffxIndex == n) &&
+                    auto label = HelixSR::FfxVersionLabel(versions->names[n]) + "##" + std::to_string(n);
+                    if (ImGui::Selectable(label.c_str(), ffxIndex == n) &&
                         ffxIndex != n)
                     {
                         config->FfxUpscalerIndex = n;
@@ -4186,12 +4189,12 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             {
                 ImGui::PushItemWidth(115.0f * menuResScale);
 
-                auto currentName = StrFmt("FSR %s", state.ffxFGVersionNames[_ffxFGIndex]);
+                auto currentName = HelixSR::FfxVersionLabel(state.ffxFGVersionNames[_ffxFGIndex]); // HelixSR Scaler
                 if (ImGui::BeginCombo("FFX FG Version", currentName.c_str()))
                 {
                     for (int n = 0; n < state.ffxFGVersionIds.size(); n++)
                     {
-                        auto name = StrFmt("FSR %s", state.ffxFGVersionNames[n]);
+                        auto name = HelixSR::FfxVersionLabel(state.ffxFGVersionNames[n]); // HelixSR Scaler
                         if (ImGui::Selectable(name.c_str(), config->FfxFGIndex.value_or_default() == n))
                         {
                             _ffxFGIndex = n;
@@ -5275,12 +5278,12 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 {
                     ImGui::PushItemWidth(135.0f * menuResScale);
 
-                    auto currentName = StrFmt("FSR %s", state.ffxFGVersionNames[_ffxFGIndex]);
+                    auto currentName = HelixSR::FfxVersionLabel(state.ffxFGVersionNames[_ffxFGIndex]); // HelixSR Scaler
                     if (ImGui::BeginCombo("FFX FG", currentName.c_str()))
                     {
                         for (int n = 0; n < state.ffxFGVersionIds.size(); n++)
                         {
-                            auto name = StrFmt("FSR %s", state.ffxFGVersionNames[n]);
+                            auto name = HelixSR::FfxVersionLabel(state.ffxFGVersionNames[n]); // HelixSR Scaler
                             if (ImGui::Selectable(name.c_str(), config->FfxFGIndex.value_or_default() == n))
                                 _ffxFGIndex = n;
                         }

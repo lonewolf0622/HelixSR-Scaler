@@ -179,7 +179,7 @@ std::vector<UpscalerEntry> Upscalers(bool dx11)
     std::stable_sort(order.begin(), order.end(), [&versions](int a, int b)
                      { return feature_version(versions.names[b]) < feature_version(versions.names[a]); });
     for (int n : order)
-        list.push_back({ std::string("FSR ") + versions.names[n], ffx, false, n });
+        list.push_back({ HelixSR::FfxVersionLabel(versions.names[n]), ffx, false, n });
     if (order.empty())
         list.push_back({ "FSR", ffx, false });
 
