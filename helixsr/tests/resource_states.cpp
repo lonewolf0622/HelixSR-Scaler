@@ -54,7 +54,18 @@ struct Dispatch
 struct List
 {
     std::vector<std::vector<D3D12_RESOURCE_BARRIER>> batches;
-    void ResourceBarrier(unsigned n, const D3D12_RESOURCE_BARRIER* b) { batches.emplace_back(b, b + n); }
+    std::unordered_map<ID3D12Resource*, D3D12_RESOURCE_STATES> states;
+    void ResourceBarrier(unsigned n, const D3D12_RESOURCE_BARRIER* b)
+    {
+        batches.emplace_back(b, b + n);
+        for (unsigned i = 0; i < n; ++i)
+        {
+            const auto& transition = b[i].Transition;
+            if (states.contains(transition.pResource))
+                CHECK(states[transition.pResource] == transition.StateBefore);
+            states[transition.pResource] = transition.StateAfter;
+        }
+    }
 };
 static ID3D12Resource* Texture(unsigned n) { return reinterpret_cast<ID3D12Resource*>((uintptr_t) n); }
 
@@ -139,6 +150,34 @@ int main()
     CHECK(Evaluate(redirected, params, Texture(7), true));
     CHECK(redirected.batches[0].size() == 1);
     CHECK(redirected.batches[0][0].Transition.pResource == Texture(1));
+
+    // The outer scope must cover post-processing too: HelixSR can write a
+    // scratch UAV, then sharpening reads motion and writes the game output.
+    List pipeline;
+    pipeline.states[Texture(1)] = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    pipeline.states[Texture(3)] = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    pipeline.states[Texture(6)] = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    pipeline.states[Texture(7)] = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    {
+        ResourceTransitions transitions(&pipeline);
+        for (unsigned i = 0; i < kResourceKeys.size(); ++i)
+        {
+            ID3D12Resource* resource = nullptr;
+            params.Get(kResourceKeys[i].resource, &resource);
+            transitions.Add(resource, InputState(&params, i, resource, std::nullopt),
+                            i == 5 ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+                                   : D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        }
+        transitions.Apply();
+        CHECK(pipeline.states[Texture(1)] == D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        CHECK(pipeline.states[Texture(7)] == D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        CHECK(pipeline.states[Texture(3)] == D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        CHECK(pipeline.states[Texture(6)] == D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        CHECK(pipeline.batches.size() == 1);
+    }
+    CHECK(pipeline.states[Texture(1)] == D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    CHECK(pipeline.states[Texture(6)] == D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    CHECK(pipeline.states[Texture(7)] == D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
     // Next frame can use the same texture in a different state.
     fsr2.color.state = 4;
