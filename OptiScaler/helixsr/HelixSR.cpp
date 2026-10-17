@@ -708,14 +708,14 @@ void ApplyDefaults()
     // Keep that layout when present. New installs use AMD's loader and a single HelixSR SR provider.
     const auto sr = folder / L"helixsr_upscaler.dll";
     cfg->FfxDx12SRPath.set_volatile_value(fs::exists(sr, ec) ? sr.wstring() : DllPath().wstring());
-    const bool nativeDlss = IdentifyGpu::getPrimaryGpu().dlssCapable;
-    if (!cfg->Dx12Upscaler.has_value() || (cfg->Dx12Upscaler == ::Upscaler::DLSS && !nativeDlss))
+    // This runs during DLL_PROCESS_ATTACH. Do not probe the GPU here; legacy DLSS selections are resolved by the
+    // feature provider after initialization, when it already has the real GPU information.
+    if (!cfg->Dx12Upscaler.has_value())
     {
         cfg->Dx12Upscaler.set_volatile_value(::Upscaler::FFX);
         cfg->FfxUpscalerIndex.set_volatile_value(0); // HelixSR lists itself first; alternatives follow it.
     }
-    if (!cfg->Dx11Upscaler.has_value() ||
-        ((cfg->Dx11Upscaler == ::Upscaler::DLSS || cfg->Dx11Upscaler == ::Upscaler::DLSS_on12) && !nativeDlss))
+    if (!cfg->Dx11Upscaler.has_value())
         cfg->Dx11Upscaler.set_volatile_value(::Upscaler::FFX_on12);
     LOG_INFO("HelixSR input route: FidelityFX (OptiScaler converts game inputs); SR provider={}",
              wstring_to_string(cfg->FfxDx12SRPath.value()));

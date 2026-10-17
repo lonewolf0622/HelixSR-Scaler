@@ -79,10 +79,10 @@ check "no second copy of HelixSR's DLL (one DLL for DLSS)" '[ ! -e "$G/HelixSR/h
 sed -i 's/^Dx12Upscaler=.*/Dx12Upscaler=xess/; s/^Dx11Upscaler=.*/Dx11Upscaler=fsr22/' "$G/OptiScaler.ini"
 (cd "$G" && timeout 180 wine TestGame.exe >"$W/run.txt" 2>&1)
 check "saved alternative upscalers remain selected" 'grep -q "HelixSR backend defaults: dx12=XeSS, dx11=FSR22" "$G/OptiScaler.log"'
-# A non-RTX installation that previously selected HelixSR as DLSS migrates to FFX.
+# Keep legacy selections until feature creation, where GPU information is available safely.
 sed -i 's/^Dx12Upscaler=.*/Dx12Upscaler=dlss/; s/^Dx11Upscaler=.*/Dx11Upscaler=dlss/' "$G/OptiScaler.ini"
 (cd "$G" && timeout 180 wine TestGame.exe >"$W/run.txt" 2>&1)
-check "legacy HelixSR DLSS selection migrates to FidelityFX" 'grep -q "HelixSR backend defaults: dx12=FFX, dx11=FFX_on12" "$G/OptiScaler.log"'
+check "legacy selection loads without an early GPU probe" 'grep -q "HelixSR backend defaults: dx12=DLSS, dx11=DLSS" "$G/OptiScaler.log" && grep -qi "loaded from .*game.dxgi.dll" "$W/run.txt"'
 
 if [ $fails != 0 ] && [ -f "$G/OptiScaler.log" ]; then
     echo "--- OptiScaler.log (first 80 lines)"

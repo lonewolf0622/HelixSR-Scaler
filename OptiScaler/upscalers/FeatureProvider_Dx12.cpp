@@ -23,6 +23,16 @@ bool FeatureProvider_Dx12::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NG
     auto primaryGpu = IdentifyGpu::getPrimaryGpu();
     ScopedSkipHeapCapture skipHeapCapture {};
 
+    // HelixSR Scaler: resolve older HelixSR-as-DLSS selections after initialization. Preserve native DLSS on GPUs
+    // that support it, and use the FidelityFX input conversion for HelixSR elsewhere.
+    if (upscaler == Upscaler::DLSS && HelixSR::FsrInput() && !primaryGpu.dlssCapable)
+    {
+        upscaler = Upscaler::FFX;
+        const int index = HelixSR::ProviderIndex();
+        cfg.FfxUpscalerIndex.set_volatile_value(index >= 0 ? index : 0);
+        LOG_INFO("HelixSR: legacy DLSS backend selection migrated to FidelityFX");
+    }
+
     switch (upscaler)
     {
     case Upscaler::XeSS:

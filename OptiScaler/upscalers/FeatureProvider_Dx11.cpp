@@ -26,6 +26,16 @@ bool FeatureProvider_Dx11::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NG
     Config& cfg = *Config::Instance();
     auto primaryGpu = IdentifyGpu::getPrimaryGpu();
 
+    // HelixSR Scaler: resolve older DLSS selections after GPU initialization, through the existing Dx12 bridge.
+    if ((upscaler == Upscaler::DLSS || upscaler == Upscaler::DLSS_on12) && HelixSR::FsrInput() &&
+        !primaryGpu.dlssCapable)
+    {
+        upscaler = Upscaler::FFX_on12;
+        const int index = HelixSR::ProviderIndex();
+        cfg.FfxUpscalerIndex.set_volatile_value(index >= 0 ? index : 0);
+        LOG_INFO("HelixSR: legacy DLSS backend selection migrated to FidelityFX through the Dx12 bridge");
+    }
+
     switch (upscaler)
     {
     case Upscaler::XeSS:
