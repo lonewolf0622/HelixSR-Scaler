@@ -1,4 +1,5 @@
 #include "pch.h"
+#include <helixsr/HelixSRResourceStates.h>
 #include "FfxApi_Dx12.h"
 #include "Config.h"
 #include "Util.h"
@@ -383,6 +384,9 @@ static ffxReturnCode_t ffxDispatch_Dx12(ffxContext* context, ffxDispatchDescHead
 
     LOG_DEBUG("handle: {:X}, internalResolution: {}x{}", handle->Id, dispatchDesc->renderSize.width,
               dispatchDesc->renderSize.height);
+
+    HelixSR::Dx12::CaptureStates(params, *dispatchDesc,
+                                 [](auto value) { return HelixSR::Dx12::Fsr3State((unsigned) value); });
 
     State::Instance().setInputApiName = ApiUpscalerInput::FFX_DX12;
 

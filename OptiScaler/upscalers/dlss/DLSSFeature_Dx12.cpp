@@ -2,6 +2,7 @@
 #include "DLSSFeature_Dx12.h"
 #include <dxgi1_4.h>
 #include <Config.h>
+#include <helixsr/HelixSRResourceStates.h>
 
 bool DLSSFeatureDx12::InitInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters)
 {
@@ -88,6 +89,44 @@ bool DLSSFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
     if (NVNGXProxy::D3D12_EvaluateFeature() != nullptr)
     {
         ProcessEvaluateParams(InParameters);
+
+        HelixSR::Dx12::ResourceTransitions transitions(InCommandList);
+        if (NVNGXProxy::HelixSRDlss())
+        {
+            auto& cfg = *Config::Instance();
+            const auto state = [](const auto& setting) -> std::optional<D3D12_RESOURCE_STATES>
+            {
+                if (setting.has_value())
+                    return static_cast<D3D12_RESOURCE_STATES>(setting.value());
+                return std::nullopt;
+            };
+            const std::array states = { state(cfg.ColorResourceBarrier), state(cfg.DepthResourceBarrier),
+                                        state(cfg.MVResourceBarrier),    state(cfg.ExposureResourceBarrier),
+                                        state(cfg.MaskResourceBarrier),  state(cfg.OutputResourceBarrier) };
+            const std::array configured = { state(cfg.ColorResourceBarrier.value_for_config()),
+                                            state(cfg.DepthResourceBarrier.value_for_config()),
+                                            state(cfg.MVResourceBarrier.value_for_config()),
+                                            state(cfg.ExposureResourceBarrier.value_for_config()),
+                                            state(cfg.MaskResourceBarrier.value_for_config()),
+                                            state(cfg.OutputResourceBarrier.value_for_config()) };
+            for (unsigned i = 0; i < states.size(); ++i)
+            {
+                ID3D12Resource* resource = nullptr;
+                InParameters->Get(HelixSR::Dx12::kResourceKeys[i].ngx, &resource);
+                const auto before = HelixSR::Dx12::InputState(InParameters, i, resource, states[i], configured[i]);
+                const auto after =
+                    i == 5 ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS : D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+                transitions.Add(resource, before, after);
+                if (_frameCount == 0 && resource)
+                {
+                    const auto desc = resource->GetDesc();
+                    LOG_INFO("HelixSR input {}: {}x{}, format {}, state {} -> {}", HelixSR::Dx12::kResourceKeys[i].ngx,
+                             desc.Width, desc.Height, (unsigned) desc.Format,
+                             before ? (unsigned) *before : (unsigned) after, (unsigned) after);
+                }
+            }
+            transitions.Apply();
+        }
 
         nvResult = NVNGXProxy::D3D12_EvaluateFeature()(InCommandList, _p_dlssHandle, InParameters, NULL);
 
