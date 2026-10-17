@@ -154,6 +154,35 @@ static inline void ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID3
     InCommandList->ResourceBarrier(1, &barrier);
 }
 
+// HelixSR Scaler: the UI registration flag of HelixSR's frame-generation DLL (its export HelixSR_FfxFgUiFlag), 0 for
+// any other DLL. Registered with it, the UI is "already in the presented frames": HelixSR's DLL gives it to its network
+// and registers no UI with AMD's swapchain, so the UI is never composed a second time.
+static uint32_t HelixSRUiFlag()
+{
+    static HMODULE checked = nullptr;
+    static uint32_t flag = 0;
+
+    auto module = FfxApiProxy::Dx12Module_FG() != nullptr ? FfxApiProxy::Dx12Module_FG() : FfxApiProxy::Dx12Module();
+
+    if (module != checked)
+    {
+        checked = module;
+        flag = 0;
+
+        using PfnUiFlag = uint32_t(__cdecl*)();
+        auto uiFlag =
+            module != nullptr ? (PfnUiFlag) KernelBaseProxy::GetProcAddress_()(module, "HelixSR_FfxFgUiFlag") : nullptr;
+
+        if (uiFlag != nullptr)
+            flag = uiFlag();
+
+        LOG_INFO("HelixSR FG UI: the frame-generation DLL {} the game's UI ({:X})",
+                 flag != 0 ? "takes" : "does not take", flag);
+    }
+
+    return flag;
+}
+
 bool FSRFG_Dx12::HudlessFormatTransfer(int index, ID3D12Device* device, DXGI_FORMAT targetFormat,
                                        Dx12Resource* resource)
 {
@@ -409,6 +438,28 @@ bool FSRFG_Dx12::Dispatch()
         else
         {
             fgConfig.HUDLessColor = FfxApiResource({});
+        }
+    }
+
+    // HelixSR Scaler: HelixSR's frame-generation DLL gets the game's UI of this frame (the one being generated) for its
+    // network. It is the image tagged for this frame index: a copy when it was only valid at tagging (made in
+    // SetResource, kept until this index is reused), or the game's image when it is valid until present, which is
+    // where this frame is generated (as the HUD-less colour above). Not with DisableUI or DrawUIOverFG (that overlay
+    // draws the UI itself). Otherwise the empty registration, as before.
+    if (auto helixsrUiFlag = HelixSRUiFlag();
+        helixsrUiFlag != 0 && !config->FGDisableUI.value_or_default() && !config->FGDrawUIOverFG.value_or_default())
+    {
+        auto ui = GetResource(FG_ResourceType::UIColor, fIndex);
+
+        if (ui && ui->GetResource() != nullptr && IsResourceReady(FG_ResourceType::UIColor, fIndex))
+        {
+            LOG_TRACE("Using UI for HelixSR: {:X}", (size_t) ui->GetResource());
+
+            uiDesc.uiResource = ffxApiGetResourceDX12(ui->GetResource(), GetFfxApiState(ui->state));
+            uiDesc.flags = helixsrUiFlag;
+
+            if (config->FGUIPremultipliedAlpha.value_or_default())
+                uiDesc.flags |= FFX_FRAMEGENERATION_UI_COMPOSITION_FLAG_USE_PREMUL_ALPHA;
         }
     }
 
