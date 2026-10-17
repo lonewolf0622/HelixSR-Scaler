@@ -169,7 +169,7 @@ std::vector<UpscalerEntry> Upscalers(bool dx11)
     const ::Upscaler ffx = dx11 ? ::Upscaler::FFX_on12 : ::Upscaler::FFX;
     FFXFeature::EnsureVersionsDx12();
     const auto& versions = State::Instance().ffxUpscalerVersionsDx12;
-    const int helixIndex = ProviderIndex();
+    const int helixIndex = HelixSR::ProviderIndex();
     if (found && helixIndex >= 0)
         list.push_back({ "HelixSR", HelixSRUpscaler(), true, helixIndex });
     std::vector<int> order;
