@@ -435,6 +435,8 @@ class NVNGXProxy
     // ([DLSS] HelixSR = true, the default)
     static bool HelixSRDlss()
     {
+        if (HelixSR::FsrInput())
+            return false;
         static int state = -1;
         if (state < 0)
         {

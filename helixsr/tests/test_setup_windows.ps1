@@ -33,6 +33,8 @@ function Fg($d) {
 $pwsh = (Get-Process -Id $PID).Path
 function Run($game, [string]$typed = '') {
     New-Item -ItemType Directory -Force -Path $game | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $game 'OptiScaler') | Out-Null
+    Set-Content -LiteralPath (Join-Path $game 'OptiScaler/amd_fidelityfx_upscaler_dx12.dll') 'AMD provider fixture'
     $env:USERPROFILE = Join-Path $w 'home'
     $env:LOCALAPPDATA = Join-Path $w 'local'
     Push-Location $game
@@ -48,6 +50,7 @@ try {
     $g1 = Join-Path $w 'g1'
     $r = Run $g1
     Check 'finds HelixSR in Downloads' ($r.code -eq 0 -and (Same (Join-Path $g1 'HelixSR/helixsr.dll') (Join-Path $dl 'amd_fidelityfx_dx12.dll')))
+    Check 'keeps AMD upscalers available' (Same (Join-Path $g1 'OptiScaler/amd_fidelityfx_upscaler_dx12.dll') (Join-Path $g1 'HelixSR/amd_fidelityfx_upscaler_dx12.amd.dll'))
     Check 'copies frame generation' ((Get-ChildItem (Join-Path $g1 'HelixSR/helixsr-fg') -Filter *.dll).Count -eq 4)
     Check 'says frame generation is included' ($r.out -match 'Frame generation included')
 
@@ -73,8 +76,11 @@ try {
     $r = Run $g4 "`n"
     Check 'nothing typed: stops, nothing copied' ($r.code -eq 1 -and -not (Test-Path (Join-Path $g4 'HelixSR')))
 
+    # a reinstall keeps a user-supplied secondary FSR provider
+    Set-Content -LiteralPath (Join-Path $g1 'HelixSR/amd_fidelityfx_upscaler_dx12.amd.dll') 'custom FSR provider'
     # a reinstall with nothing else around: the game's own HelixSR stays, frame generation too
     $r = Run $g1
+    Check 'preserves a custom FSR provider' ((Get-Content -LiteralPath (Join-Path $g1 'HelixSR/amd_fidelityfx_upscaler_dx12.amd.dll')).Trim() -eq 'custom FSR provider')
     Check "reinstall keeps the game's own" ($r.code -eq 0 -and (Get-ChildItem (Join-Path $g1 'HelixSR/helixsr-fg') -Filter *.dll).Count -eq 4)
 } finally {
     Remove-Item -Recurse -Force $w -ErrorAction SilentlyContinue

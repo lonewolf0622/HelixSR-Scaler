@@ -605,6 +605,12 @@ try {
     Copy-Item -LiteralPath $helix -Destination (Join-Path $tmp 'helixsr.dll') -Force
     if ($fg) { Copy-Item -Path (Join-Path $fg '*.dll') -Destination (Join-Path $tmp 'fg') -Force }
     Copy-Item -LiteralPath (Join-Path $tmp 'helixsr.dll') -Destination (Join-Path $dst 'helixsr.dll') -Force
+    # HelixSR's FidelityFX provider lists AMD's upscalers too. Preserve a user-supplied provider.
+    $amd = Join-Path $game 'OptiScaler\amd_fidelityfx_upscaler_dx12.dll'
+    $alt = Join-Path $dst 'amd_fidelityfx_upscaler_dx12.amd.dll'
+    if ((Test-Path -LiteralPath $amd) -and -not (Test-Path -LiteralPath $alt)) {
+        Copy-Item -LiteralPath $amd -Destination $alt
+    }
     if ($fg) {
         foreach ($old in 'helixsr-fg', 'helixsr-fg.off') {
             $o = Join-Path $dst $old

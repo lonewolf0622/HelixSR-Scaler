@@ -4,6 +4,7 @@
 #include <proxies/FfxApi_Proxy.h>
 #include "FFXFeature_Dx12.h"
 #include "MathUtils.h"
+#include "helixsr/HelixSR.h"
 
 using namespace OptiMath;
 
@@ -684,8 +685,11 @@ bool FFXFeatureDx12::InitFFX(const NVSDK_NGX_Parameter* InParameters)
 
         auto version =
             State::Instance().ffxUpscalerVersionsDx12.names[Config::Instance()->FfxUpscalerIndex.value_or_default()];
-        _name = "FSR";
+        _helixsr = version && HelixSR::IsProvider(version);
+        _name = _helixsr ? "HelixSR" : "FSR";
         parse_version(version);
+        if (_helixsr)
+            LOG_INFO("HelixSR is running through OptiScaler's FidelityFX backend (NGX adapter bypassed)");
     }
 
     SetInit(true);

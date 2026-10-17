@@ -8,6 +8,7 @@
 #include "Util.h"
 #include "resource.h"
 #include "proxies/NVNGX_Proxy.h"
+#include "upscalers/ffx/FFXFeature.h"
 
 #include <shellapi.h>
 #include <magic_enum.hpp>
@@ -460,11 +461,21 @@ LogStatus ReadLog()
     return cfg->Dx12Upscaler.value_or_default();
 }
 
-// HelixSR is OptiScaler's DLSS upscaler on GPUs without DLSS (HelixSR's DLSS DLL as the NVNGX module); DirectX 11
-// games run it through OptiScaler's Dx12 interop (DLSS w/Dx12, HelixSR's DLL is DirectX 12 only)
-::Upscaler HelixSRUpscaler() { return State::Instance().api == DX11 ? ::Upscaler::DLSS_on12 : ::Upscaler::DLSS; }
+// Let OptiScaler convert the game's inputs to the FidelityFX API. DirectX 11 uses its existing Dx12 bridge.
+::Upscaler HelixSRUpscaler() { return State::Instance().api == DX11 ? ::Upscaler::FFX_on12 : ::Upscaler::FFX; }
 
-void ChooseHelixSR() { ChooseBackend(HelixSRUpscaler()); }
+void ChooseHelixSR()
+{
+    FFXFeature::EnsureVersionsDx12();
+    const int index = ProviderIndex();
+    if (index < 0)
+    {
+        LOG_WARN("HelixSR's FidelityFX provider is not available; keeping the current upscaler");
+        return;
+    }
+    Config::Instance()->FfxUpscalerIndex = index;
+    ChooseBackend(HelixSRUpscaler());
+}
 
 void OpenFolder() { ShellExecuteW(nullptr, L"open", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL); }
 
@@ -693,13 +704,23 @@ void ApplyDefaults()
         cfg->FGNvngxReplacement.set_volatile_value(::FGNvngxReplacement::FFX);
         LOG_WARN("HelixSR frame generation is not included; using the FFX provider instead.");
     }
-    if (!cfg->Dx12Upscaler.has_value())
-        cfg->Dx12Upscaler.set_volatile_value(::Upscaler::DLSS);
-
-    // DirectX 11: DLSS is HelixSR through the Dx12 interop (FeatureProvider_Dx11 runs it as DLSS w/Dx12), or the
-    // native DLSS on GPUs with DLSS. Frame generation stays DirectX 12 only.
-    if (!cfg->Dx11Upscaler.has_value())
-        cfg->Dx11Upscaler.set_volatile_value(::Upscaler::DLSS);
+    // Older FSR installs use two copies because a DLL cannot safely be both the hooked loader and its SR provider.
+    // Keep that layout when present. New installs use AMD's loader and a single HelixSR SR provider.
+    const auto sr = folder / L"helixsr_upscaler.dll";
+    cfg->FfxDx12SRPath.set_volatile_value(fs::exists(sr, ec) ? sr.wstring() : DllPath().wstring());
+    const bool nativeDlss = IdentifyGpu::getPrimaryGpu().dlssCapable;
+    if (!cfg->Dx12Upscaler.has_value() || (cfg->Dx12Upscaler == ::Upscaler::DLSS && !nativeDlss))
+    {
+        cfg->Dx12Upscaler.set_volatile_value(::Upscaler::FFX);
+        cfg->FfxUpscalerIndex.set_volatile_value(0); // HelixSR lists itself first; alternatives follow it.
+    }
+    if (!cfg->Dx11Upscaler.has_value() ||
+        ((cfg->Dx11Upscaler == ::Upscaler::DLSS || cfg->Dx11Upscaler == ::Upscaler::DLSS_on12) && !nativeDlss))
+        cfg->Dx11Upscaler.set_volatile_value(::Upscaler::FFX_on12);
+    LOG_INFO("HelixSR input route: FidelityFX (OptiScaler converts game inputs); SR provider={}",
+             wstring_to_string(cfg->FfxDx12SRPath.value()));
+    LOG_INFO("HelixSR backend defaults: dx12={}, dx11={}", magic_enum::enum_name(cfg->Dx12Upscaler.value_or_default()),
+             magic_enum::enum_name(cfg->Dx11Upscaler.value_or_default()));
 
     LOG_INFO("HelixSR frame generation is not included; alternative FG settings: input={}, output={}, provider={}",
              magic_enum::enum_name(cfg->FGInput.value_or_default()),
@@ -708,6 +729,19 @@ void ApplyDefaults()
 }
 
 bool Found() { return found; }
+
+bool FsrInput() { return found; }
+
+bool IsProvider(const std::string& name) { return name.find("HelixSR") != std::string::npos; }
+
+int ProviderIndex()
+{
+    const auto& names = State::Instance().ffxUpscalerVersionsDx12.names;
+    for (size_t i = 0; i < names.size(); ++i)
+        if (names[i] && IsProvider(names[i]))
+            return static_cast<int>(i);
+    return -1;
+}
 
 bool FrameGenFound() { return false; }
 
@@ -784,8 +818,7 @@ bool IsActive()
     if (feature == nullptr || !feature->IsInited())
         return false;
 
-    const auto type = feature->GetUpscalerType();
-    return (type == ::Upscaler::DLSS || type == ::Upscaler::DLSS_on12) && NVNGXProxy::HelixSRDlss();
+    return feature->IsHelixSR();
 }
 
 void RenderSettings(float scale, ImVec4 (*color)(const ImVec4&))

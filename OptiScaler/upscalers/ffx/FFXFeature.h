@@ -14,6 +14,7 @@ class FFXFeature : public virtual IFeature
 
   protected:
     std::string _name = "FSR";
+    bool _helixsr = false;
 
     ffxContext _context = nullptr;
     ffxCreateContextDescUpscale _contextDesc = {};
@@ -87,6 +88,7 @@ class FFXFeature : public virtual IFeature
 
   public:
     feature_version Version() override { return _version; }
+    bool IsHelixSR() override { return _helixsr; }
 
     static bool QueryVersionsDx12(ID3D12Device* device);
     static bool QueryVersionsVulkan();

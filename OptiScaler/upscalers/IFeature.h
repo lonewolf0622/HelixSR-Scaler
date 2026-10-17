@@ -135,6 +135,7 @@ class IFeature
     virtual NVSDK_NGX_PerfQuality_Value PerfQualityValue() { return _perfQualityValue; }
     virtual bool IsInitParameters() { return _initParameters; };
     virtual bool IsInited() { return _isInited; }
+    virtual bool IsHelixSR() { return false; } // HelixSR Scaler: identity of the active provider, not the saved index
     virtual float Sharpness()
     {
         if (_actualSharpness.has_value())

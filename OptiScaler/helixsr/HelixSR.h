@@ -10,13 +10,16 @@
 
 namespace HelixSR
 {
-// Finds the HelixSR folder next to this DLL (or the game's .exe) and points OptiScaler at it: HelixSR as the DLSS
-// upscaler and the DLSS frame-generation provider, unless OptiScaler.ini sets them. Called once at startup, after
-// OptiScaler's own paths.
+// Finds the HelixSR folder and connects its SR provider to OptiScaler's FidelityFX backend. Alternative upscalers
+// and frame-generation providers remain available. Called once at startup, after OptiScaler's own paths.
 void ApplyDefaults();
 
 // The HelixSR folder was found
 bool Found();
+// This build uses OptiScaler's FidelityFX input conversion instead of HelixSR's NGX adapter.
+bool FsrInput();
+bool IsProvider(const std::string& name);
+int ProviderIndex();
 const std::filesystem::path& Folder();
 
 // helixsr.dll in the HelixSR folder (empty when the folder was not found)
@@ -31,7 +34,7 @@ const char* Version();
 // HelixSR is the upscaler running right now
 bool IsActive();
 
-// Selects HelixSR (OptiScaler's DLSS upscaler with HelixSR's DLL; DLSS w/Dx12 in DirectX 11 games) as the upscaler
+// Selects HelixSR's FidelityFX provider (also through the Dx12 bridge for DirectX 11 games).
 void Choose();
 
 // Frame generation quality Best / Fast / Fastest ([HelixSR] QuickFlow = auto | on | off | fastest, auto = off;

@@ -36,6 +36,9 @@ check "dxgi.dll loads from the game folder" 'grep -qi "loaded from .*game.dxgi.d
 check "OptiScaler.log written" '[ -s "$G/OptiScaler.log" ]'
 check "logs as HelixSR Scaler" 'grep -q "HelixSR Scaler v" "$G/OptiScaler.log"'
 check "finds the HelixSR folder" 'grep -q "HelixSR found in" "$G/OptiScaler.log"'
+check "HelixSR uses the FidelityFX input route" 'grep -q "HelixSR input route: FidelityFX" "$G/OptiScaler.log"'
+check "default backends use FidelityFX and the Dx11 bridge" 'grep -q "HelixSR backend defaults: dx12=FFX, dx11=FFX_on12" "$G/OptiScaler.log"'
+check "AMD providers are installed beside HelixSR" 'cmp -s "$PKG/OptiScaler/amd_fidelityfx_upscaler_dx12.dll" "$G/HelixSR/amd_fidelityfx_upscaler_dx12.amd.dll"'
 check "writes helixsr.ini from OptiScaler.ini" 'grep -q "^WaveSize = 64" "$G/HelixSR/helixsr.ini" && grep -q "^Int8 = on" "$G/HelixSR/helixsr.ini"'
 check "HelixSR's own sharpener off" 'grep -q "^Sharpener = off" "$G/HelixSR/helixsr.ini"'
 check "only HelixSR frame generation is unavailable" 'grep -q "HelixSR frame generation is not included; alternative FG settings:" "$G/OptiScaler.log"'
@@ -71,6 +74,15 @@ printf '%s\r\n' 'fg: frame generation NOT available on this GPU: no 32-lane wave
 check "old HelixSR GPU log leaves alternatives available" 'grep -q "alternative FG settings: input=NvngxFG, output=NoFG, provider=FFX" "$G/OptiScaler.log"'
 check "auto wave size remains 32 lanes" 'grep -q "^WaveSize = 32" "$G/HelixSR/helixsr.ini" && grep -q "^WaveSize=auto" "$G/OptiScaler.ini"'
 check "no second copy of HelixSR's DLL (one DLL for DLSS)" '[ ! -e "$G/HelixSR/helixsr_upscaler.dll" ]'
+
+# Saved alternative upscalers must survive the change of HelixSR's input interface.
+sed -i 's/^Dx12Upscaler=.*/Dx12Upscaler=xess/; s/^Dx11Upscaler=.*/Dx11Upscaler=fsr22/' "$G/OptiScaler.ini"
+(cd "$G" && timeout 180 wine TestGame.exe >"$W/run.txt" 2>&1)
+check "saved alternative upscalers remain selected" 'grep -q "HelixSR backend defaults: dx12=XeSS, dx11=FSR22" "$G/OptiScaler.log"'
+# A non-RTX installation that previously selected HelixSR as DLSS migrates to FFX.
+sed -i 's/^Dx12Upscaler=.*/Dx12Upscaler=dlss/; s/^Dx11Upscaler=.*/Dx11Upscaler=dlss/' "$G/OptiScaler.ini"
+(cd "$G" && timeout 180 wine TestGame.exe >"$W/run.txt" 2>&1)
+check "legacy HelixSR DLSS selection migrates to FidelityFX" 'grep -q "HelixSR backend defaults: dx12=FFX, dx11=FFX_on12" "$G/OptiScaler.log"'
 
 if [ $fails != 0 ] && [ -f "$G/OptiScaler.log" ]; then
     echo "--- OptiScaler.log (first 80 lines)"

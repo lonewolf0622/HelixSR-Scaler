@@ -452,6 +452,12 @@ while IFS= read -r rel; do
     copy_one "$STAGE/$rel" "$dest"
 done <"$STAGE/.list"
 copy_one "$TMP_HELIX" "HelixSR/helixsr.dll"
+# HelixSR lists AMD's providers after its own through the FidelityFX interface.
+# Keep an existing user-supplied provider; all files added here are tracked for removal.
+if [ ! -e "$TARGET/HelixSR/amd_fidelityfx_upscaler_dx12.amd.dll" ] &&
+   [ -f "$STAGE/OptiScaler/amd_fidelityfx_upscaler_dx12.dll" ]; then
+    copy_one "$STAGE/OptiScaler/amd_fidelityfx_upscaler_dx12.dll" "HelixSR/amd_fidelityfx_upscaler_dx12.amd.dll"
+fi
 FG=0
 for f in "$TMP_FG"/*.dll; do
     [ -f "$f" ] || continue

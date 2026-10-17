@@ -249,6 +249,10 @@ class IFeature_VkwDx12 : public virtual IFeature_Vk
     {
         return CallFeature([](auto f) { return f->IsInited(); }, bool {});
     }
+    bool IsHelixSR() override
+    {
+        return CallFeature([](auto f) { return f->IsHelixSR(); }, bool {});
+    }
     float Sharpness() override
     {
         return CallFeature([](auto f) { return f->Sharpness(); }, float {});

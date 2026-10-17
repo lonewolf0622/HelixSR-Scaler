@@ -1,7 +1,12 @@
 # HelixSR Scaler
 
 **HelixSR in games that only have DLSS, XeSS or FSR 2.** HelixSR Scaler is [OptiScaler](https://github.com/optiscaler/OptiScaler)
-with [HelixSR](https://github.com/lonewolf0622/HelixSR) built in.
+with [HelixSR](https://github.com/lonewolf0622/HelixSR) integrated as a separate upscaling DLL.
+
+This experimental build connects HelixSR through OptiScaler's FidelityFX backend. OptiScaler converts the game's
+DLSS, FSR or XeSS inputs before calling HelixSR. HelixSR keeps its menu entry and settings; AMD FSR, XeSS and other
+supported upscalers and frame-generation providers remain available. HelixSR's own frame generation stays disabled.
+The neural network is unchanged by this integration. GPU image quality and performance require testing in games.
 
 - **HelixSR is in the upscaler list**, next to XeSS, FSR and DLSS, with its settings under it: speed boost (int8) and GPU mode. Everything else OptiScaler does is still there, its sharpening (RCAS) too.
 - **No setup files to edit.** Put the `HelixSR` folder next to it and HelixSR is the upscaler.

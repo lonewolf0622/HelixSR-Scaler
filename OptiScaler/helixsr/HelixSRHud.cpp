@@ -156,7 +156,7 @@ struct UpscalerEntry
 {
     std::string name;
     ::Upscaler upscaler;
-    bool helixsr;      // HelixSR: OptiScaler's DLSS upscaler with HelixSR's DLL
+    bool helixsr;      // HelixSR's provider in OptiScaler's FidelityFX backend
     int ffxIndex = -1; // FSR from the FFX SDK: its index in the SDK's version list (as OptiScaler's FFX Upscaler list)
 };
 
@@ -165,26 +165,26 @@ struct UpscalerEntry
 std::vector<UpscalerEntry> Upscalers(bool dx11)
 {
     std::vector<UpscalerEntry> list;
-    const bool helixDlss = found && NVNGXProxy::HelixSRDlss();
-    if (helixDlss)
-        list.push_back({ "HelixSR", HelixSRUpscaler(), true });
-
     // every FSR the FFX SDK reports (FSR 4, FSR 3.1, ...), newest first, as OptiScaler's own upscaler list names them
     const ::Upscaler ffx = dx11 ? ::Upscaler::FFX_on12 : ::Upscaler::FFX;
     FFXFeature::EnsureVersionsDx12();
     const auto& versions = State::Instance().ffxUpscalerVersionsDx12;
-    std::vector<int> order(versions.names.size());
-    for (size_t i = 0; i < order.size(); i++)
-        order[i] = (int) i;
+    const int helixIndex = ProviderIndex();
+    if (found && helixIndex >= 0)
+        list.push_back({ "HelixSR", HelixSRUpscaler(), true, helixIndex });
+    std::vector<int> order;
+    for (size_t i = 0; i < versions.names.size(); i++)
+        if (static_cast<int>(i) != helixIndex)
+            order.push_back(static_cast<int>(i));
     std::stable_sort(order.begin(), order.end(), [&versions](int a, int b)
                      { return feature_version(versions.names[b]) < feature_version(versions.names[a]); });
     for (int n : order)
         list.push_back({ std::string("FSR ") + versions.names[n], ffx, false, n });
-    if (order.empty())
+    if (versions.names.empty())
         list.push_back({ "FSR", ffx, false });
 
     list.push_back({ "XeSS", dx11 ? ::Upscaler::XeSS_on12 : ::Upscaler::XeSS, false });
-    if (!helixDlss && IdentifyGpu::getPrimaryGpu().dlssCapable && Config::Instance()->DLSSEnabled.value_or_default())
+    if (IdentifyGpu::getPrimaryGpu().dlssCapable && Config::Instance()->DLSSEnabled.value_or_default())
         list.push_back({ "DLSS", ::Upscaler::DLSS, false });
     list.push_back({ "FSR 2.2.1", ::Upscaler::FSR22, false });
     list.push_back({ "FSR 2.1.2", dx11 ? ::Upscaler::FSR21_on12 : ::Upscaler::FSR21, false });

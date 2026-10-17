@@ -173,6 +173,10 @@ class IFeature_Dx11wDx12 : public virtual IFeature_Dx11
     {
         return CallFeature([](auto f) { return f->IsInited(); }, bool {});
     }
+    bool IsHelixSR() override
+    {
+        return CallFeature([](auto f) { return f->IsHelixSR(); }, bool {});
+    }
     float Sharpness() override
     {
         return CallFeature([](auto f) { return f->Sharpness(); }, float {});

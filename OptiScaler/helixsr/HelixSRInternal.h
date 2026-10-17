@@ -66,7 +66,7 @@ MenuState& Menu();
 void RefreshMenu();           // reads helixsr.log (and helixsr.ini the first time) at most every two seconds
 void SaveMenuSettings();      // writes Menu().settings to helixsr.ini
 ::Upscaler Backend();         // the configured upscaler of the game's API
-::Upscaler HelixSRUpscaler(); // DLSS, or DLSS w/Dx12 in DirectX 11 games
+::Upscaler HelixSRUpscaler(); // FFX, or FFX w/Dx12 in DirectX 11 games
 void ChooseHelixSR();
 void ChooseBackend(::Upscaler upscaler);
 void OpenFolder();

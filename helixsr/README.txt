@@ -1,5 +1,10 @@
 HelixSR Scaler 1.0.7
 
+Experimental FidelityFX input build. Select HelixSR in the menu. OptiScaler
+converts the game's upscaling inputs and calls HelixSR through its FSR interface.
+AMD FSR, XeSS and alternative frame generation remain available. This build does
+not establish whether the reported flickering is fixed.
+
 New in 1.0.7: DirectX 11 games get HelixSR too (pick DLSS in the game; OptiScaler runs it through its
 DirectX 12 interop, and falls back to FSR 2.2 if HelixSR does not start). Vulkan games through OptiScaler
 have an optional setting, [HelixSR] VulkanComputeQueue (see OptiScaler.ini). It is off by default.
