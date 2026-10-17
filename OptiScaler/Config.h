@@ -612,6 +612,10 @@ class Config
     CustomOptional<bool> FGResourceFlipOffset { false };
     CustomOptional<bool> FGAlwaysCaptureFSRFGSwapchain { false };
 
+    // HelixSR Scaler: debug capture of the frame-generation inputs from this present of the FSR FG output on (4
+    // frames, see framegen/ffx/HelixSRCapture_Dx12.h). Read from the ini only, never saved.
+    CustomOptional<int, NoDefault> FGHelixSRDebugCapture;
+
     CustomOptional<int, NoDefault> FGRectLeft;
     CustomOptional<int, NoDefault> FGRectTop;
     CustomOptional<int, NoDefault> FGRectWidth;

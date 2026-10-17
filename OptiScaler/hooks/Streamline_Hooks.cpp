@@ -9,6 +9,7 @@
 #include <misc/IdentifyGpu.h>
 #include <framegen/nvngx/Nvngx_FG.h>
 #include <framegen/ffx/HelixSRPresent_Dx12.h>
+#include <framegen/ffx/HelixSRCapture_Dx12.h>
 #include <framegen/xefg/XeFG_Dx12.h>
 #include <proxies/KernelBase_Proxy.h>
 #include <imgui/ImGuiNotify.hpp>
@@ -464,6 +465,18 @@ sl::Result StreamlineHooks::hkslSetFeatureLoaded(sl::Feature feature, bool loade
     return o_slSetFeatureLoaded(feature, loaded);
 }
 
+// HelixSR Scaler: tags OptiScaler does not take for frame generation, for the debug capture (logged and copied)
+static void CaptureOtherTag(sl::RenderAPI api, const sl::ResourceTag& tag, sl::CommandBuffer* cmdBuffer, uint32_t frame)
+{
+    if (api != sl::RenderAPI::eD3D12 || tag.resource == nullptr || tag.resource->native == nullptr ||
+        HelixSRCapture::TagGroup() < 0)
+        return;
+
+    HelixSRCapture::Tag(tag.type, (int) tag.lifecycle, (ID3D12Resource*) tag.resource->native, tag.resource->state,
+                        tag.extent.left, tag.extent.top, tag.extent.width, tag.extent.height, frame,
+                        (ID3D12GraphicsCommandList*) cmdBuffer, -2, false);
+}
+
 sl::Result StreamlineHooks::hkslSetTag(const sl::ViewportHandle& viewport, const sl::ResourceTag* tags,
                                        uint32_t numTags, sl::CommandBuffer* cmdBuffer)
 {
@@ -512,6 +525,8 @@ sl::Result StreamlineHooks::hkslSetTag(const sl::ViewportHandle& viewport, const
         }
     }
 
+    HelixSRCapture::Source captureSource("setTag", (uint32_t) viewport); // HelixSR Scaler
+
     for (uint32_t i = 0; i < numTags; i++)
     {
         const auto typeEnum = (BufferType) tags[i].type;
@@ -540,9 +555,12 @@ sl::Result StreamlineHooks::hkslSetTag(const sl::ViewportHandle& viewport, const
         {
             State::Instance().slFGInputs.reportResource(tags[i], cmdBuffer, 0);
         }
-        else if (State::Instance().activeFgInput == FGInput::NvngxFG)
+        else
         {
-            LOG_TRACE("Tagging resource of type: {}", magic_enum::enum_name(typeEnum));
+            CaptureOtherTag(renderApi, tags[i], cmdBuffer, 0); // HelixSR Scaler
+
+            if (State::Instance().activeFgInput == FGInput::NvngxFG)
+                LOG_TRACE("Tagging resource of type: {}", magic_enum::enum_name(typeEnum));
         }
     }
 
@@ -601,6 +619,8 @@ sl::Result StreamlineHooks::hkslSetTagForFrame(const sl::FrameToken& frame, cons
         }
     }
 
+    HelixSRCapture::Source captureSource("setTagForFrame", (uint32_t) viewport); // HelixSR Scaler
+
     for (uint32_t i = 0; i < numResources; i++)
     {
         const auto typeEnum = (BufferType) resources[i].type;
@@ -619,9 +639,12 @@ sl::Result StreamlineHooks::hkslSetTagForFrame(const sl::FrameToken& frame, cons
         {
             State::Instance().slFGInputs.reportResource(resources[i], cmdBuffer, (uint32_t) frame);
         }
-        else if (State::Instance().activeFgInput == FGInput::NvngxFG)
+        else
         {
-            LOG_TRACE("Tagging resource of type: {}", magic_enum::enum_name(typeEnum));
+            CaptureOtherTag(renderApi, resources[i], cmdBuffer, (uint32_t) frame); // HelixSR Scaler
+
+            if (State::Instance().activeFgInput == FGInput::NvngxFG)
+                LOG_TRACE("Tagging resource of type: {}", magic_enum::enum_name(typeEnum));
         }
     }
 
@@ -637,6 +660,8 @@ sl::Result StreamlineHooks::hkslEvaluateFeature(sl::Feature feature, const sl::F
 
     if (State::Instance().activeFgInput == FGInput::DLSSG && numInputs > 0 && inputs != nullptr)
     {
+        HelixSRCapture::Source captureSource("evaluate", 0, (int) feature); // HelixSR Scaler
+
         for (uint32_t i = 0; i < numInputs; i++)
         {
             if (inputs[i] == nullptr)
@@ -1246,6 +1271,7 @@ sl::Result StreamlineHooks::hkslSetConstants(const sl::Constants& values, const 
     std::scoped_lock lock(setConstantsMutex);
     LOG_TRACE("called with frameIndex: {}, viewport: {}", (unsigned int) frame, (unsigned int) viewport);
 
+    HelixSRCapture::Source captureSource("setConstants", (uint32_t) viewport); // HelixSR Scaler
     State::Instance().slFGInputs.setConstants(values, (uint32_t) frame);
 
     return o_slSetConstants(values, frame, viewport);

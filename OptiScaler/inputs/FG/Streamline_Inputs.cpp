@@ -4,6 +4,7 @@
 #include <resource_tracking/ResTrack_dx12.h>
 #include <magic_enum.hpp>
 #include <framegen/ffx/HelixSRPresent_Dx12.h>
+#include <framegen/ffx/HelixSRCapture_Dx12.h>
 
 void Sl_Inputs::CheckForFrame(IFGFeature* fg, uint32_t frameId)
 {
@@ -85,6 +86,9 @@ bool Sl_Inputs::setConstants(const sl::Constants& values, uint32_t frameId)
     if (dataFound)
     {
         auto config = Config::Instance();
+
+        // HelixSR Scaler: the constants as given, for the debug capture
+        const auto given = data;
 
         // HelixSR Scaler: the game's constants as given, for HelixSR's DLSS-G parameters (FGPresent = optiscaler)
         if (HelixSRPresent::Requested())
@@ -248,6 +252,14 @@ bool Sl_Inputs::setConstants(const sl::Constants& values, uint32_t frameId)
         fgOutput->SetReset(data.reset == sl::Boolean::eTrue);
 
         fgOutput->SetFrameTimeDelta(static_cast<float>(State::Instance().lastFGFrameTime));
+
+        // HelixSR Scaler: debug capture ([FrameGen] HelixSRDebugCapture)
+        if (HelixSRCapture::TagGroup() >= 0)
+        {
+            HelixSRCapture::Constants(given, frameId, fgOutput->GetIndex(), data.cameraNear, data.cameraFar,
+                                      data.cameraFOV, data.cameraAspectRatio, data.mvecScale.x * mvsWidth,
+                                      data.mvecScale.y * mvsHeight, infiniteDepth);
+        }
     }
     else
     {
@@ -344,7 +356,17 @@ bool Sl_Inputs::reportResource(const sl::ResourceTag& tag, void* cmdBuffer, uint
     auto type = GetResourceType(tag.type);
 
     if (!type.has_value())
+    {
+        // HelixSR Scaler: debug capture: a tag of a type frame generation does not take (slot -3)
+        if (HelixSRCapture::TagGroup() >= 0 && state.currentFG != nullptr)
+        {
+            HelixSRCapture::Tag(tag.type, (int) tag.lifecycle, (ID3D12Resource*) tag.resource->native,
+                                tag.resource->state, tag.extent.left, tag.extent.top, tag.extent.width,
+                                tag.extent.height, frameId, (ID3D12GraphicsCommandList*) cmdBuffer, -3, false);
+        }
+
         return false;
+    }
 
     auto validity =
         (tag.lifecycle == sl::eValidUntilPresent) ? FG_ResourceValidity::UntilPresent : FG_ResourceValidity::ValidNow;
@@ -447,7 +469,14 @@ bool Sl_Inputs::reportResource(const sl::ResourceTag& tag, void* cmdBuffer, uint
         res.validity = validity;
         res.frameIndex = frameIndex;
 
-        state.currentFG->SetResource(&res);
+        const bool accepted = state.currentFG->SetResource(&res);
+
+        // HelixSR Scaler: debug capture ([FrameGen] HelixSRDebugCapture): the tag as received, where it went
+        if (HelixSRCapture::TagGroup() >= 0)
+        {
+            HelixSRCapture::Tag(tag.type, (int) tag.lifecycle, d3dRes, tag.resource->state, res.left, res.top, width,
+                                height, frameId, res.cmdList, frameIndex, accepted);
+        }
     }
 
     return true;

@@ -128,6 +128,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             FGModifyBufferState.set_from_config(readBool("FrameGen", "ModifyBufferState"));
             FGModifySCIndex.set_from_config(readBool("FrameGen", "ModifySCIndex"));
             FGHudCutoff.set_from_config(readFloat("FrameGen", "HudCutoff"));
+            FGHelixSRDebugCapture.set_from_config(readInt("FrameGen", "HelixSRDebugCapture")); // HelixSR Scaler
         }
 
         // FSR FG

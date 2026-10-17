@@ -2,6 +2,7 @@
 
 #include "FSRFG_Dx12.h"
 #include "HelixSRPresent_Dx12.h"
+#include "HelixSRCapture_Dx12.h"
 
 #include <State.h>
 #include <Util.h>
@@ -463,6 +464,17 @@ bool FSRFG_Dx12::Dispatch()
         }
     }
 
+    // HelixSR Scaler: debug capture ([FrameGen] HelixSRDebugCapture)
+    const int captureGroup = HelixSRCapture::DispatchGroup();
+
+    if (captureGroup >= 0)
+    {
+        HelixSRCapture::Line(captureGroup,
+                             std::format("B-ui frame {} slot {} res {} state {} flags {:#x}", willDispatchFrame, fIndex,
+                                         HelixSRCapture::ResText((ID3D12Resource*) uiDesc.uiResource.resource),
+                                         uiDesc.uiResource.state, uiDesc.flags));
+    }
+
     FfxApiProxy::D3D12_Configure(&_swapChainContext, &uiDesc.header);
 
     if (fgConfig.HUDLessColor.resource != nullptr)
@@ -561,6 +573,39 @@ bool FSRFG_Dx12::Dispatch()
     fgConfig.onlyPresentGenerated = state.fgOnlyGenerated;
     fgConfig.frameID = willDispatchFrame;
     fgConfig.swapChain = _swapChain;
+
+    // HelixSR Scaler: debug capture: the configure and which HUD-less colour / UI the generation of this frame reads
+    if (captureGroup >= 0)
+    {
+        // one resource lock at a time
+        D3D12_RESOURCE_STATES uiState = D3D12_RESOURCE_STATE_COMMON;
+        {
+            auto ui = GetResource(FG_ResourceType::UIColor, fIndex);
+            if (ui && uiDesc.uiResource.resource != nullptr)
+                uiState = ui->state;
+        }
+
+        auto hudless = GetResource(FG_ResourceType::HudlessColor, fIndex);
+
+        HelixSRCapture::Line(
+            captureGroup,
+            std::format(
+                "B-configure frame {} slot {} hudless {} state {} descfmt {} (original {} copy {:X} validity {} "
+                "extent {} {} {} {}) rect {} {} {} {} flags {:#x} async {} onlyGenerated {} enabled {}",
+                willDispatchFrame, fIndex, HelixSRCapture::ResText((ID3D12Resource*) fgConfig.HUDLessColor.resource),
+                fgConfig.HUDLessColor.state, fgConfig.HUDLessColor.description.format,
+                hudless ? HelixSRCapture::ResText(hudless->resource) : std::string("none"),
+                hudless ? (size_t) hudless->copy : 0, hudless ? (int) hudless->validity : -1,
+                hudless ? hudless->left : 0, hudless ? hudless->top : 0, hudless ? hudless->width : 0,
+                hudless ? hudless->height : 0, fgConfig.generationRect.left, fgConfig.generationRect.top,
+                fgConfig.generationRect.width, fgConfig.generationRect.height, fgConfig.flags,
+                fgConfig.allowAsyncWorkloads ? 1 : 0, fgConfig.onlyPresentGenerated ? 1 : 0,
+                fgConfig.frameGenerationEnabled ? 1 : 0));
+
+        HelixSRCapture::NoteConfigure(willDispatchFrame, (ID3D12Resource*) fgConfig.HUDLessColor.resource,
+                                      hudless ? hudless->state : D3D12_RESOURCE_STATE_COMMON,
+                                      (ID3D12Resource*) uiDesc.uiResource.resource, uiState);
+    }
 
     ffxReturnCode_t retCode = FfxApiProxy::D3D12_Configure(&_fgContext, &fgConfig.header);
     LOG_DEBUG("D3D12_Configure result: {0:X}, frame: {1}, fIndex: {2}", retCode, willDispatchFrame, fIndex);
@@ -673,6 +718,49 @@ bool FSRFG_Dx12::Dispatch()
                                         : static_cast<float>(state.lastFGFrameTime);
 
         dfgPrepare.viewSpaceToMetersFactor = _meterFactor[fIndex];
+
+        // HelixSR Scaler: debug capture: every prepare value and the depth / motion vectors as the DLL gets them
+        if (captureGroup >= 0)
+        {
+            auto resText = [](LockedDx12Resource& r)
+            {
+                return std::format("original {} copy {:X} validity {} extent {} {} {} {} state {:#x} slot {}",
+                                   HelixSRCapture::ResText(r->resource), (size_t) r->copy, (int) r->validity, r->left,
+                                   r->top, r->width, r->height, (UINT) r->state, r->frameIndex);
+            };
+
+            HelixSRCapture::Line(
+                captureGroup,
+                std::format(
+                    "B-prepare frame {} slot {} render {} {} jitter {:.9g} {:.9g} mvScale {:.9g} {:.9g} near "
+                    "{:.9g} far {:.9g} fovV {:.9g} frameTime {:.9g} meters {:.9g} flags {:#x} cameraInfo {} pos "
+                    "{:.9g} {:.9g} {:.9g} up {:.9g} {:.9g} {:.9g} right {:.9g} {:.9g} {:.9g} fwd {:.9g} {:.9g} "
+                    "{:.9g} reset {}",
+                    dfgPrepare.frameID, fIndex, dfgPrepare.renderSize.width, dfgPrepare.renderSize.height,
+                    dfgPrepare.jitterOffset.x, dfgPrepare.jitterOffset.y, dfgPrepare.motionVectorScale.x,
+                    dfgPrepare.motionVectorScale.y, dfgPrepare.cameraNear, dfgPrepare.cameraFar,
+                    dfgPrepare.cameraFovAngleVertical, dfgPrepare.frameTimeDelta, dfgPrepare.viewSpaceToMetersFactor,
+                    dfgPrepare.flags, cameraDataIsZeroed ? 0 : 1, dfgCameraData.cameraPosition[0],
+                    dfgCameraData.cameraPosition[1], dfgCameraData.cameraPosition[2], dfgCameraData.cameraUp[0],
+                    dfgCameraData.cameraUp[1], dfgCameraData.cameraUp[2], dfgCameraData.cameraRight[0],
+                    dfgCameraData.cameraRight[1], dfgCameraData.cameraRight[2], dfgCameraData.cameraForward[0],
+                    dfgCameraData.cameraForward[1], dfgCameraData.cameraForward[2], _reset[fIndex]));
+
+            // one resource lock at a time
+            if (auto depth = GetResource(FG_ResourceType::Depth, fIndex); depth)
+            {
+                HelixSRCapture::Line(captureGroup, std::format("B-prepare-depth {}", resText(depth)));
+                HelixSRCapture::Copy(captureGroup, "B-prepare", "depth", _fgCommandList[fIndex], depth->GetResource(),
+                                     depth->state, std::format("frame {} slot {}", dfgPrepare.frameID, fIndex));
+            }
+
+            if (auto velocity = GetResource(FG_ResourceType::Velocity, fIndex); velocity)
+            {
+                HelixSRCapture::Line(captureGroup, std::format("B-prepare-mv {}", resText(velocity)));
+                HelixSRCapture::Copy(captureGroup, "B-prepare", "mv", _fgCommandList[fIndex], velocity->GetResource(),
+                                     velocity->state, std::format("frame {} slot {}", dfgPrepare.frameID, fIndex));
+            }
+        }
 
         retCode = FfxApiProxy::D3D12_Dispatch(&_fgContext, &dfgPrepare.header);
         LOG_DEBUG("D3D12_Dispatch result: {0}, frame: {1}, fIndex: {2}, commandList: {3:X}", retCode, willDispatchFrame,
@@ -1115,8 +1203,55 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
         }
     }
 
+    // HelixSR Scaler: debug capture: the generation's values, its inputs as the DLL reads them, the generated frame
+    ID3D12Resource* captureHudless = nullptr;
+    ID3D12Resource* captureUi = nullptr;
+    D3D12_RESOURCE_STATES captureHudlessState = D3D12_RESOURCE_STATE_COMMON;
+    D3D12_RESOURCE_STATES captureUiState = D3D12_RESOURCE_STATE_COMMON;
+    int captureGroup = -1;
+
+    if (HelixSRCapture::Enabled() &&
+        !HelixSRCapture::ConfiguredFor(params->frameID, &captureHudless, &captureHudlessState, &captureUi,
+                                       &captureUiState, &captureGroup))
+    {
+        captureGroup = -1;
+    }
+
+    if (captureGroup >= 0)
+    {
+        const auto extra = std::format("frame {} slot {}", params->frameID, fIndex);
+
+        HelixSRCapture::Line(
+            captureGroup,
+            std::format(
+                "B-generate frame {} slot {} generated {} reset {} rect {} {} {} {} present {} state {} descfmt "
+                "{} output {} state {} descfmt {} transfer {} luminance {:.9g} {:.9g} cmdlist {:X} type {}",
+                params->frameID, fIndex, params->numGeneratedFrames, params->reset ? 1 : 0, params->generationRect.left,
+                params->generationRect.top, params->generationRect.width, params->generationRect.height,
+                HelixSRCapture::ResText((ID3D12Resource*) params->presentColor.resource), params->presentColor.state,
+                params->presentColor.description.format,
+                HelixSRCapture::ResText((ID3D12Resource*) params->outputs[0].resource), params->outputs[0].state,
+                params->outputs[0].description.format, params->backbufferTransferFunction, params->minMaxLuminance[0],
+                params->minMaxLuminance[1], (size_t) cmdList, cmdList ? (int) cmdList->GetType() : -1));
+
+        HelixSRCapture::Copy(captureGroup, "B-generate", "present", cmdList,
+                             (ID3D12Resource*) params->presentColor.resource,
+                             GetD3D12State((FfxApiResourceState) params->presentColor.state), extra);
+        HelixSRCapture::Copy(captureGroup, "B-generate", "hudless", cmdList, captureHudless, captureHudlessState,
+                             extra);
+        HelixSRCapture::Copy(captureGroup, "B-generate", "ui", cmdList, captureUi, captureUiState, extra);
+    }
+
     auto dispatchResult = FfxApiProxy::D3D12_Dispatch(&_fgContext, &params->header);
     LOG_DEBUG("D3D12_Dispatch result: {}, fIndex: {}", (UINT) dispatchResult, fIndex);
+
+    if (captureGroup >= 0 && params->numGeneratedFrames > 0)
+    {
+        HelixSRCapture::Copy(captureGroup, "B-generate", "output", cmdList,
+                             (ID3D12Resource*) params->outputs[0].resource,
+                             GetD3D12State((FfxApiResourceState) params->outputs[0].state),
+                             std::format("frame {} result {}", params->frameID, (int) dispatchResult));
+    }
 
     _lastFrameId = params->frameID;
 
@@ -2052,6 +2187,14 @@ void FSRFG_Dx12::CreateObjects(ID3D12Device* InDevice)
 bool FSRFG_Dx12::Present()
 {
     auto fIndex = GetIndexWillBeDispatched();
+
+    // HelixSR Scaler: debug capture ([FrameGen] HelixSRDebugCapture): frame counter, back buffer, late tag copies
+    if (HelixSRCapture::Enabled())
+    {
+        const bool generating = IsActive() && !IsPaused() && IsResourceReady(FG_ResourceType::Depth, fIndex) &&
+                                IsResourceReady(FG_ResourceType::Velocity, fIndex);
+        HelixSRCapture::OnPresent(_gameCommandQueue, _swapChain, generating);
+    }
 
     // HelixSR Scaler: HelixSR's generated frames have the game's UI already
     if (Config::Instance()->FGDrawUIOverFG.value_or_default() && !HelixSRPresent::Active())
