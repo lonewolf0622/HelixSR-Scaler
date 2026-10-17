@@ -6,6 +6,8 @@
 #include "IFeature_Dx12.h"
 #include "State.h"
 #include <misc/DeferredRelease.h>
+#include <helixsr/HelixSRResourceStates.h>
+#include <proxies/NVNGX_Proxy.h>
 
 void IFeature_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
                                     D3D12_RESOURCE_STATES InBeforeState, D3D12_RESOURCE_STATES InAfterState) const
@@ -100,6 +102,46 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     InParameters->Get(NVSDK_NGX_Parameter_Output, &paramOutput);
     InParameters->Get(NVSDK_NGX_Parameter_MotionVectors, &paramMotion);
     InParameters->Get(NVSDK_NGX_Parameter_Depth, &paramDepth);
+
+    // Keep game textures in compute states through the upscaler and all
+    // post-processing passes. Output scaling / sharpening can insert scratch
+    // targets, but the final pass still writes the game's original output.
+    HelixSR::Dx12::ResourceTransitions transitions(InCommandList);
+    if (upscaler == Upscaler::DLSS && NVNGXProxy::HelixSRDlss())
+    {
+        auto& cfg = *Config::Instance();
+        const auto state = [](const auto& setting) -> std::optional<D3D12_RESOURCE_STATES>
+        {
+            if (setting.has_value())
+                return static_cast<D3D12_RESOURCE_STATES>(setting.value());
+            return std::nullopt;
+        };
+        const std::array states = { state(cfg.ColorResourceBarrier), state(cfg.DepthResourceBarrier),
+                                    state(cfg.MVResourceBarrier),    state(cfg.ExposureResourceBarrier),
+                                    state(cfg.MaskResourceBarrier),  state(cfg.OutputResourceBarrier) };
+        const std::array configured = {
+            state(cfg.ColorResourceBarrier.value_for_config()), state(cfg.DepthResourceBarrier.value_for_config()),
+            state(cfg.MVResourceBarrier.value_for_config()),    state(cfg.ExposureResourceBarrier.value_for_config()),
+            state(cfg.MaskResourceBarrier.value_for_config()),  state(cfg.OutputResourceBarrier.value_for_config())
+        };
+        for (unsigned i = 0; i < states.size(); ++i)
+        {
+            ID3D12Resource* resource = nullptr;
+            InParameters->Get(HelixSR::Dx12::kResourceKeys[i].ngx, &resource);
+            const auto before = HelixSR::Dx12::InputState(InParameters, i, resource, states[i], configured[i]);
+            const auto after =
+                i == 5 ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS : D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            transitions.Add(resource, before, after);
+            if (_frameCount == 0 && resource)
+            {
+                const auto desc = resource->GetDesc();
+                LOG_INFO("HelixSR input {}: {}x{}, format {}, explicit state {}, state {} -> {}",
+                         HelixSR::Dx12::kResourceKeys[i].ngx, desc.Width, desc.Height, (unsigned) desc.Format,
+                         before.has_value(), before ? (unsigned) *before : (unsigned) after, (unsigned) after);
+            }
+        }
+        transitions.Apply();
+    }
 
     // Order is important as that's the order of shader dispatch
     std::vector<ShaderPass> pipeline;
