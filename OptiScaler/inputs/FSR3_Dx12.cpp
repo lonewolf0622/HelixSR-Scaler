@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "FSR3_Dx12.h"
+#include <helixsr/HelixSRResourceStates.h>
 
 #include "Config.h"
 #include "Util.h"
@@ -352,6 +353,9 @@ static Fsr3::FfxErrorCode ffxFsr3ContextDispatch_Dx12(Fsr3::FfxFsr3UpscalerConte
     params->Set("FSR.viewSpaceToMetersFactor", pDispatchDescription->viewSpaceToMetersFactor);
     params->Set(NVSDK_NGX_Parameter_Sharpness, pDispatchDescription->sharpness);
 
+    HelixSR::Dx12::CaptureStates(params, *pDispatchDescription,
+                                 [](auto value) { return HelixSR::Dx12::Fsr3State((unsigned) value); });
+
     if (pDispatchDescription->color.resource != nullptr && pDispatchDescription->color.state > 0)
         Config::Instance()->ColorResourceBarrier.set_volatile_value(GetD3D12State(pDispatchDescription->color.state));
 
@@ -547,6 +551,9 @@ ffxFsr3ContextDispatch_Pattern_Dx12(Fsr3::FfxFsr3UpscalerContext* pContext,
     params->Set("FSR.reactive", pDispatchDescription->reactive.resource);
     params->Set("FSR.viewSpaceToMetersFactor", pDispatchDescription->viewSpaceToMetersFactor);
     params->Set(NVSDK_NGX_Parameter_Sharpness, pDispatchDescription->sharpness);
+
+    HelixSR::Dx12::CaptureStates(params, *pDispatchDescription,
+                                 [](auto value) { return HelixSR::Dx12::Fsr3State((unsigned) value); });
 
     if (pDispatchDescription->color.resource != nullptr && pDispatchDescription->color.state > 0)
         Config::Instance()->ColorResourceBarrier.set_volatile_value(GetD3D12State(pDispatchDescription->color.state));

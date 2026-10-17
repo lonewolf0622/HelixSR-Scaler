@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "FSR2_Dx12.h"
+#include <helixsr/HelixSRResourceStates.h>
 
 #include "Util.h"
 #include "Config.h"
@@ -599,6 +600,9 @@ static Fsr212::FfxErrorCode ffxFsr2ContextDispatch_Dx12(Fsr212::FfxFsr2Context* 
     LOG_DEBUG("handle: {:X}, internalResolution: {}x{}", handle->Id, dispatchDescription->renderSize.width,
               dispatchDescription->renderSize.height);
 
+    HelixSR::Dx12::CaptureStates(params, *dispatchDescription,
+                                 [](auto value) { return HelixSR::Dx12::Fsr2State((unsigned) value); });
+
     State::Instance().setInputApiName = ApiUpscalerInput::FSR2X_DX12;
 
     auto evalResult = NVSDK_NGX_D3D12_EvaluateFeature((ID3D12GraphicsCommandList*) dispatchDescription->commandList,
@@ -662,6 +666,9 @@ ffxFsr2ContextDispatch_Pattern_Dx12(Fsr212::FfxFsr2Context* context,
 
     LOG_DEBUG("handle: {:X}, internalResolution: {}x{}", handle->Id, dispatchDescription->renderSize.width,
               dispatchDescription->renderSize.height);
+
+    HelixSR::Dx12::CaptureStates(params, *dispatchDescription,
+                                 [](auto value) { return HelixSR::Dx12::Fsr2State((unsigned) value); });
 
     State::Instance().setInputApiName = ApiUpscalerInput::FSR2X_DX12;
 
@@ -730,6 +737,9 @@ static Fsr212::FfxErrorCode ffxFsr20ContextDispatch_Dx12(Fsr212::FfxFsr2Context*
     LOG_DEBUG("handle: {:X}, internalResolution: {}x{}", handle->Id, dispatchDescription->renderSize.width,
               dispatchDescription->renderSize.height);
 
+    HelixSR::Dx12::CaptureStates(params, *dispatchDescription,
+                                 [](auto value) { return HelixSR::Dx12::Fsr2State((unsigned) value); });
+
     State::Instance().setInputApiName = ApiUpscalerInput::FSR20_DX12;
 
     auto evalResult = NVSDK_NGX_D3D12_EvaluateFeature((ID3D12GraphicsCommandList*) dispatchDescription->commandList,
@@ -797,6 +807,9 @@ static Fsr212::FfxErrorCode ffxFsr20ContextDispatch_Pattern_Dx12(Fsr212::FfxFsr2
 
     LOG_DEBUG("handle: {:X}, internalResolution: {}x{}", handle->Id, dispatchDescription->renderSize.width,
               dispatchDescription->renderSize.height);
+
+    HelixSR::Dx12::CaptureStates(params, *dispatchDescription,
+                                 [](auto value) { return HelixSR::Dx12::Fsr2State((unsigned) value); });
 
     State::Instance().setInputApiName = ApiUpscalerInput::FSR20_DX12;
 

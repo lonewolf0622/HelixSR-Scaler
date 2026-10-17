@@ -156,6 +156,9 @@ jobs:
     - name: Test under Wine
       run: helixsr/tests/test_wine.sh "linux/$name"
 
+    - name: Test HelixSR resource states without a GPU
+      run: bash helixsr/tests/test_resource_states.sh
+
     - uses: actions/upload-artifact@v4
       with:
         name: ${{ env.name }}
