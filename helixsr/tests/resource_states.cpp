@@ -146,7 +146,9 @@ int main()
     CHECK(InputState(&params, 0, Texture(1), std::nullopt) == D3D12_RESOURCE_STATE_COPY_SOURCE);
     fsr2.color.state = 0;
     CaptureStates(&params, fsr2, Fsr2State);
-    CHECK(InputState(&params, 0, Texture(1), D3D12_RESOURCE_STATE_RENDER_TARGET) == D3D12_RESOURCE_STATE_RENDER_TARGET);
+    CHECK(!InputState(&params, 0, Texture(1), D3D12_RESOURCE_STATE_RENDER_TARGET));
+    CHECK(InputState(&params, 0, Texture(1), std::nullopt, D3D12_RESOURCE_STATE_RENDER_TARGET) ==
+          D3D12_RESOURCE_STATE_RENDER_TARGET);
 
     Dispatch fsr3 { { Texture(1), 1 }, { Texture(2), 4 }, { Texture(3), 12 },
                     { Texture(4), 2 }, { Texture(5), 8 }, { Texture(6), 2 } };

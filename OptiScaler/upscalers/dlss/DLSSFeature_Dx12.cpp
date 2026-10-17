@@ -120,9 +120,9 @@ bool DLSSFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
                 if (_frameCount == 0 && resource)
                 {
                     const auto desc = resource->GetDesc();
-                    LOG_INFO("HelixSR input {}: {}x{}, format {}, state {} -> {}", HelixSR::Dx12::kResourceKeys[i].ngx,
-                             desc.Width, desc.Height, (unsigned) desc.Format,
-                             before ? (unsigned) *before : (unsigned) after, (unsigned) after);
+                    LOG_INFO("HelixSR input {}: {}x{}, format {}, explicit state {}, state {} -> {}",
+                             HelixSR::Dx12::kResourceKeys[i].ngx, desc.Width, desc.Height, (unsigned) desc.Format,
+                             before.has_value(), before ? (unsigned) *before : (unsigned) after, (unsigned) after);
                 }
             }
             transitions.Apply();

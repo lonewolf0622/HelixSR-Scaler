@@ -99,8 +99,10 @@ std::optional<D3D12_RESOURCE_STATES> InputState(Params* params, unsigned index, 
     ID3D12Resource* original = nullptr;
     unsigned state = 0;
     const auto& keys = kResourceKeys[index];
-    if (params->Get(keys.resource, &original) == 1 && original)
+    if (params->Get(keys.resource, &original) == 1)
     {
+        if (!original)
+            return configured; // Unspecified state: do not reuse another dispatch's volatile hotfix.
         if (original != resource)
             return std::nullopt; // Scaler's scratch texture already has its required state.
         if (configured)
