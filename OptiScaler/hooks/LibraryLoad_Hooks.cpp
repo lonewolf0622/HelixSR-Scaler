@@ -68,6 +68,10 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
     if (HelixSR::Found() && Util::IsSubpath(path, HelixSR::Folder()))
         return nullptr;
 
+    // HelixSR Scaler: the same for the folder of HelixSR's FidelityFX DLL (AMD's FSR it forwards to, my-fsr)
+    if (HelixSR::FsrDllFound() && Util::IsSubpath(path, HelixSR::FsrDllPath().parent_path()))
+        return nullptr;
+
     // exe path
     auto exePath = Util::ExePath().parent_path().wstring();
 

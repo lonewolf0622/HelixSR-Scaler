@@ -3,6 +3,7 @@
 #include <Util.h>
 #include <proxies/FfxApi_Proxy.h>
 #include "FFXFeature_Dx12.h"
+#include <helixsr/HelixSRNames.h> // HelixSR Scaler
 #include <misc/DeferredRelease.h>
 #include "MathUtils.h"
 
@@ -687,6 +688,10 @@ bool FFXFeatureDx12::InitFFX(const NVSDK_NGX_Parameter* InParameters)
             State::Instance().ffxUpscalerVersionsDx12.names[Config::Instance()->FfxUpscalerIndex.value_or_default()];
         _name = "FSR";
         parse_version(version);
+
+        // HelixSR Scaler: which FidelityFX upscaler runs (HelixSR's DLL lists HelixSR, then AMD's FSR versions)
+        LOG_INFO("FFX upscaler: {} (version name {}, index {})", HelixSR::Names::Label(version), version,
+                 Config::Instance()->FfxUpscalerIndex.value_or_default());
     }
 
     SetInit(true);

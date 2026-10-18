@@ -150,6 +150,9 @@ jobs:
     - name: Test setup_linux.sh
       run: helixsr/tests/test_setup_linux.sh "linux/$name"
 
+    - name: Test HelixSR's names in the upscaler lists
+      run: helixsr/tests/test_names.sh
+
     - name: Test under Wine
       run: helixsr/tests/test_wine.sh "linux/$name"
 

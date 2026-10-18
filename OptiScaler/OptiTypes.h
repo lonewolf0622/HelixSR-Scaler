@@ -224,6 +224,16 @@ struct feature_version
             ++p;
         }
 
+        // HelixSR Scaler: HelixSR's FidelityFX entry is named "HelixSR" without a version; its DLL implements FSR
+        // 3.1.5's upscaler API, which OptiScaler's version checks go by
+        if (strncmp(version_str, "HelixSR", 7) == 0)
+        {
+            major = 3;
+            minor = 1;
+            patch = 5;
+            return;
+        }
+
         LOG_WARN("can't parse {0}", version_str);
     }
 };

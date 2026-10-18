@@ -675,6 +675,9 @@ void ApplyDefaults()
     {
         LOG_WARN("HelixSR Scaler: no {} folder with {} next to this DLL or the game's .exe", wstring_to_string(kFolder),
                  wstring_to_string(kDll));
+
+        // HelixSR's FidelityFX DLL as the FFX upscaler instead (HelixSRFsrDll.cpp)
+        ApplyFsrDllDefaults();
         return;
     }
 
@@ -785,7 +788,7 @@ bool IsActive()
         return false;
 
     const auto type = feature->GetUpscalerType();
-    return (type == ::Upscaler::DLSS || type == ::Upscaler::DLSS_on12) && NVNGXProxy::HelixSRDlss();
+    return ((type == ::Upscaler::DLSS || type == ::Upscaler::DLSS_on12) && NVNGXProxy::HelixSRDlss()) || IsActiveFfx();
 }
 
 void RenderSettings(float scale, ImVec4 (*color)(const ImVec4&))

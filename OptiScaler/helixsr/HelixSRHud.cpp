@@ -161,23 +161,22 @@ struct UpscalerEntry
 };
 
 // The upscalers of a DirectX 12 game, or of a DirectX 11 game (HelixSR, FSR from the FFX SDK and XeSS through
-// OptiScaler's Dx12 interop there)
-std::vector<UpscalerEntry> Upscalers(bool dx11)
+// OptiScaler's Dx12 interop there), or of a Vulkan game with HelixSR's FidelityFX DLL (HelixSR and FSR from the FFX SDK
+// through the Dx12 interop)
+std::vector<UpscalerEntry> Upscalers(API api)
 {
+    const bool dx11 = api == DX11, vulkan = api == Vulkan;
     std::vector<UpscalerEntry> list;
-    const bool helixDlss = found && NVNGXProxy::HelixSRDlss();
+    const bool helixDlss = found && NVNGXProxy::HelixSRDlss() && !vulkan;
     if (helixDlss)
         list.push_back({ "HelixSR", HelixSRUpscaler(), true });
 
-    // every FSR the FFX SDK reports (FSR 4, FSR 3.1, ...), newest first, as OptiScaler's own upscaler list names them
-    const ::Upscaler ffx = dx11 ? ::Upscaler::FFX_on12 : ::Upscaler::FFX;
+    // every FSR the FFX SDK reports (HelixSR's FidelityFX entry first, then FSR 4, FSR 3.1, ...), as OptiScaler's
+    // own upscaler list names them
+    const ::Upscaler ffx = dx11 || vulkan ? ::Upscaler::FFX_on12 : ::Upscaler::FFX;
     FFXFeature::EnsureVersionsDx12();
     const auto& versions = State::Instance().ffxUpscalerVersionsDx12;
-    std::vector<int> order(versions.names.size());
-    for (size_t i = 0; i < order.size(); i++)
-        order[i] = (int) i;
-    std::stable_sort(order.begin(), order.end(), [&versions](int a, int b)
-                     { return feature_version(versions.names[b]) < feature_version(versions.names[a]); });
+    const auto order = HelixSR::Names::Order(versions.names);
     for (int n : order)
         list.push_back({ HelixSR::FfxVersionLabel(versions.names[n]), ffx, false, n });
     if (order.empty())
@@ -187,7 +186,7 @@ std::vector<UpscalerEntry> Upscalers(bool dx11)
     if (!helixDlss && IdentifyGpu::getPrimaryGpu().dlssCapable && Config::Instance()->DLSSEnabled.value_or_default())
         list.push_back({ "DLSS", ::Upscaler::DLSS, false });
     list.push_back({ "FSR 2.2.1", ::Upscaler::FSR22, false });
-    list.push_back({ "FSR 2.1.2", dx11 ? ::Upscaler::FSR21_on12 : ::Upscaler::FSR21, false });
+    list.push_back({ "FSR 2.1.2", dx11 || vulkan ? ::Upscaler::FSR21_on12 : ::Upscaler::FSR21, false });
     return list;
 }
 
@@ -313,7 +312,7 @@ void RenderHud(float scale, ImVec4 (*color)(const ImVec4&))
     const char* badge;
     unsigned badgeCol;
     const bool fault = m.status.networkMissing || m.status.gpuUnsupported || m.status.networkFailed;
-    if (!found)
+    if (!Installed())
         badge = "NO HELIXSR", badgeCol = kRed;
     else if (!running)
         badge = "STANDBY", badgeCol = kAmber;
@@ -355,14 +354,14 @@ void RenderHud(float scale, ImVec4 (*color)(const ImVec4&))
             Text(dl, ImVec2(lx + 6 * k, ly), ts, Col(kText, 0.85f), "DLSS RAY RECONSTRUCTION IS ON");
             Text(dl, ImVec2(lx + 6 * k, ly + 24 * k), ts, Col(kMuted), "THE UPSCALER CAN'T BE CHANGED.");
         }
-        else if (state.api != DX12 && state.api != DX11)
+        else if (state.api != DX12 && state.api != DX11 && !FsrDllFound())
         {
             Text(dl, ImVec2(lx + 6 * k, ly), ts, Col(kText, 0.85f), "HELIXSR RUNS IN DIRECTX 11 AND 12 GAMES");
             Text(dl, ImVec2(lx + 6 * k, ly + 24 * k), ts, Col(kMuted), "PICK AN UPSCALER IN THE LIST BELOW.");
         }
         else
         {
-            const auto list = Upscalers(state.api == DX11);
+            const auto list = Upscalers(state.api);
             const ::Upscaler current = Backend();
             const int ffxIndex = cfg->FfxUpscalerIndex.value_or_default();
             // rows shrink when the list is long (many FSR versions), so it stays inside the panel
@@ -373,7 +372,8 @@ void RenderHud(float scale, ImVec4 (*color)(const ImVec4&))
                 const auto& u = list[i];
                 const bool isHelix = u.helixsr;
                 const bool sameFfx = u.ffxIndex < 0 || u.ffxIndex == ffxIndex;
-                const bool on = isHelix ? active : (!active && current == u.upscaler && sameFfx);
+                // HelixSR's FidelityFX entry is an FFX entry: on when FFX runs it (by its index)
+                const bool on = isHelix ? active : ((u.ffxIndex >= 0 || !active) && current == u.upscaler && sameFfx);
                 const float ry = ly + i * rowH;
 
                 ImGui::SetCursorScreenPos(ImVec2(lx, ry - 3 * k));
@@ -491,7 +491,9 @@ void RenderHud(float scale, ImVec4 (*color)(const ImVec4&))
             SaveMenuSettings();
 
         const ImVec2 note(lx, a.y + 154 * k);
-        if (!found)
+        if (!found && FsrDllFound()) // HelixSR's FidelityFX DLL reads its own helixsr.ini
+            Text(dl, note, smallSize, Col(kMuted), "SETTINGS: HELIXSR.INI NEXT TO HELIXSR'S DLL");
+        else if (!found)
             Text(dl, note, smallSize, Col(kRed), "! NO HELIXSR FOLDER NEXT TO THE GAME");
         else if (m.saveFailed)
             Text(dl, note, smallSize, Col(kRed), "! COULDN'T SAVE THE SETTINGS");
@@ -526,7 +528,11 @@ void RenderHud(float scale, ImVec4 (*color)(const ImVec4&))
         } lines[] = {
             { "HELIXSR", m.status.version.empty() ? "--" : m.status.version, kText },
             { "NETWORK", network, networkCol },
-            { "FOLDER", found ? "FOUND" : "MISSING", found ? kTeal : kRed },
+            { "FOLDER",
+              found           ? "FOUND"
+              : FsrDllFound() ? "HELIXSR-FSRFG"
+                              : "MISSING",
+              Installed() ? kTeal : kRed },
             { "LOG", "HELIXSR.LOG", kText },
         };
         for (int i = 0; i < 4; i++)

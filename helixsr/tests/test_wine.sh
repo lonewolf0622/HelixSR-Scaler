@@ -72,6 +72,35 @@ check "old HelixSR GPU log leaves alternatives available" 'grep -q "alternative 
 check "auto wave size remains 32 lanes" 'grep -q "^WaveSize = 32" "$G/HelixSR/helixsr.ini" && grep -q "^WaveSize=auto" "$G/OptiScaler.ini"'
 check "no second copy of HelixSR's DLL (one DLL for DLSS)" '[ ! -e "$G/HelixSR/helixsr_upscaler.dll" ]'
 
+# HelixSR's FidelityFX DLL without helixsr.dll: FSR w/Dx12 (HelixSR) for DirectX 11 and Vulkan games, AMD's FSR next to
+# it for HelixSR's list. Stand-in DLL: nothing loads it here (no D3D12 device), only the defaults are checked.
+mv "$G/HelixSR" "$W/HelixSR.away"
+mkdir -p "$G/HelixSR-fsrfg"
+cp "$W/home/Downloads/HelixSR/amd_fidelityfx_dx12.dll" "$G/HelixSR-fsrfg/amd_fidelityfx_dx12.dll"
+sed -i 's/^FGInput=.*/FGInput=auto/; s/^FGOutput=.*/FGOutput=auto/; s/^FGNvngxReplacement=.*/FGNvngxReplacement=auto/; s/^Dx11Upscaler=.*/Dx11Upscaler=auto/; s/^VulkanUpscaler=.*/VulkanUpscaler=auto/; s/^FfxDx12SRPath=.*/FfxDx12SRPath=auto/' "$G/OptiScaler.ini"
+cp "$G/OptiScaler.ini" "$W/requested.ini"
+(cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
+check "FSR DLL: HelixSR's FidelityFX DLL is the FFX upscaler module" 'grep -q "HelixSR.s FidelityFX DLL .*HelixSR-fsrfg.amd_fidelityfx_dx12.dll is the FFX upscaler module" "$G/OptiScaler.log"'
+check "FSR DLL: DirectX 11 and Vulkan default to FSR w/Dx12 (HelixSR, index 0)" 'grep -q "upscalers Dx11=ffx_12, Vulkan=ffx_12 (FFX upscaler index 0)" "$G/OptiScaler.log"'
+check "FSR DLL: AMD's FSR next to HelixSR's DLL for its list" 'cmp -s "$G/OptiScaler/amd_fidelityfx_upscaler_dx12.dll" "$G/HelixSR-fsrfg/amd_fidelityfx_upscaler_dx12.amd.dll"'
+check "FSR DLL: the defaults are not saved into OptiScaler.ini" 'cmp -s "$W/requested.ini" "$G/OptiScaler.ini"'
+check "FSR DLL: no HelixSR DLSS route without helixsr.dll" '! grep -q "helixsr.dll in use" "$G/OptiScaler.log"'
+
+# OptiScaler.ini's choices stay
+sed -i 's/^Dx11Upscaler=.*/Dx11Upscaler=fsr22/' "$G/OptiScaler.ini"
+(cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
+check "FSR DLL: a Dx11Upscaler set in OptiScaler.ini stays" 'grep -q "upscalers Dx11=fsr22, Vulkan=ffx_12" "$G/OptiScaler.log"'
+sed -i 's/^Dx11Upscaler=.*/Dx11Upscaler=auto/; s/^FfxDx12SRPath=.*/FfxDx12SRPath=C:\\elsewhere\\amd_fidelityfx_upscaler_dx12.dll/' "$G/OptiScaler.ini"
+(cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
+check "FSR DLL: another FfxDx12SRPath in OptiScaler.ini wins" 'grep -q "but FfxDx12SRPath picks" "$G/OptiScaler.log" && ! grep -q "upscalers Dx11=ffx_12" "$G/OptiScaler.log"'
+
+# Neither HelixSR form: OptiScaler's own defaults
+sed -i 's/^FfxDx12SRPath=.*/FfxDx12SRPath=auto/' "$G/OptiScaler.ini"
+rm -rf "$G/HelixSR-fsrfg"
+(cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
+check "no HelixSR: OptiScaler's defaults" 'grep -q "no HelixSR folder" "$G/OptiScaler.log" && ! grep -q "FFX upscaler module" "$G/OptiScaler.log"'
+mv "$W/HelixSR.away" "$G/HelixSR"
+
 if [ $fails != 0 ] && [ -f "$G/OptiScaler.log" ]; then
     echo "--- OptiScaler.log (first 80 lines)"
     head -n 80 "$G/OptiScaler.log"

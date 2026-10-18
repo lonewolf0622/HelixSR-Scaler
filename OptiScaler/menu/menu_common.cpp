@@ -275,6 +275,11 @@ inline std::string StrFmt(const char* fmt, ...)
 
 static std::string NameWithVersion(IFeature* feature)
 {
+    // HelixSR Scaler: HelixSR is named HelixSR (as OptiScaler's DLSS or as its FidelityFX entry), without the
+    // FidelityFX API version its DLL reports
+    if (feature == State::Instance().currentFeature && HelixSR::IsActive())
+        return "HelixSR";
+
     const auto version = feature->Version();
     return StrFmt("%s %u.%u.%u", feature->ShortName().c_str(), version.major, version.minor, version.patch);
 }
@@ -732,13 +737,8 @@ static feature_version UpscalerSortVersion(Upscaler upscaler)
 // Indices into the FFX version list, newest first
 static std::vector<int> FfxVersionsNewestFirst(const State::FfxVersionList& versions)
 {
-    std::vector<int> order(versions.names.size());
-    std::iota(order.begin(), order.end(), 0);
-
-    std::stable_sort(order.begin(), order.end(), [&versions](int a, int b)
-                     { return feature_version(versions.names[b]) < feature_version(versions.names[a]); });
-
-    return order;
+    // HelixSR Scaler: HelixSR's FidelityFX entry first (its default), then newest first as OptiScaler orders them
+    return HelixSR::Names::Order(versions.names);
 }
 
 void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, const std::vector<Upscaler>& options)
@@ -798,10 +798,11 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
                 FFXFeature::EnsureVersionsDx12();
 
             // Fall back to a generic entry if FFX couldn't be queried
-            if (!versions->names.empty())
+            // HelixSR Scaler: HelixSR's FidelityFX entry is listed next to the newest FSR (its own line)
+            if (auto listed = HelixSR::Names::ListEntries(versions->names); !listed.empty())
             {
-                auto newest = FfxVersionsNewestFirst(*versions)[0];
-                entries.push_back({ opt, newest, feature_version(versions->names[newest]) });
+                for (int n : listed)
+                    entries.push_back({ opt, n, feature_version(versions->names[n]) });
                 continue;
             }
         }
@@ -838,15 +839,28 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
         if (i > 0 && group(entry.upscaler) != group(entries[i - 1].upscaler))
             ImGui::Separator();
 
-        auto label = StrFmt("%s##%d", upscalerName(entry.upscaler, entry.ffxIndex).c_str(), (int) entry.upscaler);
+        // HelixSR Scaler: an FFX backend can have two lines (HelixSR's entry and the newest FSR): told apart by index
+        auto label = StrFmt("%s##%d_%d", upscalerName(entry.upscaler, entry.ffxIndex).c_str(), (int) entry.upscaler,
+                            entry.ffxIndex);
+        // HelixSR's line is the selected one while FFX runs HelixSR's entry, the FSR line while it runs any other
+        const auto* ffxList = entry.ffxIndex >= 0 ? GetFfxVersionList(entry.upscaler, api) : nullptr;
+        const bool helixsrLines = ffxList != nullptr && HelixSR::Names::ListEntries(ffxList->names).size() > 1;
+        const bool runsHelixSR = helixsrLines && ffxIndex >= 0 && ffxIndex < (int) ffxList->names.size() &&
+                                 HelixSR::Names::IsHelixSR(ffxList->names[ffxIndex]);
+        const bool selected =
+            currentUpscaler == entry.upscaler &&
+            (!helixsrLines || runsHelixSR == HelixSR::Names::IsHelixSR(ffxList->names[entry.ffxIndex]));
 
-        if (ImGui::Selectable(label.c_str(), currentUpscaler == entry.upscaler))
+        if (ImGui::Selectable(label.c_str(), selected))
         {
             State::Instance().newBackend = entry.upscaler;
 
-            // Switching to FFX starts with the newest one
-            if (entry.ffxIndex >= 0 && currentUpscaler != entry.upscaler)
+            // Switching to FFX starts with the newest one (HelixSR Scaler: or HelixSR's entry, the line picked)
+            if (entry.ffxIndex >= 0 && (currentUpscaler != entry.upscaler || (helixsrLines && !selected)))
+            {
                 config->FfxUpscalerIndex = entry.ffxIndex;
+                MARK_ALL_BACKENDS_CHANGED();
+            }
         }
 
         // Dimmed tags aligned to the right
@@ -2895,7 +2909,7 @@ void MenuCommon::RenderUpscalerStateMessage(RenderMenuContext& ctx)
 
         ImGui::PushTextWrapPos(0.0f);
         ImGui::Text("%s active, but currently not used by the game\nPlease load into the game",
-                    currentFeature->Name().c_str());
+                    HelixSR::IsActive() ? "HelixSR" : currentFeature->Name().c_str()); // HelixSR Scaler
         ImGui::PopTextWrapPos();
 
         if (config->UseHQFont.value_or_default())
@@ -8902,7 +8916,8 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
             const float upscaleRatio = renderWidth > 0.0f ? (float) currentFeature->TargetWidth() / renderWidth : 0.0f;
 
             ImGui::TextColored(toneMapColor(ImVec4(0.35f, 0.85f, 0.45f, 1.f)), "%s (%.2f)",
-                               currentFeature->ShortName().c_str(), upscaleRatio);
+                               HelixSR::IsActive() ? "HelixSR" : currentFeature->ShortName().c_str(), // HelixSR Scaler
+                               upscaleRatio);
         }
 
         ImGui::TextDisabled("FG");
