@@ -143,5 +143,5 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     const Reproject* GetReproject() const override { return _reproject.get(); };
 
     IFGFeature_Dx12() = default;
-    virtual ~IFGFeature_Dx12() { DestroyCopyCmdList(); }
+    virtual ~IFGFeature_Dx12();
 };

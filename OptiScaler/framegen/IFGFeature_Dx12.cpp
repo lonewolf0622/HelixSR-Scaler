@@ -49,6 +49,35 @@ bool IFGFeature_Dx12::HasResource(FG_ResourceType type, int index)
     return _frameResources[index].contains(type);
 }
 
+IFGFeature_Dx12::~IFGFeature_Dx12()
+{
+    DestroyCopyCmdList();
+
+    // The shared UI / SC fences and their events live as long as the feature (ReleaseObjects keeps them)
+    if (!State::Instance().isShuttingDown)
+    {
+        // let the last UI submission finish before its fence goes away
+        if (_uiFence != nullptr && _uiFenceEvent != nullptr && _uiFenceValue != 0 &&
+            _uiFence->GetCompletedValue() < _uiFenceValue &&
+            SUCCEEDED(_uiFence->SetEventOnCompletion(_uiFenceValue, _uiFenceEvent)))
+        {
+            WaitForSingleObject(_uiFenceEvent, 1000);
+        }
+
+        SAFE_RELEASE(_uiFence);
+        SAFE_RELEASE(_scFence);
+    }
+
+    if (_uiFenceEvent != nullptr)
+        CloseHandle(_uiFenceEvent);
+
+    if (_scFenceEvent != nullptr)
+        CloseHandle(_scFenceEvent);
+
+    _uiFenceEvent = nullptr;
+    _scFenceEvent = nullptr;
+}
+
 bool IFGFeature_Dx12::WaitForUIAllocator(UINT index)
 {
     if (_uiFence == nullptr || _uiFenceEvent == nullptr)
