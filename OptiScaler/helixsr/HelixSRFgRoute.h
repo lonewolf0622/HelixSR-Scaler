@@ -60,7 +60,7 @@ struct Game
 struct Settings
 {
     bool engine = false;      // HelixSR's frame generation is installed (FrameGenFound)
-    bool switchedOn = true;   // [HelixSR] FrameGeneration is not off
+    bool switchedOn = true;   // [HelixSR] FrameGeneration = on (auto is off)
     bool streamline = false;  // OptiScaler's streamline folder (sl.interposer.dll), needed by FGOutput = dlssg
     bool optiPresent = false; // [HelixSR] FGPresent = optiscaler written in OptiScaler.ini (DLSS-G games only)
 
@@ -115,7 +115,7 @@ inline Route Decide(const Game& game, const Settings& s)
         if (s.provider == Provider::HelixSR)
             r.provider = Provider::None;
 
-        r.why = !s.switchedOn ? "HelixSR frame generation off ([HelixSR] FrameGeneration = off)"
+        r.why = !s.switchedOn ? "HelixSR frame generation off ([HelixSR] FrameGeneration is not on)"
                               : "HelixSR frame generation not installed";
         return r;
     }

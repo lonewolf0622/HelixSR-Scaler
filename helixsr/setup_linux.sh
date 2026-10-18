@@ -2,7 +2,8 @@
 # HelixSR Scaler setup for Linux and Steam Deck.
 #
 # Puts HelixSR Scaler and your HelixSR into a game, or takes them out again. Games run it through Proton or Wine,
-# the same files as on Windows.
+# the same files as on Windows. In the game: OptiScaler.dll as dxgi.dll (or --name), HelixSR's DLL in
+# HelixSR-fsrfg/amd_fidelityfx_dx12.dll and its frame generation in HelixSR-fsrfg/helixsr-fg.
 #
 #   ./setup_linux.sh                      asks which game, then installs
 #   ./setup_linux.sh --game FOLDER        installs into that game (the folder with its .exe, or the game's folder)
@@ -31,6 +32,8 @@ NAMES="dxgi.dll winmm.dll version.dll dbghelp.dll d3d12.dll wininet.dll winhttp.
 NOT_COPIED="setup_linux.sh setup_windows.bat README.txt README-Linux.txt HelixSR-Scaler-package.txt"
 # The download's files, one per line (made when the download is packed); without it, everything next to this script
 PACKAGE_LIST="HelixSR-Scaler-package.txt"
+# HelixSR's folder next to the game's .exe: its FidelityFX DLL (amd_fidelityfx_dx12.dll) and frame generation
+FSRFG="HelixSR-fsrfg"
 
 if [ -t 1 ]; then
     B=$'\e[1m' D=$'\e[2m' T=$'\e[38;2;45;212;191m' V=$'\e[38;2;167;139;250m' A=$'\e[38;2;245;184;75m'
@@ -97,7 +100,8 @@ is_built_helixsr() { [ -f "$1" ] && [ "$(tail -c 32 "$1" 2>/dev/null | head -c 8
 
 find_helixsr() {
     local c data="${XDG_DATA_HOME:-$HOME/.local/share}"
-    for c in "$HERE/HelixSR/helixsr.dll" "$HERE/amd_fidelityfx_dx12.dll" "$HERE"/../HelixSR*/amd_fidelityfx_dx12.dll \
+    for c in "$HERE/$FSRFG/amd_fidelityfx_dx12.dll" "$HERE/HelixSR/helixsr.dll" "$HERE/amd_fidelityfx_dx12.dll" \
+        "$HERE"/../HelixSR*/amd_fidelityfx_dx12.dll \
         "$data"/HelixSR-Desktop/releases/*/HelixSR*/amd_fidelityfx_dx12.dll \
         "$data"/HelixSR-Desktop/releases/*/amd_fidelityfx_dx12.dll \
         "$HOME"/Downloads/HelixSR*/amd_fidelityfx_dx12.dll "$HOME"/Downloads/*/HelixSR*/amd_fidelityfx_dx12.dll \
@@ -223,17 +227,20 @@ remove_from() { # remove_from EXE_FOLDER [quiet]
         case "$f" in '' | '#'* | name=*) continue ;; esac
         rm -f "$dir/$f"
     done <"$dir/$MANIFEST"
-    # what OptiScaler and HelixSR make while the game runs
-    rm -f "$dir/OptiScaler.log" "$dir/HelixSR/helixsr_upscaler.dll" "$dir/HelixSR/helixsr.log" "$dir/HelixSR/helixsr.ini" \
-        "$dir/HelixSR/helixsr-fg/nvexec.log"
-    # frame generation switched off in OptiScaler.ini ([HelixSR] FrameGeneration=off): HelixSR Scaler parked its folder
-    rm -rf "${dir:?}/HelixSR/helixsr-fg.off"
+    # what OptiScaler and HelixSR make while the game runs (HelixSR/ is where versions before 1.1.0 put HelixSR)
+    local h
+    rm -f "$dir/OptiScaler.log" "$dir/HelixSR/helixsr_upscaler.dll" "$dir/$FSRFG/amd_fidelityfx_upscaler_dx12.amd.dll"
+    for h in "$dir/HelixSR" "$dir/$FSRFG"; do
+        rm -f "$h/helixsr.log" "$h/helixsr.ini" "$h/helixsr-fg/nvexec.log" "$h/helixsr-fg/hxfg.log"
+        # frame generation off in OptiScaler.ini ([HelixSR] FrameGeneration): HelixSR Scaler parked its folder
+        rm -rf "${h:?}/helixsr-fg.off"
+    done
     if [ -d "$dir/$BACKUP" ]; then
         cp -a "$dir/$BACKUP/." "$dir/" && rm -rf "${dir:?}/$BACKUP"
     fi
     rm -f "$dir/$MANIFEST" "$dir/$REMOVER"
     # folders HelixSR Scaler brought, if nothing else is in them now
-    find "$dir/HelixSR" "$dir/OptiScaler" "$dir/D3D12_Optiscaler" "$dir/Licenses" "$dir/DlssOverrides" -depth -type d \
+    find "$dir/HelixSR" "$dir/$FSRFG" "$dir/OptiScaler" "$dir/D3D12_Optiscaler" "$dir/Licenses" "$dir/DlssOverrides" -depth -type d \
         -empty -delete 2>/dev/null
     [ -n "$quiet" ] || ok "HelixSR Scaler removed; the game's own files are back"
 }
@@ -355,8 +362,10 @@ if [ -n "$HELIX" ]; then
     HELIX=$(realpath "$HELIX")
 elif HELIX=$(find_helixsr); then
     :
+elif installed_in "$TARGET" && is_built_helixsr "$TARGET/$FSRFG/amd_fidelityfx_dx12.dll"; then
+    HELIX="$TARGET/$FSRFG/amd_fidelityfx_dx12.dll" # reinstall keeps the HelixSR already in the game
 elif installed_in "$TARGET" && is_built_helixsr "$TARGET/HelixSR/helixsr.dll"; then
-    HELIX="$TARGET/HelixSR/helixsr.dll" # reinstall keeps the HelixSR already in the game
+    HELIX="$TARGET/HelixSR/helixsr.dll" # an install from before 1.1.0
 else
     warn "HelixSR wasn't found. Run helixsr-setup.sh from the HelixSR download first (it builds the"
     warn "network), or use the HelixSR app. Then drag its amd_fidelityfx_dx12.dll in here."
@@ -374,9 +383,15 @@ TMP_FG=$(mktemp -d)
 trap 'rm -f "$TMP_HELIX"; rm -rf "$TMP_FG"' EXIT
 cp -f "$HELIX" "$TMP_HELIX"
 # Frame generation: the helixsr-fg folder HelixSR's setup made next to its DLL (a reinstall: the game's own copy)
+# All of its files (data files and subfolders too), not its logs
 for d in "$(dirname "$HELIX")/helixsr-fg" "$(dirname "$HELIX")/helixsr-fg.off" "$(dirname "$HELIX")/dlss-loader/helixsr-fg"; do
     if [ -f "$d/nvexec64.dll" ] && [ -f "$d/_nvngx.dll" ] && [ -f "$d/nvngx_dlssg.dll" ]; then
-        cp -f "$d"/*.dll "$TMP_FG/" && break
+        (cd "$d" && find . -type f -not -name '*.log' -not -name '*.log.*' | sed 's|^\./||') >"$TMP_FG.list"
+        while IFS= read -r f; do
+            mkdir -p "$TMP_FG/$(dirname "$f")" && cp -f "$d/$f" "$TMP_FG/$f"
+        done <"$TMP_FG.list"
+        rm -f "$TMP_FG.list"
+        break
     fi
 done
 
@@ -446,29 +461,45 @@ copy_one() { # copy_one SOURCE RELATIVE_DESTINATION
 
 while IFS= read -r rel; do
     case " $NOT_COPIED " in *" $rel "*) continue ;; esac
-    case "$rel" in '' | "!! "* | HelixSR/* | "$BACKUP"/* | "$MANIFEST"* | "$REMOVER") continue ;; esac
+    case "$rel" in '' | "!! "* | HelixSR/* | "$FSRFG"/* | "$BACKUP"/* | "$MANIFEST"* | "$REMOVER") continue ;; esac
     dest="$rel"
     [ "$rel" = OptiScaler.dll ] && dest="$NAME"
     copy_one "$STAGE/$rel" "$dest"
 done <"$STAGE/.list"
-copy_one "$TMP_HELIX" "HelixSR/helixsr.dll"
+copy_one "$TMP_HELIX" "$FSRFG/amd_fidelityfx_dx12.dll"
 FG=0
-for f in "$TMP_FG"/*.dll; do
-    [ -f "$f" ] || continue
-    copy_one "$f" "HelixSR/helixsr-fg/$(basename "$f")"
+while IFS= read -r f; do
+    copy_one "$TMP_FG/$f" "$FSRFG/helixsr-fg/$f"
     FG=1
-done
+done < <(cd "$TMP_FG" && find . -type f | sed 's|^\./||' | sort)
 if [ -n "$SETTINGS" ]; then
     cp -f "$SETTINGS" "$TARGET/OptiScaler.ini"
     rm -f "$SETTINGS"
+fi
+# Frame generation is off unless switched on ([HelixSR] FrameGeneration=on); asked when OptiScaler.ini leaves it on auto
+FG_ON=0
+if [ $FG = 1 ] && [ -f "$TARGET/OptiScaler.ini" ]; then
+    fg_now=$(tr -d '\r' <"$TARGET/OptiScaler.ini" | sed -n 's/^FrameGeneration[[:space:]]*=[[:space:]]*//p' | head -n 1)
+    case "$fg_now" in
+        on | true | 1) FG_ON=1 ;;
+        auto)
+            if ask "Turn on HelixSR frame generation in this game (DirectX 12 games)?"; then
+                sed -i 's/^FrameGeneration[[:space:]]*=.*/FrameGeneration=on/' "$TARGET/OptiScaler.ini"
+                FG_ON=1
+            fi
+            ;;
+        *) ;;
+    esac
 fi
 cp -f "$SELF" "$TARGET/$REMOVER" && chmod +x "$TARGET/$REMOVER"
 mv -f "$TARGET/$MANIFEST.tmp" "$TARGET/$MANIFEST"
 
 ok "HelixSR Scaler installed as ${B}$NAME${N}"
 [ $backed_up -gt 0 ] && ok "$backed_up of the game's own files kept in ${D}$BACKUP${N}"
-if [ $FG = 1 ]; then
-    ok "Frame generation included"
+if [ $FG_ON = 1 ]; then
+    ok "Frame generation included and on"
+elif [ $FG = 1 ]; then
+    ok "Frame generation included, off (Insert menu > Frame Generation > HelixSR, or FrameGeneration=on in OptiScaler.ini)"
 else
     say "  ${D}Frame generation isn't set up (no helixsr-fg folder next to HelixSR's DLL): upscaling only${N}"
 fi

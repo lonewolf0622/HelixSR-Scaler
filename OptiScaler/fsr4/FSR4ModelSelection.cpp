@@ -102,7 +102,8 @@ uint64_t FSR4ModelSelection::hkcreateModelSDK2(void* context, uint32_t preset, v
 }
 
 // HelixSR Scaler: the model hooks are found by byte patterns, so they go only into AMD's own DLLs. Another module
-// loaded as the FidelityFX DLL (HelixSR's upscaler) can contain a matching sequence, and patching it breaks that module.
+// loaded as the FidelityFX DLL (HelixSR's upscaler) can contain a matching sequence, and patching it breaks that
+// module.
 static bool IsAmdModule(HMODULE module)
 {
     wchar_t path[MAX_PATH];
@@ -130,8 +131,7 @@ static bool IsAmdModule(HMODULE module)
     for (UINT i = 0; i < bytes / sizeof(LangCodePage); i++)
     {
         wchar_t key[64];
-        swprintf_s(key, L"\\StringFileInfo\\%04x%04x\\CompanyName", translations[i].language,
-                   translations[i].codePage);
+        swprintf_s(key, L"\\StringFileInfo\\%04x%04x\\CompanyName", translations[i].language, translations[i].codePage);
 
         wchar_t* company = nullptr;
         UINT length = 0;

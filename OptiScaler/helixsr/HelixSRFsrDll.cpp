@@ -158,17 +158,20 @@ void ApplyFsrDllDefaults()
 
     ProvideAmdUpscaler(fsrDll.parent_path());
 
-    // FidelityFX is DirectX 12 only: DirectX 11 and Vulkan games run HelixSR as FSR w/Dx12 (ffx_12), unless
-    // OptiScaler.ini sets their upscaler. HelixSR is the first entry of its DLL's list (FfxUpscalerIndex 0).
-    // DirectX 12 games keep OptiScaler's choice; their FSR (ffx) is HelixSR too, with AMD's FSR in the FFX list.
+    // HelixSR is the first entry of its DLL's list (FfxUpscalerIndex 0), with AMD's FSR after it. DirectX 12 games run
+    // it as FSR (ffx); FidelityFX is DirectX 12 only, so DirectX 11 and Vulkan games run it as FSR w/Dx12 (ffx_12).
+    // An upscaler set in OptiScaler.ini (or in the menu) stays.
+    if (!cfg->Dx12Upscaler.has_value())
+        cfg->Dx12Upscaler.set_volatile_value(::Upscaler::FFX);
+
     if (!cfg->Dx11Upscaler.has_value())
         cfg->Dx11Upscaler.set_volatile_value(::Upscaler::FFX_on12);
 
     if (!cfg->VulkanUpscaler.has_value())
         cfg->VulkanUpscaler.set_volatile_value(::Upscaler::FFX_on12);
 
-    LOG_INFO("HelixSR Scaler: upscalers Dx11={}, Vulkan={} (FFX upscaler index {})",
-             UpscalerToCode(cfg->Dx11Upscaler.value_or_default()),
+    LOG_INFO("HelixSR Scaler: upscalers Dx12={}, Dx11={}, Vulkan={} (FFX upscaler index {})",
+             UpscalerToCode(cfg->Dx12Upscaler.value_or_default()), UpscalerToCode(cfg->Dx11Upscaler.value_or_default()),
              UpscalerToCode(cfg->VulkanUpscaler.value_or_default()), cfg->FfxUpscalerIndex.value_or_default());
 }
 } // namespace HelixSR::detail

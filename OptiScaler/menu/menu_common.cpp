@@ -3116,8 +3116,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                 for (auto n : FfxVersionsNewestFirst(*versions))
                 {
                     auto label = HelixSR::FfxVersionLabel(versions->names[n]) + "##" + std::to_string(n);
-                    if (ImGui::Selectable(label.c_str(), ffxIndex == n) &&
-                        ffxIndex != n)
+                    if (ImGui::Selectable(label.c_str(), ffxIndex == n) && ffxIndex != n)
                     {
                         config->FfxUpscalerIndex = n;
                         state.newBackend = currentBackend;

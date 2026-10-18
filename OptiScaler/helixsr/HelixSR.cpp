@@ -260,8 +260,8 @@ std::optional<std::string> ConfigValue(const std::string& key)
         return cfg->HelixSRInt8.value();
     if (key == "WaveSize" && cfg->HelixSRWaveSize.has_value())
         return std::to_string(cfg->HelixSRWaveSize.value());
-    // QuickFlow is out of the menu (preset C, NVIDIA's light mode, is faster at the same or better quality): always off,
-    // which also clears a Fast / Fastest left in OptiScaler.ini by an earlier version
+    // QuickFlow is out of the menu (preset C, NVIDIA's light mode, is faster at the same or better quality): always
+    // off, which also clears a Fast / Fastest left in OptiScaler.ini by an earlier version
     if (key == "QuickFlow")
         return std::string("off");
     // OptiScaler's "Disable Reactive Mask" (InitFlags): unticked gives the game's reactive mask to HelixSR's network
@@ -370,7 +370,7 @@ Settings ReadSettings()
     if (cfg->HelixSRWaveSize.has_value())
         s.wave = cfg->HelixSRWaveSize.value() == 64 ? 1 : cfg->HelixSRWaveSize.value() == 32 ? 2 : 0;
 
-    s.frameGen = cfg->HelixSRFrameGeneration.value_or(true) ? 0 : 1;
+    s.frameGen = cfg->HelixSRFrameGeneration.value_or(false) ? 0 : 1; // auto is off
 
     return s;
 }
@@ -385,8 +385,8 @@ bool WriteSettings(const Settings& s)
     cfg->HelixSRWaveSize = s.wave == 1   ? std::optional<int>(64)
                            : s.wave == 2 ? std::optional<int>(32)
                                          : std::optional<int>();
-    // On is the default (auto); Off is saved
-    cfg->HelixSRFrameGeneration = s.frameGen == 1 ? std::optional<bool>(false) : std::optional<bool>();
+    // Off is the default (auto); On is saved
+    cfg->HelixSRFrameGeneration = s.frameGen == 0 ? std::optional<bool>(true) : std::optional<bool>();
 
     const bool opti = WriteOptiScalerIni();
     const bool helix = WriteHelixIni();
@@ -577,8 +577,8 @@ namespace HelixSR
 {
 using namespace detail;
 
-// [HelixSR] FrameGeneration: off renames the helixsr-fg folder to helixsr-fg.off before HelixSR's DLL loads, on (and
-// auto) renames it back. Runs at startup, before anything uses the folder.
+// [HelixSR] FrameGeneration: off (and auto, the default) renames the helixsr-fg folder to helixsr-fg.off before
+// HelixSR's DLL loads, on renames it back. Runs at startup, before anything uses the folder.
 static void SwitchFrameGeneration()
 {
     auto cfg = Config::Instance();
@@ -594,7 +594,7 @@ static void SwitchFrameGeneration()
                  "switched off, [HelixSR] FrameGeneration=off in OptiScaler.ini");
     }
 
-    const bool off = cfg->HelixSRFrameGeneration.has_value() && !cfg->HelixSRFrameGeneration.value();
+    const bool off = !cfg->HelixSRFrameGeneration.value_or(false); // off unless switched on
     const auto on = folder / kFGFolder, parked = folder / kFGFolderOff;
     std::error_code ec;
     const bool hasOn = fs::is_directory(on, ec), hasParked = fs::is_directory(parked, ec);
@@ -607,7 +607,8 @@ static void SwitchFrameGeneration()
         if (ec)
             LOG_WARN("HelixSR Scaler: could not switch frame generation off ({})", ec.message());
         else
-            LOG_INFO("HelixSR Scaler: frame generation off ([HelixSR] FrameGeneration=off)");
+            LOG_INFO("HelixSR Scaler: frame generation off ([HelixSR] FrameGeneration={})",
+                     cfg->HelixSRFrameGeneration.has_value() ? "off" : "auto");
     }
     else if (!off && hasParked)
     {
@@ -622,7 +623,8 @@ static void SwitchFrameGeneration()
     }
     else if (off)
     {
-        LOG_INFO("HelixSR Scaler: frame generation off ([HelixSR] FrameGeneration=off)");
+        LOG_INFO("HelixSR Scaler: frame generation off ([HelixSR] FrameGeneration={})",
+                 cfg->HelixSRFrameGeneration.has_value() ? "off" : "auto");
     }
 }
 
@@ -737,7 +739,7 @@ static void ApplyFrameGenDefaults()
 
     FgRoute::Settings s;
     s.engine = FrameGenFound();
-    s.switchedOn = cfg->HelixSRFrameGeneration.value_or(true);
+    s.switchedOn = cfg->HelixSRFrameGeneration.value_or(false); // on only when the app or the user switched it on
     s.streamline =
         fs::is_regular_file(fs::path(cfg->MainDllPath.value_or(L"")) / L"streamline" / L"sl.interposer.dll", ec);
     s.optiPresent = cfg->HelixSRFGPresent.has_value() && cfg->HelixSRFGPresent.value() == "optiscaler";
@@ -987,9 +989,10 @@ void detail::ApplyFgChoice(int choice)
 {
     auto cfg = Config::Instance();
 
-    // HelixSR's choice leaves the frame-generation settings on auto (HelixSR Scaler picks the route by the game); the
-    // others switch HelixSR's frame generation off ([HelixSR] FrameGeneration = off parks its folder at the next start)
-    cfg->HelixSRFrameGeneration = choice == FgChoiceHelixSR ? std::optional<bool>() : std::optional<bool>(false);
+    // HelixSR's choice switches HelixSR's frame generation on and leaves the frame-generation settings on auto (HelixSR
+    // Scaler picks the route by the game); the others switch it off ([HelixSR] FrameGeneration = off parks its folder
+    // at the next start)
+    cfg->HelixSRFrameGeneration = std::optional<bool>(choice == FgChoiceHelixSR);
     cfg->FGInput = std::optional<::FGInput>();
     cfg->FGOutput = std::optional<::FGOutput>();
     cfg->FGNvngxReplacement = std::optional<::FGNvngxReplacement>();

@@ -410,7 +410,7 @@ class Config
     // Sharpening is OptiScaler's (RCAS, [Sharpness] and [CAS]); HelixSR's own sharpener stays off.
     CustomOptional<std::string, NoDefault> HelixSRInt8; // on, off (auto: HelixSR decides by the GPU)
     CustomOptional<int, NoDefault> HelixSRWaveSize;     // 64, 32
-    // HelixSR's frame generation (the HelixSR\helixsr-fg folder): on (auto) or off
+    // HelixSR's frame generation (the helixsr-fg folder next to HelixSR's DLL): on or off (auto: off)
     CustomOptional<bool, NoDefault> HelixSRFrameGeneration;
     // Who presents HelixSR's generated frames: streamline (the game's sl.dlss_g, FGInput = nvngxfg) or optiscaler
     // (OptiScaler's FSR FG swapchain with its pacing, FGInput = dlssg, FGOutput = fsrfg; see HELIXSR_FG_PRESENT.md)

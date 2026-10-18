@@ -55,6 +55,17 @@ INSTALLING BY HAND
 
 Run setup_linux.sh again with a newer HelixSR Scaler or HelixSR to update a game.
 
+The setup puts OptiScaler.dll into the game as dxgi.dll and HelixSR into the HelixSR-fsrfg folder
+next to the game's .exe (HelixSR's amd_fidelityfx_dx12.dll and its helixsr-fg folder).
+
+
+FRAME GENERATION
+
+HelixSR frame generation works in DirectX 12 games. It is off until you turn it on: the setup asks
+when HelixSR's frame generation was found, and the HelixSR app asks too. Later, in the menu
+(Insert key): Frame Generation, pick HelixSR (or AMD FSR, Intel XeSS, Off), then restart the game.
+Or set FrameGeneration=on under [HelixSR] in OptiScaler.ini.
+
 
 IN THE MENU (Insert key)
 
@@ -62,12 +73,12 @@ In the HELIXSR CONFIG panel at the top (pick HelixSR in the UPSCALER panel next 
 - Speed boost: faster int8 math. Auto lets HelixSR decide by the card; On can help cards it leaves
   off (e.g. GTX 16xx). Turn it off if the picture shimmers.
 - GPU mode: Auto is right for most cards.
-- The STATUS panel shows if HelixSR runs, and opens the HelixSR folder (helixsr.log tells what it did).
+- The STATUS panel shows if HelixSR runs, and opens HelixSR's folder (helixsr.log tells what it did).
 Under them is everything from OptiScaler, its sharpening (RCAS) too.
 
 Changes are saved in OptiScaler.ini in the game's folder ([HelixSR]). It is the only settings
 file, and you can edit it with a text editor too. Restart the game after changing it.
-(HelixSR Scaler copies HelixSR's part to HelixSR/helixsr.ini when the game starts; leave that file be.)
+(HelixSR Scaler copies HelixSR's part to HelixSR-fsrfg/helixsr.ini when the game starts; leave that file be.)
 
 
 IF SOMETHING'S WRONG
@@ -89,7 +100,7 @@ Then take WINEDLLOVERRIDES out of the launch options.
 REPORTING A PROBLEM
 
 Open an issue at https://github.com/lonewolf0622/HelixSR-Scaler/issues and attach
-HelixSR/helixsr.log and OptiScaler.log from the game's folder.
+HelixSR-fsrfg/helixsr.log and OptiScaler.log from the game's folder.
 
 
 HelixSR Scaler is based on OptiScaler (https://github.com/optiscaler/OptiScaler) and, like it,
