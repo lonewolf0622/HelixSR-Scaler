@@ -735,6 +735,8 @@ bool DLSSG_Dx12::SetResource(Dx12Resource* inputResource)
 
             if (lastFormat[fIndex] != DXGI_FORMAT_UNKNOWN && lastFormat[fIndex] != desc.Format)
             {
+                // Remember the new format: frame generation restarts once for it instead of rejecting every frame
+                lastFormat[fIndex] = desc.Format;
                 State::Instance().fgChanged = true;
                 return false;
             }
