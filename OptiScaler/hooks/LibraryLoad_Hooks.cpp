@@ -63,9 +63,10 @@ HMODULE LibraryLoadHooks::LoadLibraryCheckW(std::wstring libName, LPCWSTR lpLibF
 
     const bool pathInsideLocalSlPath = Util::IsSubpath(path, normalizedLocalSlPath);
 
-    // HelixSR Scaler: files in the HelixSR folder load as they are. HelixSR's frame generation loads NVIDIA's NGX
-    // core (helixsr-fg\_nvngx.dll) by its full path; answering that with this DLL makes HelixSR call itself
-    if (HelixSR::Found() && Util::IsSubpath(path, HelixSR::Folder()))
+    // HelixSR Scaler: files in the HelixSR folder (or the folder of HelixSR's FidelityFX DLL serving DLSS frame
+    // generation) load as they are. HelixSR's frame generation loads NVIDIA's NGX core (helixsr-fg\_nvngx.dll) by its
+    // full path; answering that with this DLL makes HelixSR call itself
+    if (HelixSR::LoadsAsIs(path))
         return nullptr;
 
     // HelixSR Scaler: the same for the folder of HelixSR's FidelityFX DLL (AMD's FSR it forwards to, my-fsr)

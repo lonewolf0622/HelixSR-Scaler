@@ -13,6 +13,10 @@ void Nvngx_HelixSR::LoadLibraries()
     if (dll == nullptr && memModule != nullptr)
         dll = memModule;
 
+    // no helixsr.dll: HelixSR's FidelityFX DLL when it serves DLSS frame generation too
+    if (dll == nullptr)
+        dll = HelixSR::LoadFfxFrameGenDll();
+
     if (dll != nullptr)
     {
         _DLSSG_D3D12_Init = (PFN_D3D12_Init) GetProcAddress(dll, "NVSDK_NGX_D3D12_Init");
