@@ -1712,6 +1712,10 @@ void MenuCommon::ApplyThemeStyle()
     c[ImGuiCol_NavWindowingDimBg] = dimBg;
     c[ImGuiCol_ModalWindowDimBg] = modalDimBg;
 
+    // HelixSR Scaler: the HUD's square corners and accent lines
+    if (HelixSR::HudEnabled())
+        HelixSR::ApplyHudStyle();
+
     _hdrTonemapApplied = false;
     MenuHdrCheck(ImGui::GetIO());
 }
@@ -2964,14 +2968,6 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
     ImGui::TextDisabled("%dx%d -> %dx%d (%.2fx)", currentFeature->RenderWidth(), currentFeature->RenderHeight(),
                         currentFeature->TargetWidth(), currentFeature->TargetHeight(),
                         (float) currentFeature->TargetWidth() / (float) currentFeature->RenderWidth());
-
-    // HelixSR Scaler: HelixSR's own settings (helixsr.ini) while HelixSR upscales
-    if (HelixSR::IsActive())
-    {
-        ImGui::Spacing();
-        HelixSR::RenderSettings(menuResScale, toneMapColor);
-        ImGui::Spacing();
-    }
 
     if (!usesDlssd)
     {
@@ -9540,11 +9536,16 @@ void MenuCommon::RenderMainMenuWindow(RenderMenuContext& ctx)
     ImGuiWindowFlags mainFlags = ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse |
                                  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
-    const float menuWidth = std::min(680.0f * menuResScale, io.DisplaySize.x - 20.0f);
+    // HelixSR Scaler: the HUD draws its own header and is wider than OptiScaler's menu
+    const bool hud = HelixSR::HudEnabled();
+    if (hud)
+        mainFlags |= ImGuiWindowFlags_NoTitleBar;
+
+    const float menuWidth = std::min((hud ? 1010.0f : 680.0f) * menuResScale, io.DisplaySize.x - 20.0f);
     const float maxMenuHeight = io.DisplaySize.y - 20.0f;
     const float minMenuHeight = std::min(300.0f * menuResScale, maxMenuHeight);
     const float menuHeight =
-        std::clamp(config->MenuHeight.value_or(815.0f) * menuResScale, minMenuHeight, maxMenuHeight);
+        std::clamp(config->MenuHeight.value_or(hud ? 1040.0f : 815.0f) * menuResScale, minMenuHeight, maxMenuHeight);
 
     ImGui::SetNextWindowSize(ImVec2(menuWidth, menuHeight), ImGuiCond_Always);
     ImGui::SetNextWindowSizeConstraints(ImVec2(menuWidth, minMenuHeight), ImVec2(menuWidth, maxMenuHeight));
@@ -9560,6 +9561,10 @@ void MenuCommon::RenderMainMenuWindow(RenderMenuContext& ctx)
     {
         // Update and config notices shown above the tabs.
         RenderMainMenuHeaderMessages(ctx);
+
+        // HelixSR Scaler: the HUD (upscaler, HelixSR's settings, timings, state) above OptiScaler's settings
+        if (hud)
+            HelixSR::RenderHud(menuResScale, toneMapColor);
 
         // Tabs on the left, tab content on the right.
         RenderMainMenuTabs(ctx);

@@ -1163,6 +1163,9 @@
     <ClCompile Include="helixsr\HelixSR.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="helixsr\HelixSRHud.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="helixsr\HelixSRFsrDll.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

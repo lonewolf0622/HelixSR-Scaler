@@ -828,6 +828,7 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="Util.cpp" />
     <ClCompile Include="version_check.cpp" />
     <ClCompile Include="helixsr\HelixSR.cpp" />
+    <ClCompile Include="helixsr\HelixSRHud.cpp" />
     <ClCompile Include="helixsr\HelixSRFsrDll.cpp" />
     <ClCompile Include="inputs\XeSS_Debug.cpp" />
     <ClCompile Include="inputs\XeSS_Dx12.cpp" />

@@ -222,6 +222,7 @@ struct IniFile
 // Sharpening is OptiScaler's own (RCAS, its menu and [CAS] / [Sharpness]); HelixSR's sharpener stays off
 extern const char* const kInt8[] = { "Auto", "On", "Off" };
 extern const char* const kWave[] = { "Auto", "64", "32" };
+extern const char* const kFrameGen[] = { "On", "Off" };
 
 // --- Settings: OptiScaler.ini, with HelixSR's part copied to helixsr.ini ------------------------------------------
 // HelixSR reads only helixsr.ini next to its DLL. OptiScaler.ini is the one file people edit: [HelixSR] for HelixSR's
@@ -387,6 +388,34 @@ void ImportHelixIni()
     WriteOptiScalerIni();
 }
 
+// OptiScaler.ini has HelixSR as the frame-generation provider
+bool HelixSRFgConfigured()
+{
+    auto cfg = Config::Instance();
+    return cfg->FGInput.value_or_default() == ::FGInput::NvngxFG &&
+           cfg->FGNvngxReplacement.value_or_default() == ::FGNvngxReplacement::HelixSR;
+}
+
+void SetHelixSRFg(bool on)
+{
+    if (on)
+    {
+        ApplyFgChoice(0); // HelixSR
+        return;
+    }
+
+    if (!HelixSRFgConfigured())
+        return;
+
+    auto cfg = Config::Instance();
+    cfg->FGInput = std::optional<::FGInput>();
+    cfg->FGNvngxReplacement = std::optional<::FGNvngxReplacement>();
+    const bool saved = cfg->SaveIni();
+    LOG_INFO("HelixSR Scaler: HelixSR frame generation switched off in the menu (FGInput, FGNvngxReplacement auto), "
+             "saved {} (applies at the next game start)",
+             saved);
+}
+
 Settings ReadSettings()
 {
     auto cfg = Config::Instance();
@@ -400,6 +429,9 @@ Settings ReadSettings()
 
     if (cfg->HelixSRWaveSize.has_value())
         s.wave = cfg->HelixSRWaveSize.value() == 64 ? 1 : cfg->HelixSRWaveSize.value() == 32 ? 2 : 0;
+
+    // On: OptiScaler.ini has HelixSR as the frame-generation provider (FGInput = nvngxfg, FGNvngxReplacement = HelixSR)
+    s.frameGen = HelixSRFgConfigured() ? 0 : 1;
 
     return s;
 }
@@ -577,9 +609,14 @@ void RefreshMenu()
 void SaveMenuSettings()
 {
     auto& m = Menu();
+    // Frame generation On / Off: OptiScaler.ini's [FrameGen] lines, as the menu's frame-generation choice writes them
+    // (On: FGInput = nvngxfg, FGNvngxReplacement = HelixSR; Off: those two back to auto when they were HelixSR's)
+    if (m.settings.frameGen != m.saved.frameGen)
+        SetHelixSRFg(m.settings.frameGen == 0);
     m.saveFailed = !WriteSettings(m.settings);
     if (!m.saveFailed)
-        m.restartNeeded = m.settings.int8 != m.initial.int8 || m.settings.wave != m.initial.wave;
+        m.restartNeeded = m.settings.int8 != m.initial.int8 || m.settings.wave != m.initial.wave ||
+                          m.settings.frameGen != m.initial.frameGen;
     m.saved = m.settings;
 }
 
@@ -704,6 +741,26 @@ static GameFg ScanGame()
     return game;
 }
 
+// HelixSR's colours for the menu (teal accent, ink background), only with HelixSR installed and unless
+// OptiScaler.ini sets them; without HelixSR the menu keeps OptiScaler's colours
+static void ApplyMenuTheme()
+{
+    if (!Installed())
+        return;
+
+    auto cfg = Config::Instance();
+    const std::pair<CustomOptional<float>*, float> colours[] = {
+        { &cfg->MenuAccentColorR, 0.176f }, { &cfg->MenuAccentColorG, 0.831f }, { &cfg->MenuAccentColorB, 0.749f },
+        { &cfg->MenuBGColorR, 0.078f },     { &cfg->MenuBGColorG, 0.094f },     { &cfg->MenuBGColorB, 0.149f },
+    };
+
+    for (const auto& [option, value] : colours)
+    {
+        if (!option->has_value())
+            option->set_volatile_value(value);
+    }
+}
+
 // What the game ships, scanned the first time the menu's frame-generation choice is drawn
 static const GameFg& ScannedGame()
 {
@@ -776,6 +833,8 @@ void ApplyDefaults()
                  wstring_to_string(folder.wstring()));
     }
 
+    ApplyMenuTheme();
+
     // HelixSR's settings live in OptiScaler.ini [HelixSR]; helixsr.ini is written from them for HelixSR
     ImportHelixIni();
     if (!WriteHelixIni())
@@ -807,6 +866,8 @@ bool FrameGenFound()
     std::error_code ec;
     return Installed() && !folder.empty() && fs::is_directory(folder / kFGFolder, ec);
 }
+
+bool detail::FrameGenInstalled() { return FrameGenFound(); }
 
 fs::path DllPath() { return found ? folder / kDll : fs::path(); }
 
@@ -984,6 +1045,7 @@ void detail::ApplyFgChoice(int choice)
     }
 
     const bool saved = cfg->SaveIni() && WriteOptiScalerIni();
+    Menu().settings.frameGen = Menu().saved.frameGen = HelixSRFgConfigured() ? 0 : 1; // the HUD's switch
     LOG_INFO("HelixSR Scaler: frame generation {} chosen in the menu, saved {} (applies at the next game start)",
              choice == FgChoiceHelixSR ? "HelixSR"
              : choice == FgChoiceAmd   ? "AMD FSR"

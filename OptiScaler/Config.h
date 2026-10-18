@@ -377,6 +377,7 @@ class Config
     CustomOptional<int> FGShortcutKey { VK_END };
     CustomOptional<bool> LightTheme { false };
     CustomOptional<bool> OverlaysUseTheme { false };
+    // HelixSR Scaler: with HelixSR installed, HelixSR's teal / ink unless set (HelixSR.cpp, ApplyMenuTheme)
     CustomOptional<float> MenuAccentColorR { 0.00f };
     CustomOptional<float> MenuAccentColorG { 0.40f };
     CustomOptional<float> MenuAccentColorB { 0.77f };
