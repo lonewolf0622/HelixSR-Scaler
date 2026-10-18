@@ -812,12 +812,8 @@ bool DLSSG_Dx12::SetResource(Dx12Resource* inputResource)
             }
         }
 
-        // Potentially we don't need to restore but do it just to be safe
-        if (inputResource->state == D3D12_RESOURCE_STATE_COPY_SOURCE)
-        {
-            ResourceBarrier(inputResource->cmdList, inputResource->resource, D3D12_RESOURCE_STATE_COPY_DEST,
-                            inputResource->state);
-        }
+        // No restore barrier here: unlike XeFG, DLSSG never moves a COPY_SOURCE input to COPY_DEST (a copy restores
+        // its source itself), and a resource valid until present may come without a command list
 
         SetResourceReady(type, fIndex);
     }
