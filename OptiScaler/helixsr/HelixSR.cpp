@@ -9,6 +9,7 @@
 #include "Util.h"
 #include "resource.h"
 #include "proxies/NVNGX_Proxy.h"
+#include "proxies/Ntdll_Proxy.h"
 
 #include <shellapi.h>
 #include <magic_enum.hpp>
@@ -794,6 +795,71 @@ bool detail::FrameGenInstalled()
 }
 
 fs::path DllPath() { return found ? folder / kDll : fs::path(); }
+
+// The folders of the FidelityFX DLL serving DLSS frame generation (LoadFfxFrameGenDll): as configured and as the
+// loader names it (the drive can differ under Wine); empty while there is none
+static std::vector<fs::path> ffxFgFolders;
+static std::mutex ffxFgMutex;
+
+HMODULE LoadFfxFrameGenDll()
+{
+    const auto configured = Config::Instance()->FfxDx12SRPath.value_or(L"");
+    if (configured.empty() || _wcsicmp(configured.c_str(), L"auto") == 0)
+    {
+        LOG_INFO("HelixSR Scaler: no helixsr.dll and no [Libraries] FfxDx12SRPath: no HelixSR DLL for DLSS frame "
+                 "generation");
+        return nullptr;
+    }
+
+    std::error_code ec;
+    fs::path path(configured);
+    if (fs::is_directory(path, ec))
+        path /= L"amd_fidelityfx_dx12.dll";
+    if (!fs::is_regular_file(path, ec))
+    {
+        LOG_WARN("HelixSR Scaler: FfxDx12SRPath {} not found: no HelixSR DLL for DLSS frame generation",
+                 wstring_to_string(path.wstring()));
+        return nullptr;
+    }
+
+    HMODULE dll = NtdllProxy::LoadLibraryExW_Ldr(path.c_str(), NULL, 0);
+    using VersionFn = uint32_t (*)();
+    auto version = dll != nullptr ? (VersionFn) GetProcAddress(dll, "HelixSR_NgxFgVersion") : nullptr;
+    if (version == nullptr || version() < 1)
+    {
+        LOG_WARN("HelixSR Scaler: {} {}: no HelixSR DLL for DLSS frame generation", wstring_to_string(path.wstring()),
+                 dll == nullptr ? "can't be loaded" : "doesn't serve DLSS frame generation (no HelixSR_NgxFgVersion)");
+        if (dll != nullptr)
+            FreeLibrary(dll);
+        return nullptr;
+    }
+
+    wchar_t loaded[MAX_PATH * 2] = {};
+    GetModuleFileNameW(dll, loaded, MAX_PATH * 2);
+    {
+        std::lock_guard<std::mutex> lock(ffxFgMutex);
+        ffxFgFolders = { fs::absolute(path, ec).parent_path(), fs::path(loaded).parent_path() };
+    }
+
+    LOG_INFO("HelixSR Scaler: no helixsr.dll: DLSS frame generation by HelixSR's FidelityFX DLL {} (NGX frame "
+             "generation version {})",
+             wstring_to_string(loaded), version());
+    return dll;
+}
+
+bool LoadsAsIs(const fs::path& path)
+{
+    if (found && Util::IsSubpath(path, folder))
+        return true;
+
+    std::lock_guard<std::mutex> lock(ffxFgMutex);
+    for (const auto& f : ffxFgFolders)
+    {
+        if (!f.empty() && Util::IsSubpath(path, f))
+            return true;
+    }
+    return false;
+}
 
 const fs::path& Folder() { return folder; }
 
