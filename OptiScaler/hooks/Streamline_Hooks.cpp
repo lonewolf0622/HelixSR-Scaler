@@ -62,6 +62,17 @@ static bool IsWritableMemory(const void* address, size_t size)
     return end <= regionEnd;
 }
 
+// HelixSR Scaler: the OptiFG route takes another input (FSR / XeSS frame generation, the upscaler) while HelixSR
+// generates on OptiScaler's FSR FG swapchain: the game's own DLSS-G must not load (its swapchain would wrap the same
+// swapchain as the FSR FG one). DLSS-G games on FGInput = nvngxfg or dlssg are not affected.
+static bool HelixSRHidesGameDlssg()
+{
+    const auto& state = State::Instance();
+
+    return state.activeFgInput != FGInput::DLSSG &&
+           HelixSRPresent::Configured(state.activeFgInput, state.activeFgOutput, state.activeFgNvngx);
+}
+
 static bool IsSL1AndFGActive()
 {
     const auto& state = State::Instance();
@@ -76,8 +87,8 @@ static bool IsSL1AndDLSSGManaged()
 {
     const auto& state = State::Instance();
 
-    return state.streamlineVersion.major == 1 &&
-           (state.activeFgInput == FGInput::DLSSG || state.activeFgOutput == FGOutput::DLSSG);
+    return state.streamlineVersion.major == 1 && (state.activeFgInput == FGInput::DLSSG ||
+                                                  state.activeFgOutput == FGOutput::DLSSG || HelixSRHidesGameDlssg());
 }
 
 static void PatchSL1PluginJson(nlohmann::json& configJson)
@@ -286,8 +297,13 @@ sl::Result StreamlineHooks::hkslInit(const sl::Preferences& pref, uint64_t sdkVe
         }
     }
 
-    if (State::Instance().activeFgInput == FGInput::DLSSG || State::Instance().activeFgOutput == FGOutput::DLSSG)
+    // HelixSR Scaler: also on the OptiFG route (HelixSRHidesGameDlssg): the game's DLSS-G is not loaded
+    if (State::Instance().activeFgInput == FGInput::DLSSG || State::Instance().activeFgOutput == FGOutput::DLSSG ||
+        HelixSRHidesGameDlssg())
     {
+        if (HelixSRHidesGameDlssg())
+            LOG_INFO("HelixSR Scaler: OptiFG route, the game's DLSS Frame Generation (sl.dlss_g) is not loaded");
+
         std::vector<sl::Feature> localFeaturesToLoad(pref.featuresToLoad, pref.featuresToLoad + pref.numFeaturesToLoad);
         std::erase(localFeaturesToLoad, sl::kFeatureDLSS_G);
 
@@ -1123,8 +1139,9 @@ bool StreamlineHooks::hkdlssg_slOnPluginLoad(sl::param::IParameters* params, con
         return result;
     }
 
-    // Kill the DLSSG streamline swapchain hooks
-    if (State::Instance().activeFgInput == FGInput::DLSSG || State::Instance().activeFgOutput == FGOutput::DLSSG)
+    // Kill the DLSSG streamline swapchain hooks (HelixSR Scaler: also on the OptiFG route, should it load anyway)
+    if (State::Instance().activeFgInput == FGInput::DLSSG || State::Instance().activeFgOutput == FGOutput::DLSSG ||
+        HelixSRHidesGameDlssg())
     {
         if (configJson.contains("/hooks"_json_pointer))
             configJson["hooks"].clear();
