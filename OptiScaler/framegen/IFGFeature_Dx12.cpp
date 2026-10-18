@@ -78,6 +78,40 @@ IFGFeature_Dx12::~IFGFeature_Dx12()
     _scFenceEvent = nullptr;
 }
 
+bool IFGFeature_Dx12::DropIncompleteCommandObjects()
+{
+    bool complete = true;
+
+    for (size_t i = 0; i < BUFFER_COUNT; i++)
+    {
+        if (_uiCommandAllocator[i] == nullptr || _uiCommandList[i] == nullptr || _scCommandAllocator[i] == nullptr ||
+            _scCommandList[i] == nullptr)
+        {
+            complete = false;
+        }
+    }
+
+    if (complete)
+        return true;
+
+    LOG_ERROR("Command objects were only partly created, releasing them to try again later");
+
+    for (size_t i = 0; i < BUFFER_COUNT; i++)
+    {
+        SAFE_RELEASE(_uiCommandAllocator[i]);
+        SAFE_RELEASE(_uiCommandList[i]);
+        SAFE_RELEASE(_scCommandAllocator[i]);
+        SAFE_RELEASE(_scCommandList[i]);
+
+        _uiCommandListResetted[i] = false;
+        _uiAllocatorFenceValues[i] = 0;
+        _scCommandListResetted[i] = false;
+        _scAllocatorFenceValues[i] = 0;
+    }
+
+    return false;
+}
+
 bool IFGFeature_Dx12::WaitForUIAllocator(UINT index)
 {
     if (_uiFence == nullptr || _uiFenceEvent == nullptr)
@@ -163,6 +197,13 @@ ID3D12GraphicsCommandList* IFGFeature_Dx12::GetUICommandList(int index)
             return nullptr;
     }
 
+    // creation can fail part way: never reset or hand out a slot that is missing
+    if (_uiCommandAllocator[index] == nullptr || _uiCommandList[index] == nullptr)
+    {
+        LOG_ERROR("_uiCommandList[{}] is not available", index);
+        return nullptr;
+    }
+
     for (size_t j = 0; j < 2; j++)
     {
         auto i = (index + j) % BUFFER_COUNT;
@@ -221,6 +262,13 @@ ID3D12GraphicsCommandList* IFGFeature_Dx12::GetSCCommandList(int index)
             CreateObjects(State::Instance().currentD3D12Device);
         else
             return nullptr;
+    }
+
+    // creation can fail part way: never reset or hand out a slot that is missing
+    if (_scCommandAllocator[index] == nullptr || _scCommandList[index] == nullptr)
+    {
+        LOG_ERROR("_scCommandList[{}] is not available", index);
+        return nullptr;
     }
 
     for (size_t j = 0; j < 2; j++)

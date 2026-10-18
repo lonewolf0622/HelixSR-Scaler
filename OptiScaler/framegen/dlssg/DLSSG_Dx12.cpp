@@ -472,6 +472,8 @@ void DLSSG_Dx12::CreateObjects(ID3D12Device* InDevice)
         }
 
     } while (false);
+
+    DropIncompleteCommandObjects();
 }
 
 bool DLSSG_Dx12::Present()

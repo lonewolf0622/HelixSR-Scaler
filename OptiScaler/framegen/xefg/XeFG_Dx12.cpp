@@ -1230,6 +1230,8 @@ void XeFG_Dx12::CreateObjects(ID3D12Device* InDevice)
         }
 
     } while (false);
+
+    DropIncompleteCommandObjects();
 }
 
 bool XeFG_Dx12::Present()
