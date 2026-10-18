@@ -290,9 +290,14 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_CreateFeature(ID3D12GraphicsCommandList* InCmdL
 
     auto proxyHandle = new Nvngx_FG_Handle(lastIdCreated++ + NVNGX_PROVIDER_ID_OFFSET);
 
-    std::scoped_lock lock(proxyHandle->handleMutex);
-
     auto result = provider->D3D12_CreateFeature(InCmdList, InFeatureID, InParameters, &proxyHandle->nativeHandle);
+
+    if (result != NVSDK_NGX_Result_Success)
+    {
+        delete proxyHandle;
+        *OutHandle = nullptr;
+        return result;
+    }
 
     *OutHandle = (NVSDK_NGX_Handle*) proxyHandle;
 
@@ -316,12 +321,16 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
 
     // LOG_TRACE("Handle received from the game: {:X}", (uint64_t) InHandle);
 
-    std::scoped_lock lock(((Nvngx_FG_Handle*) InHandle)->handleMutex);
+    auto* ourHandle = (Nvngx_FG_Handle*) InHandle;
+    std::unique_lock lock(ourHandle->handleMutex);
 
-    auto result = provider->D3D12_ReleaseFeature(((Nvngx_FG_Handle*) InHandle)->nativeHandle);
+    auto result = provider->D3D12_ReleaseFeature(ourHandle->nativeHandle);
 
     if (result == NVSDK_NGX_Result_Success)
-        delete InHandle;
+    {
+        lock.unlock();
+        delete ourHandle;
+    }
 
     return result;
 }
@@ -540,6 +549,13 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_CreateFeature(VkCommandBuffer InCmdBuffer, NVS
     auto proxyHandle = new Nvngx_FG_Handle(lastIdCreated++ + NVNGX_PROVIDER_ID_OFFSET);
     auto result = provider->VULKAN_CreateFeature(InCmdBuffer, InFeatureID, InParameters, &proxyHandle->nativeHandle);
 
+    if (result != NVSDK_NGX_Result_Success)
+    {
+        delete proxyHandle;
+        *OutHandle = nullptr;
+        return result;
+    }
+
     *OutHandle = (NVSDK_NGX_Handle*) proxyHandle;
 
     // LOG_TRACE("Handle given to the game: {:X}", (uint64_t) *OutHandle);
@@ -562,6 +578,13 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_CreateFeature1(VkDevice InDevice, VkCommandBuf
     auto proxyHandle = new Nvngx_FG_Handle(lastIdCreated++ + NVNGX_PROVIDER_ID_OFFSET);
     auto result =
         provider->VULKAN_CreateFeature1(InDevice, InCmdList, InFeatureID, InParameters, &proxyHandle->nativeHandle);
+
+    if (result != NVSDK_NGX_Result_Success)
+    {
+        delete proxyHandle;
+        *OutHandle = nullptr;
+        return result;
+    }
 
     *OutHandle = (NVSDK_NGX_Handle*) proxyHandle;
 
@@ -586,12 +609,15 @@ NVSDK_NGX_Result Nvngx_FG::VULKAN_ReleaseFeature(NVSDK_NGX_Handle* InHandle)
     // LOG_TRACE("Handle received from the game: {:X}", (uint64_t) InHandle);
 
     Nvngx_FG_Handle* ourHandle = (Nvngx_FG_Handle*) InHandle;
-    std::scoped_lock lock(ourHandle->handleMutex);
+    std::unique_lock lock(ourHandle->handleMutex);
 
     auto result = provider->VULKAN_ReleaseFeature(ourHandle->nativeHandle);
 
     if (result == NVSDK_NGX_Result_Success)
-        delete InHandle;
+    {
+        lock.unlock();
+        delete ourHandle;
+    }
 
     return result;
 }
