@@ -652,6 +652,26 @@ static bool GameHasDlssg()
     return false;
 }
 
+// HelixSR's colours for the menu (teal accent, ink background), only with HelixSR installed and unless
+// OptiScaler.ini sets them; without HelixSR the menu keeps OptiScaler's colours
+static void ApplyMenuTheme()
+{
+    if (!Installed())
+        return;
+
+    auto cfg = Config::Instance();
+    const std::pair<CustomOptional<float>*, float> colours[] = {
+        { &cfg->MenuAccentColorR, 0.176f }, { &cfg->MenuAccentColorG, 0.831f }, { &cfg->MenuAccentColorB, 0.749f },
+        { &cfg->MenuBGColorR, 0.078f },     { &cfg->MenuBGColorG, 0.094f },     { &cfg->MenuBGColorB, 0.149f },
+    };
+
+    for (const auto& [option, value] : colours)
+    {
+        if (!option->has_value())
+            option->set_volatile_value(value);
+    }
+}
+
 void ApplyDefaults()
 {
     auto cfg = Config::Instance();
@@ -678,10 +698,12 @@ void ApplyDefaults()
 
         // HelixSR's FidelityFX DLL as the FFX upscaler instead (HelixSRFsrDll.cpp)
         ApplyFsrDllDefaults();
+        ApplyMenuTheme();
         return;
     }
 
     LOG_INFO("HelixSR Scaler {}: HelixSR found in {}", Version(), wstring_to_string(folder.wstring()));
+    ApplyMenuTheme();
 
     // HelixSR's settings live in OptiScaler.ini [HelixSR]; helixsr.ini is written from them for HelixSR
     ImportHelixIni();

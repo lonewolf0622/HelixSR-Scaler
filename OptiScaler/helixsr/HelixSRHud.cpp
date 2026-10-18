@@ -238,7 +238,8 @@ void Sparkline(ImDrawList* dl, ImVec2 a, ImVec2 b, const std::vector<double>& v)
 
 namespace HelixSR
 {
-bool HudEnabled() { return true; }
+// Only with HelixSR installed: otherwise the menu is OptiScaler's own
+bool HudEnabled() { return Installed(); }
 
 void ApplyHudStyle()
 {
