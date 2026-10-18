@@ -135,6 +135,18 @@ bool DLSSG_Common::SetConstants(int fIndex, uint32_t frameId, uint32_t mvWidth, 
     if (IsInfiniteDepth())
         cameraFar = std::numeric_limits<float>::infinity();
 
+    // HelixSR Scaler: sl::float4x4 / float2 start as INVALID_FLOAT. With the camera's position given (FSR 3.1.4+
+    // camera info) the reprojection matrices and the pinhole offset were left like that; no input here gives them, so
+    // they are identity / zero in both cases (the motion vectors include the camera's motion, cameraMotionIncluded)
+    {
+        XMFLOAT4X4 identity;
+        XMStoreFloat4x4(&identity, XMMatrixIdentity());
+        memcpy(&constData.clipToLensClip, &identity, sizeof(sl::float4x4));
+        memcpy(&constData.clipToPrevClip, &identity, sizeof(sl::float4x4));
+        memcpy(&constData.prevClipToClip, &identity, sizeof(sl::float4x4));
+        constData.cameraPinholeOffset = { 0.0f, 0.0f };
+    }
+
     if (_cameraPosition[fIndex][0] != 0.0f || _cameraPosition[fIndex][1] != 0.0f || _cameraPosition[fIndex][2] != 0.0f)
     {
         constData.cameraPos.x = _cameraPosition[fIndex][0];
@@ -176,17 +188,23 @@ bool DLSSG_Common::SetConstants(int fIndex, uint32_t frameId, uint32_t mvWidth, 
 
         float vFov = _cameraVFov[fIndex];
 
+        // HelixSR Scaler: an infinite far plane left the projection all zeros ("Can't calculate"); it is built with a
+        // far plane far beyond the near one instead (cameraFar stays infinite in the constants)
+        float projectionFarPlane = cameraFar;
+        if (!std::isfinite(projectionFarPlane) && cameraNear > 0.f)
+            projectionFarPlane = std::max(cameraNear * 1.0e6f, 1.0e6f);
+
         // XMMatrixPerspectiveFovRH will fail if input values are incorrect
-        if (cameraNear > 0.f && std::isfinite(cameraFar) && !XMScalarNearEqual(vFov, 0.0f, 0.00001f) &&
+        if (cameraNear > 0.f && std::isfinite(projectionFarPlane) && !XMScalarNearEqual(vFov, 0.0f, 0.00001f) &&
             !XMScalarNearEqual(_cameraAspectRatio[fIndex], 0.0f, 0.00001f))
         {
-            if (XMScalarNearEqual(cameraNear, cameraFar, 0.00001f))
-                cameraFar++;
+            if (XMScalarNearEqual(cameraNear, projectionFarPlane, 0.00001f))
+                projectionFarPlane++;
 
             // A reverse-Z projection for inverted depth, like the game's. DLSSG replacements like Nukem's read near
             // and far back out of it, a regular one loses the far plane to float precision.
-            auto projectionNear = IsInvertedDepth() ? cameraFar : cameraNear;
-            auto projectionFar = IsInvertedDepth() ? cameraNear : cameraFar;
+            auto projectionNear = IsInvertedDepth() ? projectionFarPlane : cameraNear;
+            auto projectionFar = IsInvertedDepth() ? cameraNear : projectionFarPlane;
 
             cameraViewToClip =
                 XMMatrixPerspectiveFovRH(vFov, _cameraAspectRatio[fIndex], projectionNear, projectionFar);
