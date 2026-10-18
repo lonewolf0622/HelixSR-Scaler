@@ -403,7 +403,12 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InCm
     }
 
     if (Config::Instance()->NvngxFGDisableHudless.value_or_default())
+    {
+        // both setters: a provider that reads the D3D12 resource slot (HelixSR's DLL does) would otherwise keep the game's
+        // image after the void pointer was cleared
         InParameters->Set("DLSSG.HUDLess", (void*) nullptr);
+        InParameters->Set("DLSSG.HUDLess", (ID3D12Resource*) nullptr);
+    }
 
     // LOG_TRACE("Handle received from the game: {:X}", (uint64_t) InFeatureHandle);
 
