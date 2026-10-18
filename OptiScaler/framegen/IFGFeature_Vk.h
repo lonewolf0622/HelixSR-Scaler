@@ -2,6 +2,9 @@
 #include "SysUtils.h"
 #include "IFGFeature.h"
 
+#include <shaders/ui_unblend/UiUnblend_Vk.h>
+#include <shaders/resource_flip/RF_Vk.h>
+
 #include <vulkan/vulkan.h>
 
 struct VkFGResource
@@ -35,9 +38,21 @@ class IFGFeature_Vk : public virtual IFGFeature
 
   private:
     ImageCopy _copies[BUFFER_COUNT][ResourceTypeCOUNT] {};
+    ImageCopy _flipped[BUFFER_COUNT][ResourceTypeCOUNT] {};
+
+    std::unique_ptr<UiUnblend_Vk> _uiUnblend;
+    std::unique_ptr<RF_Vk> _depthFlip;
+    std::unique_ptr<RF_Vk> _mvFlip;
 
     std::vector<VkDeviceQueueCreateInfo> _queueCreateInfos;
     std::vector<std::vector<float>> _queuePriorities;
+
+    // (Re)creates the image when the format or size changed
+    bool CreateCopy(ImageCopy& copy, FG_ResourceType type, VkFormat format, uint32_t width, uint32_t height,
+                    VkImageUsageFlags usage);
+
+    // Flips the copied depth or velocity of Unity games into a storage image, points the resource to it
+    bool FlipResource(VkCommandBuffer cmdBuffer, VkFGResource& resource, int fIndex);
 
   protected:
     // Queues the output needs next to the game's, filled in by the output's constructor
@@ -65,6 +80,16 @@ class IFGFeature_Vk : public virtual IFGFeature
     UINT64 _fgFramePresentId = 0;
     UINT64 _lastFGFramePresentId = 0;
 
+    // Command buffers of the output for the game queue, _fence is signaled by their submit
+    VkCommandPool _commandPool[BUFFER_COUNT] {};
+    VkCommandBuffer _commandBuffer[BUFFER_COUNT] {};
+    VkFence _fence[BUFFER_COUNT] {};
+
+    // Waits until the GPU is done with the previous use of the index, then begins it
+    VkCommandBuffer BeginCommandBuffer(int index);
+    void WaitForCommandBuffers();
+    void DestroyCommandBuffers();
+
     std::unordered_map<FG_ResourceType, VkFGResource> _frameResources[BUFFER_COUNT] {};
     std::shared_mutex _resourceMutex[BUFFER_COUNT];
 
@@ -77,14 +102,23 @@ class IFGFeature_Vk : public virtual IFGFeature
     // Copies the resource into target in the given format, then points the resource to the copy.
     // Formats only differing in sRGB keep the stored values, others get blitted.
     bool CopyImage(VkCommandBuffer cmdBuffer, VkFGResource& resource, ImageCopy& target, VkFormat format);
+
+    // Destroyed once in flight frames are done with it
     void DestroyCopy(ImageCopy& copy);
 
+    // The copy SetResource made of the resource, nullptr if it points to something else
+    const ImageCopy* OwnCopy(const VkFGResource& resource, int fIndex) const;
+
   public:
+    static VkFormat WithoutSrgb(VkFormat format);
+
     // Called around vkCreateDevice to add what the output needs, like the extra queues, to the game's device
     virtual void PrepareDevice(VkPhysicalDevice physicalDevice, VkDeviceCreateInfo& createInfo);
     virtual void OnDeviceCreated(VkDevice device);
 
     bool HasSwapchain() const { return _swapchain != VK_NULL_HANDLE; }
+    VkFormat SwapchainFormat() const { return _swapchainFormat; }
+    VkExtent2D SwapchainExtent() const { return _swapchainExtent; }
     bool OwnsSwapchain(VkSwapchainKHR swapchain) const
     {
         return swapchain != VK_NULL_HANDLE && swapchain == _swapchain;
@@ -107,6 +141,10 @@ class IFGFeature_Vk : public virtual IFGFeature
     virtual void EvaluateState(FG_Constants& fgConstants) = 0;
 
     bool SetResource(VkFGResource* inputResource);
+
+    // Removes the current frame's UI copy from its hudless copy, for games blending a UI texture on the frame
+    void RemoveUiFromHudless(VkCommandBuffer cmdBuffer, bool premultiplied);
+
     bool HasResource(FG_ResourceType type, int index = -1) override final;
 
     IFGFeature_Vk() = default;
