@@ -8,6 +8,7 @@
 
 #include "IFGNvngx.h"
 #include "Nvngx_Nukems.h"
+#include "Nvngx_HelixSR.h"
 #include "Nvngx_Arturs.h"
 #include "Nvngx_FFX.h"
 #include "Nvngx_Combo.h"
@@ -19,14 +20,7 @@ IFGNvngx* Nvngx_FG::getProvider()
     if (_provider)
         return _provider.get();
 
-    auto selectedProvider = State::Instance().activeFgNvngx;
-    if (selectedProvider == FGNvngxReplacement::HelixSR)
-    {
-        // Covers settings changed after startup as well as older saved configurations.
-        selectedProvider = FGNvngxReplacement::FFX;
-        Config::Instance()->FGNvngxReplacement.set_volatile_value(selectedProvider);
-        State::Instance().activeFgNvngx = selectedProvider;
-    }
+    const auto selectedProvider = State::Instance().activeFgNvngx;
 
     switch (selectedProvider)
     {
@@ -46,6 +40,10 @@ IFGNvngx* Nvngx_FG::getProvider()
         _provider = std::make_unique<Nvngx_Combo>();
         break;
 
+    case FGNvngxReplacement::HelixSR:
+        _provider = std::make_unique<Nvngx_HelixSR>();
+        break;
+
     case FGNvngxReplacement::None:
     default:
         return nullptr;
@@ -59,6 +57,7 @@ IFGNvngx* Nvngx_FG::getProvider()
             FGNvngxReplacement::Arturs,
             FGNvngxReplacement::FFX,
             FGNvngxReplacement::Nukems,
+            FGNvngxReplacement::HelixSR,
         };
 
         auto formatProvider = [](FGNvngxReplacement provider)
@@ -100,6 +99,10 @@ IFGNvngx* Nvngx_FG::getProvider()
 
             case FGNvngxReplacement::Nukems:
                 candidate = std::make_unique<Nvngx_Nukems>();
+                break;
+
+            case FGNvngxReplacement::HelixSR:
+                candidate = std::make_unique<Nvngx_HelixSR>();
                 break;
 
             case FGNvngxReplacement::None:

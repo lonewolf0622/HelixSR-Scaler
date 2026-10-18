@@ -8,7 +8,8 @@ namespace HelixSR::detail
 {
 inline bool IncompleteStart(const std::filesystem::path& folder)
 {
-    for (const auto* name : { L"helixsr-boot.starting", L"helixsr-fg.starting" })
+    // helixsr-dlssg.starting: the DLSS frame generation of HelixSR's FidelityFX DLL
+    for (const auto* name : { L"helixsr-boot.starting", L"helixsr-fg.starting", L"helixsr-dlssg.starting" })
     {
         const auto path = folder / name;
         // An active startup keeps its boot marker open without write sharing. Only an abandoned marker is recovery.

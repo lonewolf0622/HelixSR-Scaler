@@ -1348,7 +1348,7 @@ bool Config::SaveIni()
             ini.SetValue("HelixSR", "FrameGeneration", fg.value() ? "on" : "off");
         else
             ini.SetValue("HelixSR", "FrameGeneration", "auto");
-        ini.SetValue("HelixSR", "FGPresent", Instance()->HelixSRFGPresent.value_for_config_or("optiscaler").c_str());
+        ini.SetValue("HelixSR", "FGPresent", Instance()->HelixSRFGPresent.value_for_config_or("auto").c_str());
         if (auto vcq = Instance()->HelixSRVulkanComputeQueue.value_for_config(); vcq.has_value())
             ini.SetValue("HelixSR", "VulkanComputeQueue", vcq.value() ? "true" : "false");
         else

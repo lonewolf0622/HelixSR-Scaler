@@ -3629,6 +3629,9 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     auto& menuResScale = ctx.menuResScale;
     auto& primaryGpu = *ctx.primaryGpu;
 
+    // HelixSR Scaler: the simple choice (HelixSR / AMD FSR / Intel XeSS / Off), OptiScaler's lists below it
+    HelixSR::RenderFrameGenChoice(menuResScale);
+
     /// FG INPUTS
 
     static std::vector<MenuOption<FGInput>> inputOptions;
@@ -3828,7 +3831,9 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         "Missing amd_fidelityfx_framegeneration_dx12.dll\nor missing dlss-enabler-headless.dll");
 
     auto constexpr fgNvngxHelixSRIndex = (uint32_t) FGNvngxReplacement::HelixSR;
-    nvngxOptions[fgNvngxHelixSRIndex].set_disabled(true, "HelixSR frame generation is not included in this release");
+    nvngxOptions[fgNvngxHelixSRIndex].set_disabled(!state.helixsrFgFileAvailable,
+                                                   "Missing HelixSR's frame generation (the helixsr-fg folder next to "
+                                                   "HelixSR's DLL), or [HelixSR] FrameGeneration = off");
 
     // TODO: Automatically switch to any other option
 

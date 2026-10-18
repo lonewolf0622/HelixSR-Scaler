@@ -4,18 +4,16 @@ New in 1.0.7: DirectX 11 games get HelixSR too (pick DLSS in the game; OptiScale
 DirectX 12 interop, and falls back to FSR 2.2 if HelixSR does not start). Vulkan games through OptiScaler
 have an optional setting, [HelixSR] VulkanComputeQueue (see OptiScaler.ini). It is off by default.
 
-HelixSR frame generation is not included. Alternative Scaler frame generation
-remains available, including FSR, XeSS and other supported providers.
-The HelixSR frame-generation route stays disabled even if an older configuration
-or helixsr-fg folder remains in the game.
+HelixSR frame generation (DirectX 12 games) runs when HelixSR's helixsr-fg folder is installed next
+to HelixSR's DLL. HelixSR Scaler picks the route by the game: the game's own DLSS Frame Generation,
+else the game's FSR 3.1 / XeSS frame generation or the upscaler, presented by Scaler's Streamline.
+In the menu (Insert key, Frame Generation) pick HelixSR, AMD FSR, Intel XeSS or Off; restart the game
+after changing it. FG Input, FG Output and the provider stay available there for other combinations.
+DirectX 11 and Vulkan games get no HelixSR frame generation.
 
 The HelixSR package setup installs this program alongside HelixSR's upscaling DLL.
 Select DLSS (or FSR / XeSS if DLSS is unavailable) in the game's graphics settings.
 Press Insert to open the menu. Edit OptiScaler.ini to change the other settings.
-Choose FG Input, FG Output and the provider in the Frame Generation menu. Each
-alternative still requires its normal game/GPU support and runtime libraries.
-Settings for alternative providers are preserved. An old HelixSR provider choice
-is redirected to FFX; the existing fallback chain handles unavailable providers.
 
 For installation by hand, back up matching files before copying this folder next
 to the game's executable, rename OptiScaler.dll to dxgi.dll, and place HelixSR's

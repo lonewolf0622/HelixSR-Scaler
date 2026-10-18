@@ -67,6 +67,10 @@ void Choose();
 // start.
 void RenderQuickFlow();
 
+// The menu's frame-generation choice (HelixSR / AMD FSR / Intel XeSS / Off), above OptiScaler's own FG lists; saved
+// to OptiScaler.ini, applies at the next game start
+void RenderFrameGenChoice(float scale);
+
 // HelixSR's settings, drawn under the upscaler list while HelixSR is the upscaler:
 // speed boost (int8), GPU mode and the folder button. Writes helixsr.ini; the game has to restart for them to apply.
 void RenderSettings(float scale, ImVec4 (*color)(const ImVec4&));

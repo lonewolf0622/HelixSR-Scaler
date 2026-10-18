@@ -278,7 +278,8 @@ bool EnsureFeature(ID3D12GraphicsCommandList* list, ID3D12Resource* backbuffer, 
 
 bool Requested()
 {
-    auto v = Config::Instance()->HelixSRFGPresent.value_or("optiscaler");
+    auto v =
+        Config::Instance()->HelixSRFGPresent.value_or("streamline"); // HelixSR Scaler: optiscaler only when written
     return v == "optiscaler";
 }
 

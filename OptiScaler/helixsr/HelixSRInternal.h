@@ -70,5 +70,6 @@ void SaveMenuSettings();      // writes Menu().settings to helixsr.ini
 void ChooseHelixSR();
 void ChooseBackend(::Upscaler upscaler);
 void OpenFolder();
+void ApplyFgChoice(int choice); // 0 HelixSR, 1 AMD FSR, 2 Intel XeSS, 3 off (saved to OptiScaler.ini)
 void ApplyFsrDllDefaults(); // HelixSRFsrDll.cpp: HelixSR's FidelityFX DLL as the FFX upscaler (no helixsr.dll)
 } // namespace HelixSR::detail

@@ -13,7 +13,8 @@ trap 'wineserver -k 2>/dev/null; rm -rf "$W"' EXIT
 fails=0
 check() { if eval "$2"; then printf 'ok   %s\n' "$1"; else printf 'FAIL %s\n' "$1"; fails=$((fails + 1)); fi; }
 
-G="$W/game"
+# in a library folder like Steam's (steamapps/common): the game-file search stays inside the game
+G="$W/steamapps/common/game"
 mkdir -p "$G" "$W/home/Downloads/HelixSR"
 x86_64-w64-mingw32-gcc -O2 -o "$G/TestGame.exe" "$HERE/wine_load.c" || exit 1
 # Stand-in for HelixSR's built DLL (only the network trailer is checked before the game runs)
@@ -21,7 +22,7 @@ x86_64-w64-mingw32-gcc -O2 -o "$G/TestGame.exe" "$HERE/wine_load.c" || exit 1
 
 HOME="$W/home" "$PKG/setup_linux.sh" --yes --game "$G" </dev/null >"$W/setup.txt" 2>&1
 check "setup_linux.sh installs" '[ -f "$G/dxgi.dll" ] && [ -f "$G/HelixSR/helixsr.dll" ]'
-sed -i 's/^LogToFile=auto/LogToFile=true/; s/^WaveSize=auto/WaveSize=64/; s/^Int8=auto/Int8=on/; s/^FrameGeneration=auto/FrameGeneration=off/' \
+sed -i 's/^LogToFile=auto/LogToFile=true/; s/^WaveSize=auto/WaveSize=64/; s/^Int8=auto/Int8=on/; s/^FrameGeneration=.*/FrameGeneration=off/' \
     "$G/OptiScaler.ini"
 # stand-in for HelixSR's frame generation folder (what HelixSR Desktop copies when the setup built it)
 mkdir -p "$G/HelixSR/helixsr-fg" && echo stand-in >"$G/HelixSR/helixsr-fg/nvexec64.dll"
@@ -38,39 +39,69 @@ check "logs as HelixSR Scaler" 'grep -q "HelixSR Scaler v" "$G/OptiScaler.log"'
 check "finds the HelixSR folder" 'grep -q "HelixSR found in" "$G/OptiScaler.log"'
 check "writes helixsr.ini from OptiScaler.ini" 'grep -q "^WaveSize = 64" "$G/HelixSR/helixsr.ini" && grep -q "^Int8 = on" "$G/HelixSR/helixsr.ini"'
 check "HelixSR's own sharpener off" 'grep -q "^Sharpener = off" "$G/HelixSR/helixsr.ini"'
-check "only HelixSR frame generation is unavailable" 'grep -q "HelixSR frame generation is not included; alternative FG settings:" "$G/OptiScaler.log"'
-check "leftover HelixSR engine files are untouched" '[ -f "$G/HelixSR/helixsr-fg/nvexec64.dll" ] && [ ! -e "$G/HelixSR/helixsr-fg.off" ]'
+check "FrameGeneration=off: HelixSR's frame generation off" 'grep -q "frame generation: HelixSR frame generation off" "$G/OptiScaler.log"'
+check "FrameGeneration=off: helixsr-fg parked as helixsr-fg.off" '[ -f "$G/HelixSR/helixsr-fg.off/nvexec64.dll" ] && [ ! -e "$G/HelixSR/helixsr-fg" ]'
+check "FrameGeneration=off: OptiScaler's own defaults (no FG)" 'grep -q "frame generation settings: input=NoFG, output=NoFG, provider=Nukems" "$G/OptiScaler.log"'
 
-# Verify actual startup configuration for alternative FG routes and every supported provider.
+# HelixSR's frame generation on: the default route by the game, and the choices OptiScaler.ini makes
 route() {
     local input=$1 output=$2 provider=$3 expected=$4
     sed -i "s/^FGInput=.*/FGInput=$input/; s/^FGOutput=.*/FGOutput=$output/; s/^FGNvngxReplacement=.*/FGNvngxReplacement=$provider/; s/^FrameGeneration=.*/FrameGeneration=on/" "$G/OptiScaler.ini"
-    awk '{ sub(/\r$/, "") } /^\[/ { section=$0 } section=="[FrameGen]" && /^Enabled=/ { $0="Enabled=true" } { print }' "$G/OptiScaler.ini" >"$W/route.ini"
-    mv "$W/route.ini" "$G/OptiScaler.ini"
     cp "$G/OptiScaler.ini" "$W/requested.ini"
     (cd "$G" && timeout 180 wine TestGame.exe >"$W/run.txt" 2>&1)
-    check "$input/$output/$provider preserves alternative routing" "grep -q 'alternative FG settings: input=$input, output=$output, provider=$expected' \"\$G/OptiScaler.log\""
-    check "$input/$output/$provider preserves saved choices" 'cmp -s "$W/requested.ini" "$G/OptiScaler.ini"'
-    check "HelixSR engine never initialized" '! grep -q "HelixSR frame generation initialized" "$G/OptiScaler.log"'
+    check "$input/$output/$provider -> $expected" "grep -q 'frame generation settings: input=$expected' \"\$G/OptiScaler.log\""
+    check "$input/$output/$provider: OptiScaler.ini unchanged" 'cmp -s "$W/requested.ini" "$G/OptiScaler.ini"'
+    check "$input/$output/$provider: HelixSR engine never initialized" '! grep -q "HelixSR frame generation initialized" "$G/OptiScaler.log"'
 }
-# NVNGX provider selection applies to NvngxFG input or DLSSG output only.
-route Upscaler FSRFG auto Nukems
-route DLSSG FSRFG auto Nukems
-route NvngxFG NoFG Nukems Nukems
-route NvngxFG NoFG Arturs Arturs
-route DLSSG DLSSG Combo Combo
-route XeFG XeFG auto Nukems
-route Upscaler DLSSG FFX FFX
-route DLSSG DLSSG None None
-route NvngxFG NoFG HelixSR FFX
+# no DLSS-G, no FSR / XeSS FG in this stand-in game: the upscaler's inputs, OptiScaler's Streamline, HelixSR
+route auto auto auto "Upscaler, output=DLSSG, provider=HelixSR, enabled=true, hudfix=true"
+check "FrameGeneration=on: helixsr-fg back" '[ -f "$G/HelixSR/helixsr-fg/nvexec64.dll" ] && [ ! -e "$G/HelixSR/helixsr-fg.off" ]'
+# AMD's and Intel's frame generation and the other providers stay what OptiScaler.ini says
+route Upscaler FSRFG auto "Upscaler, output=FSRFG, provider=Nukems"
+route DLSSG FSRFG auto "DLSSG, output=FSRFG, provider=Nukems"
+route XeFG XeFG auto "XeFG, output=XeFG, provider=Nukems"
+route NvngxFG NoFG Nukems "NvngxFG, output=NoFG, provider=Nukems"
+route NvngxFG NoFG Arturs "NvngxFG, output=NoFG, provider=Arturs"
+route DLSSG DLSSG Combo "DLSSG, output=DLSSG, provider=Combo"
+route Upscaler DLSSG FFX "Upscaler, output=DLSSG, provider=FFX"
+route DLSSG DLSSG None "DLSSG, output=DLSSG, provider=None"
+route NvngxFG NoFG HelixSR "NvngxFG, output=NoFG, provider=HelixSR"
+route NvngxFG NoFG auto "NvngxFG, output=NoFG, provider=HelixSR"
+route NoFG NoFG auto "NoFG, output=NoFG, provider=Nukems"
 
-# An old unsupported-GPU log must not disable alternative frame generation.
-sed -i 's/^WaveSize=64/WaveSize=auto/' "$G/OptiScaler.ini"
+# the game's own frame generation, by its files (DLSS-G first, then FSR 3.1, then XeSS)
+sed -i "s/^FGInput=.*/FGInput=auto/; s/^FGOutput=.*/FGOutput=auto/; s/^FGNvngxReplacement=.*/FGNvngxReplacement=auto/" "$G/OptiScaler.ini"
+game_route() {
+    local file=$1 expected=$2
+    mkdir -p "$G/Engine/Plugins/Stand-in" && : >"$G/Engine/Plugins/Stand-in/$file"
+    (cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
+    check "game with $file -> $expected" "grep -q 'frame generation settings: input=$expected' \"\$G/OptiScaler.log\""
+}
+game_route libxess_fg.dll "XeFG, output=DLSSG, provider=HelixSR, enabled=true, hudfix=false"
+game_route amd_fidelityfx_framegeneration_dx12.dll "FSRFG, output=DLSSG, provider=HelixSR, enabled=true, hudfix=false"
+game_route sl.dlss_g.dll "NvngxFG, output=NoFG, provider=HelixSR"
+rm -rf "$G/Engine"
+check "OptiScaler's own FidelityFX / XeSS DLLs don't count as the game's" '[ -f "$G/OptiScaler/libxess_fg.dll" ] && [ -f "$G/OptiScaler/amd_fidelityfx_framegeneration_dx12.dll" ]'
+(cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
+check "...so the stand-in game is upscaler-only again" 'grep -q "frame generation settings: input=Upscaler, output=DLSSG" "$G/OptiScaler.log"'
+
+# Startup recovery: an abandoned start marker switches frame generation off for one launch
+: >"$G/HelixSR/helixsr-dlssg.starting"
+(cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
+check "abandoned helixsr-dlssg.starting: frame generation off this launch" 'grep -q "previous startup was interrupted" "$G/OptiScaler.log"'
+rm -f "$G/HelixSR/helixsr-dlssg.starting"
+
+# A GPU that can't run HelixSR's frame generation (helixsr.log says so): switched off and saved, unless set on
+sed -i 's/^FrameGeneration=.*/FrameGeneration=auto/; s/^WaveSize=64/WaveSize=auto/' "$G/OptiScaler.ini"
 printf '%s\r\n' 'fg: frame generation NOT available on this GPU: no 32-lane waves' >"$G/HelixSR/helixsr.log"
 (cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
-check "old HelixSR GPU log leaves alternatives available" 'grep -q "alternative FG settings: input=NvngxFG, output=NoFG, provider=FFX" "$G/OptiScaler.log"'
+check "unsupported GPU: FrameGeneration=off saved" 'grep -q "^FrameGeneration=off" "$G/OptiScaler.ini"'
+check "unsupported GPU: no HelixSR route" 'grep -q "frame generation settings: input=NoFG, output=NoFG" "$G/OptiScaler.log"'
 check "auto wave size remains 32 lanes" 'grep -q "^WaveSize = 32" "$G/HelixSR/helixsr.ini" && grep -q "^WaveSize=auto" "$G/OptiScaler.ini"'
 check "no second copy of HelixSR's DLL (one DLL for DLSS)" '[ ! -e "$G/HelixSR/helixsr_upscaler.dll" ]'
+rm -f "$G/HelixSR/helixsr.log"
+sed -i 's/^FrameGeneration=.*/FrameGeneration=on/' "$G/OptiScaler.ini"
+[ -d "$G/HelixSR/helixsr-fg.off" ] && mv "$G/HelixSR/helixsr-fg.off" "$G/HelixSR/helixsr-fg"
 
 # HelixSR's FidelityFX DLL without helixsr.dll: FSR w/Dx12 (HelixSR) for DirectX 11 and Vulkan games, AMD's FSR next to
 # it for HelixSR's list. Stand-in DLL: nothing loads it here (no D3D12 device), only the defaults are checked.
@@ -85,6 +116,14 @@ check "FSR DLL: DirectX 11 and Vulkan default to FSR w/Dx12 (HelixSR, index 0)" 
 check "FSR DLL: AMD's FSR next to HelixSR's DLL for its list" 'cmp -s "$G/OptiScaler/amd_fidelityfx_upscaler_dx12.dll" "$G/HelixSR-fsrfg/amd_fidelityfx_upscaler_dx12.amd.dll"'
 check "FSR DLL: the defaults are not saved into OptiScaler.ini" 'cmp -s "$W/requested.ini" "$G/OptiScaler.ini"'
 check "FSR DLL: no HelixSR DLSS route without helixsr.dll" '! grep -q "helixsr.dll in use" "$G/OptiScaler.log"'
+check "FSR DLL: HelixSR's settings go to helixsr.ini next to its DLL" 'grep -q "^Sharpener = off" "$G/HelixSR-fsrfg/helixsr.ini"'
+check "FSR DLL: no helixsr-fg there, no HelixSR frame generation" 'grep -q "frame generation: HelixSR frame generation not installed" "$G/OptiScaler.log"'
+mkdir -p "$G/HelixSR-fsrfg/helixsr-fg" && echo stand-in >"$G/HelixSR-fsrfg/helixsr-fg/hxfg64.dll"
+sed -i 's/^QuickFlow=.*/QuickFlow=on/' "$G/OptiScaler.ini"
+(cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
+check "FSR DLL with helixsr-fg: HelixSR frame generation through OptiScaler's Streamline" 'grep -q "frame generation settings: input=Upscaler, output=DLSSG, provider=HelixSR" "$G/OptiScaler.log"'
+check "FSR DLL: QuickFlow in [DlssFrameGeneration]" 'awk '"'"'{sub(/\r$/, "")} /^\[/{s=$0} s=="[DlssFrameGeneration]" && /^QuickFlow = on/{f=1} END{exit !f}'"'"' "$G/HelixSR-fsrfg/helixsr.ini"'
+sed -i 's/^QuickFlow=.*/QuickFlow=auto/' "$G/OptiScaler.ini"
 
 # OptiScaler.ini's choices stay
 sed -i 's/^Dx11Upscaler=.*/Dx11Upscaler=fsr22/' "$G/OptiScaler.ini"

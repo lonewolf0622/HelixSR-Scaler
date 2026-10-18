@@ -317,6 +317,11 @@ static IFGFeature_Vk* CreateFGFeature()
         else
             LOG_ERROR("Can't load amd_fidelityfx_vk.dll, FSR FG won't be available");
     }
+    else if (state.activeFgOutput == FGOutput::DLSSG && state.activeFgNvngx == FGNvngxReplacement::HelixSR)
+    {
+        // HelixSR Scaler: HelixSR's frame generation is DirectX 12 only (its DLL has no Vulkan NGX)
+        LOG_INFO("HelixSR frame generation runs in DirectX 12 games only: no frame generation in this Vulkan game");
+    }
     else if (state.activeFgOutput == FGOutput::DLSSG)
     {
         if (StreamlineProxy::InitWithVulkan())

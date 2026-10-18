@@ -477,24 +477,22 @@ void RenderHud(float scale, ImVec4 (*color)(const ImVec4&))
         const float lx = a.x + 18 * k;
         bool changed = false;
         changed |= Toggles(dl, ImVec2(lx, a.y + 44 * k), "int8", "SPEED BOOST", kInt8Help, kInt8, kInt8Count,
-                           &m.settings.int8, found);
+                           &m.settings.int8, Installed());
         changed |= Toggles(dl, ImVec2(lx, a.y + 80 * k), "wave", "GPU MODE", kWaveHelp, kWave, kWaveCount,
-                           &m.settings.wave, found);
+                           &m.settings.wave, Installed());
         if (FrameGenInstalled())
             changed |= Toggles(dl, ImVec2(lx, a.y + 116 * k), "fg", "FRAME GEN", kFrameGenHelp, kFrameGen,
-                               kFrameGenCount, &m.settings.frameGen, found);
+                               kFrameGenCount, &m.settings.frameGen, Installed());
         else
         {
-            Text(dl, ImVec2(lx, a.y + 116 * k), fs * 0.93f, Col(kMuted, 0.5f), "HELIXSR FG");
-            Text(dl, ImVec2(lx + 150 * k, a.y + 116 * k), fs * 0.93f, Col(kMuted), "NOT INCLUDED");
+            Text(dl, ImVec2(lx, a.y + 116 * k), fs * 0.93f, Col(kMuted, 0.5f), "FRAME GEN");
+            Text(dl, ImVec2(lx + 150 * k, a.y + 116 * k), fs * 0.93f, Col(kMuted), "NOT INSTALLED");
         }
         if (changed)
             SaveMenuSettings();
 
         const ImVec2 note(lx, a.y + 154 * k);
-        if (!found && FsrDllFound()) // HelixSR's FidelityFX DLL reads its own helixsr.ini
-            Text(dl, note, smallSize, Col(kMuted), "SETTINGS: HELIXSR.INI NEXT TO HELIXSR'S DLL");
-        else if (!found)
+        if (!Installed())
             Text(dl, note, smallSize, Col(kRed), "! NO HELIXSR FOLDER NEXT TO THE GAME");
         else if (m.saveFailed)
             Text(dl, note, smallSize, Col(kRed), "! COULDN'T SAVE THE SETTINGS");
@@ -543,7 +541,7 @@ void RenderHud(float scale, ImVec4 (*color)(const ImVec4&))
             Text(dl, ImVec2(lx + 100 * k, yy), ts, Col(lines[i].col), lines[i].value.c_str());
         }
 
-        if (found && HudButton(dl, ImVec2(lx, b.y - 40 * k), "OPEN HELIXSR FOLDER"))
+        if (Installed() && HudButton(dl, ImVec2(lx, b.y - 40 * k), "OPEN HELIXSR FOLDER"))
             OpenFolder();
     }
 

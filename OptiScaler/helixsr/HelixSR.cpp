@@ -3,6 +3,7 @@
 #include "HelixSR.h"
 #include "HelixSRInternal.h"
 #include "StartupRecovery.h"
+#include "HelixSRFgRoute.h"
 
 #include "Config.h"
 #include "State.h"
@@ -300,7 +301,11 @@ bool WriteHelixIni()
         auto value = ConfigValue(m.key);
         if (!value.has_value() && std::string(m.key) == "WaveSize")
             value = kAutoWaveSize;
-        ini.Set(m.section, m.key, value);
+
+        // HelixSR's FidelityFX DLL reads its DLSS frame generation's settings from [DlssFrameGeneration]
+        // ([FrameGeneration] is its FidelityFX frame generation's there)
+        const char* section = !found && std::string(m.key) == "QuickFlow" ? "DlssFrameGeneration" : m.section;
+        ini.Set(section, m.key, value);
     }
 
     return ini.Save(HelixIniPath());
@@ -342,7 +347,7 @@ void ImportHelixIni()
             cfg->HelixSRInt8 = Lower(v.value());
         if (auto v = old.Get("Compatibility", "WaveSize"); v.has_value() && (v.value() == "64" || v.value() == "32"))
             cfg->HelixSRWaveSize = std::stoi(v.value());
-        if (auto v = old.Get("FrameGeneration", "QuickFlow"); v.has_value())
+        if (auto v = old.Get(found ? "FrameGeneration" : "DlssFrameGeneration", "QuickFlow"); v.has_value())
         {
             const auto qf = Lower(v.value());
             if (qf == "on" || qf == "off" || qf == "fastest")
@@ -536,7 +541,7 @@ void RefreshMenu()
     auto& m = Menu();
 
     const double now = ImGui::GetTime();
-    if (found && now - m.lastRead > 2.0)
+    if (Installed() && now - m.lastRead > 2.0)
     {
         m.status = ReadLog();
         if (m.lastRead < 0.0)
@@ -548,6 +553,9 @@ void RefreshMenu()
 void SaveMenuSettings()
 {
     auto& m = Menu();
+    // HelixSR's frame generation switched on: also back to the HelixSR route (the frame-generation settings on auto)
+    if (m.settings.frameGen == 0 && m.saved.frameGen != 0)
+        ApplyFgChoice(0);
     m.saveFailed = !WriteSettings(m.settings);
     if (!m.saveFailed)
         m.restartNeeded = m.settings.int8 != m.initial.int8 || m.settings.wave != m.initial.wave ||
@@ -621,14 +629,14 @@ static void SwitchFrameGeneration()
     }
 }
 
-// Streamline's DLSS Frame Generation plugin in the game: next to the .exe, else anywhere in the game's folder (the
-// .exe's folder and up to three levels above it, searched a few levels down, e.g. Unreal Engine's plugin folders)
-static bool GameHasDlssg()
+// The frame generation the game ships: files next to the .exe, else anywhere in the game's folder (the .exe's folder
+// and up to three levels above it, searched a few levels down, e.g. Unreal Engine's plugin folders). OptiScaler's own
+// folder and HelixSR's folders are left out (they carry FidelityFX and XeSS frame-generation DLLs of their own).
+static FgRoute::Game ScanGame()
 {
+    FgRoute::Game game;
     std::error_code ec;
     const auto exeDir = Util::ExePath().parent_path();
-    if (fs::exists(exeDir / L"sl.dlss_g.dll", ec))
-        return true;
 
     // up to three levels, not past a library folder (Steam's common) nor to a drive's root
     auto root = exeDir;
@@ -640,6 +648,27 @@ static bool GameHasDlssg()
         root = parent;
     }
 
+    std::vector<fs::path> skip = { fs::path(Config::Instance()->MainDllPath.value_or(L"")).lexically_normal() };
+    if (!folder.empty())
+        skip.push_back(folder.lexically_normal());
+    if (FsrDllFound())
+        skip.push_back(FsrDllPath().parent_path().lexically_normal());
+
+    auto note = [&game](const fs::path& file)
+    {
+        const auto name = file.filename().wstring();
+        if (_wcsicmp(name.c_str(), L"sl.dlss_g.dll") == 0)
+            game.dlssg = true;
+        // not amd_fidelityfx_dx12.dll: also the upscaler-only FidelityFX DLL, and HelixSR's own when it replaces the
+        // game's (a game with FSR 3.1 frame generation in it gets the upscaler route then)
+        else if (_wcsicmp(name.c_str(), L"amd_fidelityfx_framegeneration_dx12.dll") == 0)
+            game.fsrfg = true;
+        else if (_wcsicmp(name.c_str(), L"ffx_frameinterpolation_x64.dll") == 0)
+            game.fsrfg30 = true;
+        else if (_wcsicmp(name.c_str(), L"libxess_fg.dll") == 0)
+            game.xefg = true;
+    };
+
     int seen = 0;
     auto it = fs::recursive_directory_iterator(root, fs::directory_options::skip_permission_denied, ec);
     for (; !ec && it != fs::recursive_directory_iterator() && ++seen < 20000; it.increment(ec))
@@ -649,10 +678,26 @@ static bool GameHasDlssg()
             it.disable_recursion_pending();
             continue;
         }
-        if (it->is_regular_file(ec) && _wcsicmp(it->path().filename().c_str(), L"sl.dlss_g.dll") == 0)
-            return true;
+
+        if (it->is_directory(ec))
+        {
+            const auto dir = it->path().lexically_normal();
+            for (const auto& s : skip)
+            {
+                if (!s.empty() && _wcsicmp(dir.c_str(), s.c_str()) == 0)
+                {
+                    it.disable_recursion_pending();
+                    break;
+                }
+            }
+            continue;
+        }
+
+        if (it->is_regular_file(ec))
+            note(it->path());
     }
-    return false;
+
+    return game;
 }
 
 // HelixSR's colours for the menu (teal accent, ink background), only with HelixSR installed and unless
@@ -675,6 +720,70 @@ static void ApplyMenuTheme()
     }
 }
 
+static_assert((uint32_t) ::FGInput::XeFG == (uint32_t) FgRoute::Input::XeFG &&
+              (uint32_t) ::FGInput::FSRFG30 == (uint32_t) FgRoute::Input::FSRFG30 &&
+              (uint32_t) ::FGInput::Upscaler == (uint32_t) FgRoute::Input::Upscaler);
+static_assert((uint32_t) ::FGOutput::Reprojection == (uint32_t) FgRoute::Output::Reprojection &&
+              (uint32_t) ::FGOutput::DLSSG == (uint32_t) FgRoute::Output::DLSSG);
+static_assert((uint32_t) ::FGNvngxReplacement::HelixSR == (uint32_t) FgRoute::Provider::HelixSR);
+
+// What the game ships (ScanGame at startup), for the default route and the menu's frame-generation choice
+static FgRoute::Game scannedGame;
+
+// HelixSR's frame generation for every DirectX 12 game (HelixSRFgRoute.h): DLSS-G games through their own Streamline,
+// the others through OptiScaler's (FGOutput = dlssg) with the inputs of the game's FSR / XeSS frame generation or of
+// its upscaler. Only settings OptiScaler.ini leaves on auto are set, as volatile values (never saved).
+static void ApplyFrameGenDefaults()
+{
+    auto cfg = Config::Instance();
+    std::error_code ec;
+
+    FgRoute::Settings s;
+    s.engine = FrameGenFound();
+    s.switchedOn = cfg->HelixSRFrameGeneration.value_or(true);
+    s.streamline =
+        fs::is_regular_file(fs::path(cfg->MainDllPath.value_or(L"")) / L"streamline" / L"sl.interposer.dll", ec);
+    s.optiPresent = cfg->HelixSRFGPresent.has_value() && cfg->HelixSRFGPresent.value() == "optiscaler";
+    if (cfg->FGInput.has_value())
+        s.input = (FgRoute::Input) cfg->FGInput.value();
+    if (cfg->FGOutput.has_value())
+        s.output = (FgRoute::Output) cfg->FGOutput.value();
+    if (cfg->FGNvngxReplacement.has_value())
+        s.provider = (FgRoute::Provider) cfg->FGNvngxReplacement.value();
+    if (cfg->FGEnabled.has_value())
+        s.enabled = cfg->FGEnabled.value();
+    if (cfg->FGHUDFix.has_value())
+        s.hudfix = cfg->FGHUDFix.value();
+
+    // ForceXeLL (fakenvapi) owns the FG settings
+    if (s.input == FgRoute::Input(::FGInput::ForceXeLL))
+        return;
+
+    scannedGame = ScanGame();
+    LOG_INFO("HelixSR Scaler: the game has DLSS-G {}, FSR 3.1 FG {}, FSR 3.0 FG {}, XeSS FG {}", scannedGame.dlssg,
+             scannedGame.fsrfg, scannedGame.fsrfg30, scannedGame.xefg);
+    const auto route = FgRoute::Decide(scannedGame, s);
+
+    if (route.input.has_value())
+        cfg->FGInput.set_volatile_value((::FGInput) route.input.value());
+    if (route.output.has_value())
+        cfg->FGOutput.set_volatile_value((::FGOutput) route.output.value());
+    if (route.provider.has_value())
+        cfg->FGNvngxReplacement.set_volatile_value((::FGNvngxReplacement) route.provider.value());
+    if (route.enabled.has_value())
+        cfg->FGEnabled.set_volatile_value(route.enabled.value());
+    if (route.hudfix.has_value())
+        cfg->FGHUDFix.set_volatile_value(route.hudfix.value());
+
+    LOG_INFO("HelixSR Scaler: frame generation: {}", route.why);
+    LOG_INFO("HelixSR Scaler: frame generation settings: input={}, output={}, provider={}, enabled={}, hudfix={} "
+             "(DirectX 12 only: DirectX 11 and Vulkan games get no HelixSR frame generation)",
+             magic_enum::enum_name(cfg->FGInput.value_or_default()),
+             magic_enum::enum_name(cfg->FGOutput.value_or_default()),
+             magic_enum::enum_name(cfg->FGNvngxReplacement.value_or_default()), cfg->FGEnabled.value_or_default(),
+             cfg->FGHUDFix.value_or_default());
+}
+
 void ApplyDefaults()
 {
     auto cfg = Config::Instance();
@@ -694,18 +803,30 @@ void ApplyDefaults()
         }
     }
 
-    if (!found)
+    if (found)
     {
-        LOG_WARN("HelixSR Scaler: no {} folder with {} next to this DLL or the game's .exe", wstring_to_string(kFolder),
-                 wstring_to_string(kDll));
-
+        LOG_INFO("HelixSR Scaler {}: HelixSR found in {}", Version(), wstring_to_string(folder.wstring()));
+    }
+    else
+    {
         // HelixSR's FidelityFX DLL as the FFX upscaler instead (HelixSRFsrDll.cpp)
         ApplyFsrDllDefaults();
-        ApplyMenuTheme();
-        return;
+
+        if (!FsrDllFound())
+        {
+            LOG_WARN("HelixSR Scaler: no {} folder with {} and no HelixSR-fsrfg\\amd_fidelityfx_dx12.dll next to this "
+                     "DLL or the game's .exe",
+                     wstring_to_string(kFolder), wstring_to_string(kDll));
+            return;
+        }
+
+        // HelixSR's settings (helixsr.ini), its log, its frame generation (helixsr-fg) and its startup markers are
+        // next to its FidelityFX DLL
+        folder = FsrDllPath().parent_path();
+        LOG_INFO("HelixSR Scaler {}: HelixSR's FidelityFX DLL in {} (no helixsr.dll)", Version(),
+                 wstring_to_string(folder.wstring()));
     }
 
-    LOG_INFO("HelixSR Scaler {}: HelixSR found in {}", Version(), wstring_to_string(folder.wstring()));
     ApplyMenuTheme();
 
     frameGenRecovery = IncompleteStart(folder);
@@ -725,37 +846,41 @@ void ApplyDefaults()
     if (!WriteHelixIni())
         LOG_WARN("HelixSR Scaler: could not write {}", wstring_to_string(HelixIniPath().wstring()));
 
-    // Only HelixSR's provider is withdrawn. Preserve the user's FG input, output,
-    // enabled state and other providers so FSR, XeSS and external mods still work.
-    cfg->HelixSRFrameGeneration.set_volatile_value(false);
-    if (cfg->FGNvngxReplacement.value_or_default() == ::FGNvngxReplacement::HelixSR)
+    SwitchFrameGeneration();
+
+    if (found)
     {
-        cfg->FGNvngxReplacement.set_volatile_value(::FGNvngxReplacement::FFX);
-        LOG_WARN("HelixSR frame generation is not included; using the FFX provider instead.");
+        // HelixSR is the DLSS upscaler (on GPUs without DLSS, see NVNGXProxy::HelixSRDlss); DirectX 11 games run it
+        // through the Dx12 interop (FeatureProvider_Dx11: DLSS w/Dx12)
+        if (!cfg->Dx12Upscaler.has_value())
+            cfg->Dx12Upscaler.set_volatile_value(::Upscaler::DLSS);
+
+        if (!cfg->Dx11Upscaler.has_value())
+            cfg->Dx11Upscaler.set_volatile_value(::Upscaler::DLSS);
     }
-    if (!cfg->Dx12Upscaler.has_value())
-        cfg->Dx12Upscaler.set_volatile_value(::Upscaler::DLSS);
 
-    // DirectX 11: DLSS is HelixSR through the Dx12 interop (FeatureProvider_Dx11 runs it as DLSS w/Dx12), or the
-    // native DLSS on GPUs with DLSS. Frame generation stays DirectX 12 only.
-    if (!cfg->Dx11Upscaler.has_value())
-        cfg->Dx11Upscaler.set_volatile_value(::Upscaler::DLSS);
-
-    LOG_INFO("HelixSR frame generation is not included; alternative FG settings: input={}, output={}, provider={}",
-             magic_enum::enum_name(cfg->FGInput.value_or_default()),
-             magic_enum::enum_name(cfg->FGOutput.value_or_default()),
-             magic_enum::enum_name(cfg->FGNvngxReplacement.value_or_default()));
+    if (!frameGenRecovery)
+        ApplyFrameGenDefaults();
 }
 
 bool Found() { return found; }
 
+// HelixSR's frame generation is installed and usable this launch: the helixsr-fg folder next to HelixSR's DLL
+// (helixsr.dll, or HelixSR's FidelityFX DLL without one), not switched off ([HelixSR] FrameGeneration = off parks it as
+// helixsr-fg.off) and no interrupted start of it last time
 bool FrameGenFound()
 {
     std::error_code ec;
-    return found && !frameGenRecovery && fs::is_directory(folder / kFGFolder, ec);
+    return Installed() && !folder.empty() && !frameGenRecovery && fs::is_directory(folder / kFGFolder, ec);
 }
 
-bool detail::FrameGenInstalled() { return false; }
+// The helixsr-fg folder is there, switched on or off
+bool detail::FrameGenInstalled()
+{
+    std::error_code ec;
+    return Installed() && !folder.empty() &&
+           (fs::is_directory(folder / kFGFolder, ec) || fs::is_directory(folder / kFGFolderOff, ec));
+}
 
 fs::path DllPath() { return found ? folder / kDll : fs::path(); }
 
@@ -830,6 +955,137 @@ const char* Version() { return HELIXSR_SCALER_VERSION_STR; }
 
 void Choose() { ChooseHelixSR(); }
 
+// --- The menu's frame-generation choice: HelixSR / AMD FSR / Intel XeSS / Off ------------------------------------
+// Saved to OptiScaler.ini; it applies at the next game start (OptiScaler sets its frame generation up at the start).
+// OptiScaler's own input / output / provider lists stay under it for other combinations.
+
+enum FgChoice : int
+{
+    FgChoiceHelixSR,
+    FgChoiceAmd,
+    FgChoiceIntel,
+    FgChoiceOff,
+    FgChoiceCustom, // another combination, from OptiScaler's own lists
+};
+
+// What runs now
+static int RunningFgChoice()
+{
+    const auto& state = State::Instance();
+
+    if (state.activeFgNvngx == ::FGNvngxReplacement::HelixSR)
+        return FgChoiceHelixSR;
+    if (state.activeFgOutput == ::FGOutput::XeFG)
+        return FgChoiceIntel;
+    if (state.activeFgOutput == ::FGOutput::FSRFG ||
+        (state.activeFgInput == ::FGInput::NvngxFG && state.activeFgNvngx == ::FGNvngxReplacement::FFX))
+        return FgChoiceAmd;
+    if (state.activeFgInput == ::FGInput::NoFG)
+        return FgChoiceOff;
+    return FgChoiceCustom;
+}
+
+// The input of the game's own frame generation (or the upscaler's), for AMD's and Intel's frame generation
+static ::FGInput GameFgInput()
+{
+    if (scannedGame.dlssg)
+        return ::FGInput::DLSSG;
+    if (scannedGame.fsrfg)
+        return ::FGInput::FSRFG;
+    if (scannedGame.fsrfg30)
+        return ::FGInput::FSRFG30;
+    if (scannedGame.xefg)
+        return ::FGInput::XeFG;
+    return ::FGInput::Upscaler;
+}
+
+void detail::ApplyFgChoice(int choice)
+{
+    auto cfg = Config::Instance();
+
+    // HelixSR's choice leaves the frame-generation settings on auto (HelixSR Scaler picks the route by the game); the
+    // others switch HelixSR's frame generation off ([HelixSR] FrameGeneration = off parks its folder at the next start)
+    cfg->HelixSRFrameGeneration = choice == FgChoiceHelixSR ? std::optional<bool>() : std::optional<bool>(false);
+    cfg->FGInput = std::optional<::FGInput>();
+    cfg->FGOutput = std::optional<::FGOutput>();
+    cfg->FGNvngxReplacement = std::optional<::FGNvngxReplacement>();
+    cfg->FGEnabled = std::optional<bool>();
+
+    const auto input = GameFgInput();
+
+    if (choice == FgChoiceAmd && input == ::FGInput::DLSSG)
+    {
+        // DLSS-G games: the game's DLSS frame generation runs AMD's FSR frame generation (OptiScaler's FFX provider)
+        cfg->FGInput = ::FGInput::NvngxFG;
+        cfg->FGNvngxReplacement = ::FGNvngxReplacement::FFX;
+    }
+    else if (choice == FgChoiceAmd || choice == FgChoiceIntel)
+    {
+        cfg->FGInput = input;
+        cfg->FGOutput = choice == FgChoiceAmd ? ::FGOutput::FSRFG : ::FGOutput::XeFG;
+        if (input != ::FGInput::DLSSG)
+            cfg->FGEnabled = true;
+        if (input == ::FGInput::Upscaler && !cfg->FGHUDFix.has_value())
+            cfg->FGHUDFix = true;
+    }
+    else if (choice == FgChoiceOff)
+    {
+        cfg->FGInput = ::FGInput::NoFG;
+        cfg->FGOutput = ::FGOutput::NoFG;
+    }
+
+    const bool saved = cfg->SaveIni() && WriteOptiScalerIni();
+    WriteHelixIni();
+    LOG_INFO("HelixSR Scaler: frame generation {} chosen in the menu, saved {} (applies at the next game start)",
+             choice == FgChoiceHelixSR ? "HelixSR"
+             : choice == FgChoiceAmd   ? "AMD FSR"
+             : choice == FgChoiceIntel ? "Intel XeSS"
+                                       : "off",
+             saved);
+}
+
+void RenderFrameGenChoice(float scale)
+{
+    if (!Installed())
+        return;
+
+    static int chosen = -1; // picked in this session (the restart note)
+    const int running = RunningFgChoice();
+    const int shown = chosen >= 0 ? chosen : running;
+
+    const char* names[] = { "HelixSR", "AMD FSR", "Intel XeSS", "Off", "Custom" };
+
+    ImGui::SetNextItemWidth(150.0f * scale);
+    if (ImGui::BeginCombo("Frame generation", names[shown]))
+    {
+        for (int i = FgChoiceHelixSR; i <= FgChoiceOff; i++)
+        {
+            const bool disabled = i == FgChoiceHelixSR && !FrameGenInstalled();
+            if (disabled)
+                ImGui::BeginDisabled();
+            if (ImGui::Selectable(names[i], shown == i) && shown != i)
+            {
+                ApplyFgChoice(i);
+                chosen = i;
+            }
+            if (disabled)
+                ImGui::EndDisabled();
+        }
+        ImGui::EndCombo();
+    }
+
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("HelixSR: HelixSR's frame generation (DirectX 12 games).\nAMD FSR: AMD's FSR frame "
+                          "generation.\nIntel XeSS: Intel's XeSS frame generation.\nOff: no frame generation.\n\n"
+                          "Saved to OptiScaler.ini, applies after restarting the game. The input / output lists below "
+                          "are for other combinations.");
+
+    if (chosen >= 0 && chosen != running)
+        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "Restart the game to apply");
+    else if (running == FgChoiceHelixSR && State::Instance().api != DX12 && State::Instance().api != NotSelected)
+        ImGui::TextDisabled("HelixSR frame generation runs in DirectX 12 games only");
+}
+
 // The QuickFlow setting the game started with (restart note): 0 Best, 1 Fast, 2 Fastest
 int quickFlowAtStart = 0;
 bool quickFlowAtStartSet = false;
@@ -902,7 +1158,7 @@ void RenderSettings(float scale, ImVec4 (*color)(const ImVec4&))
     toColor = color;
     RefreshMenu();
 
-    if (!found)
+    if (!Installed())
         return;
 
     auto& m = Menu();
