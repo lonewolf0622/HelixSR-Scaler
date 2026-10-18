@@ -1,8 +1,8 @@
 #pragma once
 
-// HelixSR Scaler: HelixSR frame generation's quality, as OptiScaler.ini [HelixSR] keeps it and as HelixSR's DLL reads it
-// from helixsr.ini [DlssFrameGeneration]. No Windows or OptiScaler headers here, so the rules are tested on their own
-// (helixsr/tests/test_fg_quality.cpp).
+// HelixSR Scaler: HelixSR frame generation's quality, as OptiScaler.ini [HelixSR] keeps it and as HelixSR's DLL reads
+// it from helixsr.ini [DlssFrameGeneration]. No Windows or OptiScaler headers here, so the rules are tested on their
+// own (helixsr/tests/test_fg_quality.cpp).
 //
 //   OptiScaler.ini [HelixSR]                       helixsr.ini [DlssFrameGeneration]
 //   FGPreset  = auto | c | full   (auto = c)        Preset    = c | full
@@ -64,10 +64,7 @@ inline std::optional<QuickFlow> ParseQuickFlow(const std::string& value)
     return std::nullopt;
 }
 
-inline const char* OptiScalerPreset(std::optional<Preset> p)
-{
-    return !p ? "auto" : *p == Preset::Full ? "full" : "c";
-}
+inline const char* OptiScalerPreset(std::optional<Preset> p) { return !p ? "auto" : *p == Preset::Full ? "full" : "c"; }
 
 inline const char* OptiScalerQuickFlow(std::optional<QuickFlow> q)
 {

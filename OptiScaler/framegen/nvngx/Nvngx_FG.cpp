@@ -411,7 +411,7 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InCm
         }
     }
 
-    {   // the HUD-less image Streamline hands over, logged when it changes (at most 64 lines)
+    { // the HUD-less image Streamline hands over, logged when it changes (at most 64 lines)
         static ID3D12Resource* last = nullptr;
         static bool lastDisabled = false;
         static int told = 0;
@@ -422,7 +422,8 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InCm
         if ((hudless != last || disabled != lastDisabled) && told < 64)
         {
             ++told;
-            LOG_INFO("DLSSG.HUDLess from the game: {:X}{}", (size_t) hudless, disabled ? " (Disable HUDless: not passed on)" : "");
+            LOG_INFO("DLSSG.HUDLess from the game: {:X}{}", (size_t) hudless,
+                     disabled ? " (Disable HUDless: not passed on)" : "");
         }
 
         last = hudless, lastDisabled = disabled;
@@ -430,8 +431,8 @@ NVSDK_NGX_Result Nvngx_FG::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InCm
 
     if (Config::Instance()->NvngxFGDisableHudless.value_or_default())
     {
-        // both setters: a provider that reads the D3D12 resource slot (HelixSR's DLL does) would otherwise keep the game's
-        // image after the void pointer was cleared
+        // both setters: a provider that reads the D3D12 resource slot (HelixSR's DLL does) would otherwise keep the
+        // game's image after the void pointer was cleared
         InParameters->Set("DLSSG.HUDLess", (void*) nullptr);
         InParameters->Set("DLSSG.HUDLess", (ID3D12Resource*) nullptr);
     }

@@ -495,10 +495,11 @@ static void LogHudlessTag(const char* where, const sl::ResourceTag& tag, uint32_
         return;
 
     ++told;
-    LOG_INFO("{}: HUD-less tag for frame {}: resource {:X} ({}x{} format {}) lifecycle {} state {:X} extent {},{} {}x{}", where,
-             frame, (size_t) native, tag.resource ? tag.resource->width : 0, tag.resource ? tag.resource->height : 0,
-             tag.resource ? tag.resource->nativeFormat : 0, (uint32_t) tag.lifecycle, state, tag.extent.left, tag.extent.top,
-             tag.extent.width, tag.extent.height);
+    LOG_INFO(
+        "{}: HUD-less tag for frame {}: resource {:X} ({}x{} format {}) lifecycle {} state {:X} extent {},{} {}x{}",
+        where, frame, (size_t) native, tag.resource ? tag.resource->width : 0, tag.resource ? tag.resource->height : 0,
+        tag.resource ? tag.resource->nativeFormat : 0, (uint32_t) tag.lifecycle, state, tag.extent.left, tag.extent.top,
+        tag.extent.width, tag.extent.height);
 }
 
 sl::Result StreamlineHooks::hkslSetTag(const sl::ViewportHandle& viewport, const sl::ResourceTag* tags,

@@ -1358,10 +1358,10 @@ bool Config::SaveIni()
         {
             const auto preset = Instance()->HelixSRFGPreset.value_for_config();
             const auto qf = Instance()->HelixSRQuickFlow.value_for_config();
-            ini.SetValue("HelixSR", "FGPreset",
-                         HelixSR::FgQuality::OptiScalerPreset(
-                             preset ? std::optional((HelixSR::FgQuality::Preset) std::clamp(*preset, 0, 1))
-                                    : std::nullopt));
+            ini.SetValue(
+                "HelixSR", "FGPreset",
+                HelixSR::FgQuality::OptiScalerPreset(
+                    preset ? std::optional((HelixSR::FgQuality::Preset) std::clamp(*preset, 0, 1)) : std::nullopt));
             ini.SetValue("HelixSR", "QuickFlow",
                          HelixSR::FgQuality::OptiScalerQuickFlow(
                              qf ? std::optional((HelixSR::FgQuality::QuickFlow) std::clamp(*qf, 0, 2)) : std::nullopt));
