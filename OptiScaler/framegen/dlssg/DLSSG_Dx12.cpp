@@ -863,9 +863,6 @@ bool DLSSG_Dx12::ReleaseSwapchain(HWND hwnd)
 
     ReleaseObjects();
 
-    // HelixSR Scaler: the released swapchain is not used again (the game's next one is set at its creation)
-    _swapChain = nullptr;
-
     if (Config::Instance()->FGUseMutexForSwapchain.value_or_default())
     {
         LOG_TRACE("Releasing Mutex: {}", Mutex.getOwner());

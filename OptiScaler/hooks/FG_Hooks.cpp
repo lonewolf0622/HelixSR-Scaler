@@ -1527,15 +1527,6 @@ ULONG FGHooks::hkFGRelease(IUnknown* This)
                 State::Instance().currentWrappedSwapchain = nullptr;
             }
 
-            // HelixSR Scaler: Streamline (DLSSG output) does not destroy its swapchain proxy in ReleaseSwapchain as
-            // the FSR / XeSS outputs destroy theirs; the reference taken above is dropped so the proxy goes away and
-            // DLSS-G accepts the game's next swapchain (else "Host did not release swap-chain" and no frame generation)
-            if (State::Instance().activeFgOutput == FGOutput::DLSSG)
-            {
-                const auto left = o_FGRelease(This);
-                LOG_DEBUG("DLSSG output: FG swapchain reference dropped, {} left", left);
-            }
-
             skipReleaseChecks = false;
 
             return 0;
