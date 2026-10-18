@@ -8,6 +8,7 @@
 #include <misc/IdentifyGpu.h>
 
 #include <SimpleIni.h>
+#include <helixsr/HelixSRFgQuality.h>
 
 static CSimpleIniA ini;
 
@@ -504,14 +505,15 @@ bool Config::Reload(std::filesystem::path iniPath)
                 else if (fg.value() == "off" || fg.value() == "false" || fg.value() == "0")
                     HelixSRFrameGeneration.set_from_config(false);
             }
+            if (auto preset = readString("HelixSR", "FGPreset", true); preset.has_value())
+            {
+                if (auto p = HelixSR::FgQuality::ParsePreset(preset.value()); p.has_value())
+                    HelixSRFGPreset.set_from_config((int) p.value());
+            }
             if (auto qf = readString("HelixSR", "QuickFlow", true); qf.has_value())
             {
-                if (qf.value() == "fastest")
-                    HelixSRQuickFlow.set_from_config(2);
-                else if (qf.value() == "on" || qf.value() == "true" || qf.value() == "1")
-                    HelixSRQuickFlow.set_from_config(1);
-                else if (qf.value() == "off" || qf.value() == "false" || qf.value() == "0")
-                    HelixSRQuickFlow.set_from_config(0);
+                if (auto q = HelixSR::FgQuality::ParseQuickFlow(qf.value()); q.has_value())
+                    HelixSRQuickFlow.set_from_config((int) q.value());
             }
             MenuBlur.set_from_config(readBool("Menu", "Blur"));
 
@@ -1353,10 +1355,17 @@ bool Config::SaveIni()
             ini.SetValue("HelixSR", "VulkanComputeQueue", vcq.value() ? "true" : "false");
         else
             ini.SetValue("HelixSR", "VulkanComputeQueue", "auto");
-        if (auto qf = Instance()->HelixSRQuickFlow.value_for_config(); qf.has_value())
-            ini.SetValue("HelixSR", "QuickFlow", qf.value() == 2 ? "fastest" : qf.value() == 1 ? "on" : "off");
-        else
-            ini.SetValue("HelixSR", "QuickFlow", "auto");
+        {
+            const auto preset = Instance()->HelixSRFGPreset.value_for_config();
+            const auto qf = Instance()->HelixSRQuickFlow.value_for_config();
+            ini.SetValue("HelixSR", "FGPreset",
+                         HelixSR::FgQuality::OptiScalerPreset(
+                             preset ? std::optional((HelixSR::FgQuality::Preset) std::clamp(*preset, 0, 1))
+                                    : std::nullopt));
+            ini.SetValue("HelixSR", "QuickFlow",
+                         HelixSR::FgQuality::OptiScalerQuickFlow(
+                             qf ? std::optional((HelixSR::FgQuality::QuickFlow) std::clamp(*qf, 0, 2)) : std::nullopt));
+        }
         ini.SetValue("Menu", "Blur", GetBoolValue(Instance()->MenuBlur.value_for_config()).c_str());
         ini.SetValue("Menu", "BlurStrength", GetFloatValue(Instance()->MenuBlurStrength.value_for_config()).c_str());
         ini.SetValue("Menu", "CustomTabEnabled", GetBoolValue(Instance()->CustomTabEnabled.value_for_config()).c_str());

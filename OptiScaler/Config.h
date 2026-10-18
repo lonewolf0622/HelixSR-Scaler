@@ -415,8 +415,11 @@ class Config
     // Who presents HelixSR's generated frames: streamline (the game's sl.dlss_g, FGInput = nvngxfg) or optiscaler
     // (OptiScaler's FSR FG swapchain with its pacing, FGInput = dlssg, FGOutput = fsrfg; see HELIXSR_FG_PRESENT.md)
     CustomOptional<std::string, NoDefault> HelixSRFGPresent;
-    // HelixSR's frame generation quality: 0 off (Best), 1 on (Fast: QuickFlow), 2 fastest (QuickFlow at half size);
-    // auto = off. helixsr.ini [FrameGeneration] QuickFlow, read at the game start
+    // HelixSR's frame generation quality ([HelixSR] FGPreset = auto | c | full): 0 Light (NVIDIA's preset C), 1 Full;
+    // auto = Light. helixsr.ini [DlssFrameGeneration] Preset, read at the game start (helixsr/HelixSRFgQuality.h)
+    CustomOptional<int, NoDefault> HelixSRFGPreset;
+    // QuickFlow with Full ([HelixSR] QuickFlow = auto | off | fast | fastest): 0 off, 1 fast, 2 fastest (QuickFlow at
+    // half size); auto = off, always off with Light. helixsr.ini [DlssFrameGeneration] QuickFlow = off | on | fastest
     CustomOptional<int, NoDefault> HelixSRQuickFlow;
     // Vulkan games through OptiScaler's Dx12 bridge: create the bridge's DirectX 12 queue as a compute queue (true), so
     // it has a Vulkan queue to itself. Off by default: it only helps with a vkd3d-proton that waits for shared fences

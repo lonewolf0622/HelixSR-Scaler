@@ -3,6 +3,7 @@
 #include "HelixSR.h"
 #include "HelixSRInternal.h"
 #include "HelixSRFgRoute.h"
+#include "HelixSRFgQuality.h"
 
 #include "Config.h"
 #include "State.h"
@@ -238,6 +239,7 @@ struct Managed
 const Managed kManaged[] = { { "Upscaling", "Int8" },
                              { "Compatibility", "WaveSize" },
                              { "FrameGeneration", "QuickFlow" },
+                             { "DlssFrameGeneration", "Preset" },
                              { "ModelE", "UseReactiveMask" } };
 // earlier keys, taken out of helixsr.ini: sharpening (OptiScaler's now) and frame generation's old mode
 const Managed kRetired[] = { { "Sharpening", "Sharpness" },
@@ -252,7 +254,24 @@ fs::path HelixIniPath() { return folder / kIni; }
 // auto too; a GPU without 32-lane waves (Vega) still runs 64, HelixSR falls back by itself.
 constexpr const char* kAutoWaveSize = "32";
 
-// The value of each managed key from OptiScaler's config, nullopt for auto (HelixSR's default)
+// Frame generation quality from OptiScaler's config, nullopt for auto
+std::optional<FgQuality::Preset> FgPreset()
+{
+    auto cfg = Config::Instance();
+    if (!cfg->HelixSRFGPreset.has_value())
+        return std::nullopt;
+    return (FgQuality::Preset) std::clamp(cfg->HelixSRFGPreset.value(), 0, 1);
+}
+
+std::optional<FgQuality::QuickFlow> FgQuickFlow()
+{
+    auto cfg = Config::Instance();
+    if (!cfg->HelixSRQuickFlow.has_value())
+        return std::nullopt;
+    return (FgQuality::QuickFlow) std::clamp(cfg->HelixSRQuickFlow.value(), 0, 2);
+}
+
+// The value of each managed key in helixsr.ini from OptiScaler's config, nullopt for auto (HelixSR's default)
 std::optional<std::string> ConfigValue(const std::string& key)
 {
     auto cfg = Config::Instance();
@@ -260,10 +279,12 @@ std::optional<std::string> ConfigValue(const std::string& key)
         return cfg->HelixSRInt8.value();
     if (key == "WaveSize" && cfg->HelixSRWaveSize.has_value())
         return std::to_string(cfg->HelixSRWaveSize.value());
-    // QuickFlow is out of the menu (preset C, NVIDIA's light mode, is faster at the same or better quality): always
-    // off, which also clears a Fast / Fastest left in OptiScaler.ini by an earlier version
+    // Frame generation quality (HelixSRFgQuality.h): Light (preset C, the default) or Full; QuickFlow only with Full,
+    // so it stays off with Light (which also clears a Fast / Fastest left in OptiScaler.ini by an earlier version)
+    if (key == "Preset")
+        return std::string(FgQuality::HelixPreset(FgPreset()));
     if (key == "QuickFlow")
-        return std::string("off");
+        return std::string(FgQuality::HelixQuickFlow(FgPreset(), FgQuickFlow()));
     // OptiScaler's "Disable Reactive Mask" (InitFlags): unticked gives the game's reactive mask to HelixSR's network
     // (its bias-current-colour input: particles, hair and other things without good motion vectors)
     if (key == "UseReactiveMask" && cfg->DisableReactiveMask.has_value())
@@ -274,8 +295,8 @@ std::optional<std::string> ConfigValue(const std::string& key)
 const char* kHelixIniHeader[] = {
     "; HelixSR's settings, written by HelixSR Scaler from OptiScaler.ini each time the game starts. Change them in",
     "; OptiScaler.ini ([HelixSR]) or in the menu (Insert key). Sharpening is OptiScaler's, so HelixSR's sharpener",
-    "; stays off. Int8, WaveSize and QuickFlow here are replaced; other HelixSR settings you add to this file are",
-    "; kept.",
+    "; stays off. Int8, WaveSize, Preset and QuickFlow here are replaced; other HelixSR settings you add to this file",
+    "; are kept.",
 };
 
 // helixsr.ini from OptiScaler's config
@@ -317,7 +338,15 @@ bool WriteOptiScalerIni()
     ini.separator = "=";
 
     for (const auto& m : kManaged)
-        ini.Set("HelixSR", m.key, ConfigValue(m.key).value_or("auto"));
+    {
+        // OptiScaler.ini keeps the choice as made (QuickFlow too with Light, for when Full is picked again)
+        if (std::string(m.key) == "Preset")
+            ini.Set("HelixSR", "FGPreset", std::string(FgQuality::OptiScalerPreset(FgPreset())));
+        else if (std::string(m.key) == "QuickFlow")
+            ini.Set("HelixSR", "QuickFlow", std::string(FgQuality::OptiScalerQuickFlow(FgQuickFlow())));
+        else
+            ini.Set("HelixSR", m.key, ConfigValue(m.key).value_or("auto"));
+    }
     ini.Set("HelixSR", "FrameGeneration",
             cfg->HelixSRFrameGeneration.has_value() ? (cfg->HelixSRFrameGeneration.value() ? "on" : "off") : "auto");
     for (const char* key : { "Sharpener", "Sharpness", "UseGameSlider" }) // earlier versions' keys
@@ -346,9 +375,13 @@ void ImportHelixIni()
             cfg->HelixSRWaveSize = std::stoi(v.value());
         if (auto v = old.Get(found ? "FrameGeneration" : "DlssFrameGeneration", "QuickFlow"); v.has_value())
         {
-            const auto qf = Lower(v.value());
-            if (qf == "on" || qf == "off" || qf == "fastest")
-                cfg->HelixSRQuickFlow = qf == "fastest" ? 2 : qf == "on" ? 1 : 0;
+            if (auto q = FgQuality::ParseQuickFlow(v.value()); q.has_value())
+                cfg->HelixSRQuickFlow = (int) q.value();
+        }
+        if (auto v = old.Get("DlssFrameGeneration", "Preset"); v.has_value())
+        {
+            if (auto p = FgQuality::ParsePreset(v.value()); p.has_value())
+                cfg->HelixSRFGPreset = (int) p.value();
         }
         LOG_INFO("HelixSR Scaler: moved the settings in helixsr.ini to OptiScaler.ini");
     }
@@ -1071,6 +1104,87 @@ void RenderFrameGenChoice(float scale)
         ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "Restart the game to apply");
     else if (running == FgChoiceHelixSR && State::Instance().api != DX12 && State::Instance().api != NotSelected)
         ImGui::TextDisabled("HelixSR frame generation runs in DirectX 12 games only");
+}
+
+void RenderFrameGenQuality(float scale)
+{
+    if (!FrameGenFound())
+        return;
+
+    auto cfg = Config::Instance();
+
+    // what the game started with (the restart note)
+    static bool atStartSet = false;
+    static FgQuality::Preset presetAtStart = FgQuality::Preset::Light;
+    static FgQuality::QuickFlow quickFlowAtStart = FgQuality::QuickFlow::Off;
+    if (!atStartSet)
+    {
+        presetAtStart = FgQuality::EffectivePreset(FgPreset());
+        quickFlowAtStart = FgQuality::EffectiveQuickFlow(FgPreset(), FgQuickFlow());
+        atStartSet = true;
+    }
+
+    bool changed = false;
+    const auto preset = FgQuality::EffectivePreset(FgPreset());
+    const char* presets[] = { "Light (preset C)", "Full" };
+    int pick = (int) preset;
+
+    ImGui::SetNextItemWidth(150.0f * scale);
+    if (ImGui::BeginCombo("Frame generation quality", presets[pick]))
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            if (ImGui::Selectable(presets[i], i == pick) && i != pick)
+            {
+                cfg->HelixSRFGPreset = i;
+                changed = true;
+            }
+        }
+        ImGui::EndCombo();
+    }
+
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Light: NVIDIA's light mode (preset C), the default: faster.\nFull: NVIDIA's full frame "
+                          "generation, with QuickFlow to choose.\n\nApplies after restarting the game.");
+
+    if (FgQuality::EffectivePreset(FgPreset()) == FgQuality::Preset::Full)
+    {
+        const char* flows[] = { "Off", "Fast", "Fastest" };
+        int flow = (int) FgQuickFlow().value_or(FgQuality::QuickFlow::Off);
+
+        ImGui::SetNextItemWidth(150.0f * scale);
+        if (ImGui::BeginCombo("QuickFlow", flows[flow]))
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                if (ImGui::Selectable(flows[i], i == flow) && i != flow)
+                {
+                    cfg->HelixSRQuickFlow = i;
+                    changed = true;
+                }
+            }
+            ImGui::EndCombo();
+        }
+
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Off: full quality.\nFast: QuickFlow, a faster motion estimate for lower-end GPUs, "
+                              "slightly softer in-between frames.\nFastest: QuickFlow at half size, upscaled with "
+                              "detail restore. The fastest; it can shimmer (mostly at 4K).\n\nApplies after "
+                              "restarting the game.");
+    }
+
+    if (changed)
+    {
+        const bool opti = WriteOptiScalerIni();
+        const bool helix = WriteHelixIni();
+        LOG_INFO("HelixSR Scaler: frame generation Preset = {}, QuickFlow = {} saved (OptiScaler.ini {}, helixsr.ini "
+                 "{}); it applies at the next game start",
+                 FgQuality::HelixPreset(FgPreset()), FgQuality::HelixQuickFlow(FgPreset(), FgQuickFlow()), opti, helix);
+    }
+
+    if (FgQuality::EffectivePreset(FgPreset()) != presetAtStart ||
+        FgQuality::EffectiveQuickFlow(FgPreset(), FgQuickFlow()) != quickFlowAtStart)
+        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "Restart the game to apply");
 }
 
 bool IsActive()

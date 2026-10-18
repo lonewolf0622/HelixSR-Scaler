@@ -62,9 +62,10 @@ bool IsActive();
 // Selects HelixSR (OptiScaler's DLSS upscaler with HelixSR's DLL; DLSS w/Dx12 in DirectX 11 games) as the upscaler
 void Choose();
 
-// Frame generation quality Best / Fast / Fastest ([HelixSR] QuickFlow = auto | on | off | fastest, auto = off;
-// helixsr.ini [FrameGeneration] QuickFlow), drawn in the menu's frame generation section. Applies at the next game
-// start.
+// Frame generation quality Light (preset C, the default) / Full, and with Full QuickFlow Off / Fast / Fastest
+// ([HelixSR] FGPreset and QuickFlow; helixsr.ini [DlssFrameGeneration] Preset and QuickFlow, see HelixSRFgQuality.h),
+// drawn in the menu's frame generation section. Applies at the next game start.
+void RenderFrameGenQuality(float scale);
 
 // The menu's frame-generation choice (HelixSR / AMD FSR / Intel XeSS / Off), above OptiScaler's own FG lists; saved
 // to OptiScaler.ini, applies at the next game start

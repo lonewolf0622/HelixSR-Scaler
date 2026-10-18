@@ -5362,8 +5362,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             }
             else
             {
-                // HelixSR Scaler: no quality choice (QuickFlow is gone): HelixSR runs NVIDIA's light mode (preset C)
-                ImGui::TextDisabled("HelixSR frame generation: NVIDIA's light mode (preset C)");
+                HelixSR::RenderFrameGenQuality(menuResScale); // HelixSR Scaler
             }
         }
 

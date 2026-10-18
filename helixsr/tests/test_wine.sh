@@ -12,6 +12,16 @@ PKG=$(realpath "$1")
 W=$(mktemp -d)
 trap 'wineserver -k 2>/dev/null; rm -rf "$W"' EXIT
 fails=0
+# dfg KEY VALUE: helixsr.ini next to HelixSR's FidelityFX DLL has KEY = VALUE in [DlssFrameGeneration]
+dfg() {
+    awk -v k="$1" -v v="$2" '{sub(/\r$/, "")} /^\[/{s=$0} s=="[DlssFrameGeneration]" && $0==k" = "v{f=1} END{exit !f}' "$G/HelixSR-fsrfg/helixsr.ini"
+}
+
+# opt KEY VALUE: the game's OptiScaler.ini has KEY=VALUE in [HelixSR]
+opt() {
+    awk -v k="$1" -v v="$2" '{sub(/\r$/, "")} /^\[/{s=$0} s=="[HelixSR]" && $0==k"="v{f=1} END{exit !f}' "$G/OptiScaler.ini"
+}
+
 check() { if eval "$2"; then printf 'ok   %s\n' "$1"; else printf 'FAIL %s\n' "$1"; fails=$((fails + 1)); fi; }
 
 # in a library folder like Steam's (steamapps/common): the game-file search stays inside the game
@@ -130,8 +140,19 @@ sed -i 's/^FrameGeneration=.*/FrameGeneration=on/' "$G/OptiScaler.ini"
 sed -i 's/^QuickFlow=.*/QuickFlow=on/' "$G/OptiScaler.ini"
 (cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
 check "FSR DLL with helixsr-fg, FrameGeneration=on: HelixSR frame generation through OptiScaler's Streamline" 'grep -q "frame generation settings: input=Upscaler, output=DLSSG, provider=HelixSR" "$G/OptiScaler.log" && [ -f "$G/HelixSR-fsrfg/helixsr-fg/hxfg64.dll" ]'
-check "FSR DLL: QuickFlow always off in [DlssFrameGeneration] (out of the menu, an old on is cleared)" 'awk '"'"'{sub(/\r$/, "")} /^\[/{s=$0} s=="[DlssFrameGeneration]" && /^QuickFlow = off/{f=1} END{exit !f}'"'"' "$G/HelixSR-fsrfg/helixsr.ini"'
-sed -i 's/^QuickFlow=.*/QuickFlow=auto/' "$G/OptiScaler.ini"
+check "FSR DLL: Light by default: QuickFlow off in [DlssFrameGeneration] (an old on is not used)" 'dfg QuickFlow off'
+check "FSR DLL: Light by default: Preset = c in [DlssFrameGeneration]" 'dfg Preset c'
+check "OptiScaler.ini stays as written (QuickFlow=on is not rewritten)" 'opt QuickFlow on'
+grep -q '^FGPreset=' "$G/OptiScaler.ini" || sed -i 's/^QuickFlow=/FGPreset=auto\nQuickFlow=/' "$G/OptiScaler.ini"
+# Frame generation quality: FGPreset / QuickFlow in OptiScaler.ini, Preset / QuickFlow in helixsr.ini
+for t in "full fast full on" "full fastest full fastest" "full off full off" "c fastest c off" "c fast c off"; do
+    set -- $t
+    sed -i "s/^FGPreset=.*/FGPreset=$1/; s/^QuickFlow=.*/QuickFlow=$2/" "$G/OptiScaler.ini"
+    (cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
+    check "FGPreset=$1 QuickFlow=$2: helixsr.ini Preset = $3, QuickFlow = $4" "dfg Preset $3 && dfg QuickFlow $4"
+    check "FGPreset=$1 QuickFlow=$2: OptiScaler.ini unchanged" "opt FGPreset $1 && opt QuickFlow $2"
+done
+sed -i 's/^QuickFlow=.*/QuickFlow=auto/; s/^FGPreset=.*/FGPreset=auto/' "$G/OptiScaler.ini"
 
 # OptiScaler.ini's choices stay
 sed -i 's/^Dx11Upscaler=.*/Dx11Upscaler=fsr22/' "$G/OptiScaler.ini"
