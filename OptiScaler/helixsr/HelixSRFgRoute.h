@@ -5,11 +5,14 @@
 // OptiScaler's values (FGInput, FGOutput, FGNvngxReplacement in State.h; HelixSR.cpp checks that they match).
 //
 // HelixSR's frame generation is NVIDIA's DLSS Frame Generation run by HelixSR's DLL, as the nvngx_dlssg replacement
-// (FGNvngxReplacement = helixsr). Streamline presents its frames:
+// (FGNvngxReplacement = helixsr). Who presents its frames ([HelixSR] FGPresent, auto by default):
 //  - a game with DLSS Frame Generation: the game's own Streamline (FGInput = nvngxfg);
-//  - any other DirectX 12 game: OptiScaler's Streamline (FGOutput = dlssg), with the inputs OptiScaler collects from
-//    the game's FSR 3.1 frame generation (fsrfg), FSR 3.0 frame generation (fsrfg30), XeSS frame generation (xefg),
-//    or else from the upscaler OptiScaler runs (upscaler, with the HUD fix for the game's UI).
+//  - any other DirectX 12 game: OptiScaler's FSR FG swapchain (FGOutput = fsrfg, the OptiFG route; HelixSR generates
+//    in its frame-generation callback), with the inputs OptiScaler collects from the game's FSR 3.1 frame generation
+//    (fsrfg), FSR 3.0 frame generation (fsrfg30), XeSS frame generation (xefg), or else from the upscaler OptiScaler
+//    runs (upscaler, with the HUD fix for the game's UI).
+// FGPresent = optiscaler also takes DLSS-G games to the FSR FG swapchain (FGInput = dlssg); FGPresent = streamline
+// gives the other games OptiScaler's Streamline (FGOutput = dlssg) instead of the FSR FG swapchain.
 // Settings OptiScaler.ini sets are never changed; only the ones it leaves on auto are filled in.
 
 #include <cstdint>
@@ -57,12 +60,21 @@ struct Game
     bool xefg = false;    // libxess_fg.dll
 };
 
+// [HelixSR] FGPresent: who presents HelixSR's frames
+enum class Present : uint32_t
+{
+    Auto,       // DLSS-G games: the game's Streamline (nvngxfg); the other games: OptiScaler's FSR FG swapchain
+    OptiScaler, // OptiScaler's FSR FG swapchain for every game (DLSS-G games: FGInput = dlssg)
+    Streamline, // DLSS-G games: the game's Streamline; the other games: OptiScaler's Streamline (FGOutput = dlssg)
+};
+
 struct Settings
 {
-    bool engine = false;      // HelixSR's frame generation is installed (FrameGenFound)
-    bool switchedOn = true;   // [HelixSR] FrameGeneration = on (auto is off)
-    bool streamline = false;  // OptiScaler's streamline folder (sl.interposer.dll), needed by FGOutput = dlssg
-    bool optiPresent = false; // [HelixSR] FGPresent = optiscaler written in OptiScaler.ini (DLSS-G games only)
+    bool engine = false;     // HelixSR's frame generation is installed (FrameGenFound)
+    bool switchedOn = true;  // [HelixSR] FrameGeneration = on (auto is off)
+    bool streamline = false; // OptiScaler's streamline folder (sl.interposer.dll), needed by FGOutput = dlssg
+    bool ffxFg = true;       // a FidelityFX frame-generation DLL for FGOutput = fsrfg (OptiScaler's or the game's)
+    Present present = Present::Auto;
 
     // OptiScaler.ini's values, nullopt for auto
     std::optional<Input> input;
@@ -104,6 +116,12 @@ inline const char* InputCode(Input i)
     }
 }
 
+// The inputs the OptiFG route takes (OptiScaler's FSR FG swapchain presents, HelixSR generates)
+inline bool OptiFgInput(Input i)
+{
+    return i == Input::DLSSG || i == Input::FSRFG || i == Input::FSRFG30 || i == Input::XeFG || i == Input::Upscaler;
+}
+
 inline Route Decide(const Game& game, const Settings& s)
 {
     Route r;
@@ -130,8 +148,9 @@ inline Route Decide(const Game& game, const Settings& s)
 
     if (s.output.has_value() && s.output != Output::DLSSG && s.output != Output::NoFG)
     {
-        if (s.optiPresent && s.output == Output::FSRFG &&
-            s.input.value_or(game.dlssg ? Input::DLSSG : Input::NoFG) == Input::DLSSG)
+        const Input gameInput = s.input.value_or(game.dlssg ? Input::DLSSG : Input::NoFG);
+
+        if (s.present == Present::OptiScaler && s.output == Output::FSRFG && gameInput == Input::DLSSG)
         {
             if (!s.input.has_value())
                 r.input = Input::DLSSG;
@@ -139,6 +158,22 @@ inline Route Decide(const Game& game, const Settings& s)
                 r.provider = Provider::HelixSR;
             r.why =
                 "FGPresent = optiscaler: the game's DLSS-G inputs, OptiScaler's FSR FG swapchain, HelixSR generates";
+            return r;
+        }
+
+        // FGOutput = fsrfg written with FGPresent = optiscaler (or FGNvngxReplacement = helixsr): the OptiFG route for
+        // the input OptiScaler.ini names
+        if (s.output == Output::FSRFG && s.input.has_value() && OptiFgInput(s.input.value()) &&
+            (s.present == Present::OptiScaler || (s.present == Present::Auto && s.provider == Provider::HelixSR)))
+        {
+            if (!s.provider.has_value())
+                r.provider = Provider::HelixSR;
+            if (s.input != Input::DLSSG && !s.enabled.has_value())
+                r.enabled = true;
+            if (s.input == Input::Upscaler && !s.hudfix.has_value())
+                r.hudfix = true;
+            r.why = std::string("OptiFG route: FGInput = ") + InputCode(s.input.value()) +
+                    ", OptiScaler's FSR FG swapchain presents, HelixSR generates";
             return r;
         }
 
@@ -154,30 +189,30 @@ inline Route Decide(const Game& game, const Settings& s)
     }
     else if (game.dlssg)
     {
-        input = s.optiPresent ? Input::DLSSG : Input::NvngxFG;
-        r.why = s.optiPresent ? "the game has DLSS Frame Generation: FGPresent = optiscaler (FGInput = dlssg)"
-                              : "the game has DLSS Frame Generation: it runs HelixSR's (FGInput = nvngxfg)";
+        const bool opti = s.present == Present::OptiScaler;
+        input = opti ? Input::DLSSG : Input::NvngxFG;
+        r.why = opti ? "the game has DLSS Frame Generation: FGPresent = optiscaler (FGInput = dlssg)"
+                     : "the game has DLSS Frame Generation: it runs HelixSR's (FGInput = nvngxfg)";
     }
     else if (game.fsrfg)
     {
         input = Input::FSRFG;
-        r.why = "the game has FSR 3.1 frame generation: its inputs go to HelixSR (FGInput = fsrfg, FGOutput = dlssg)";
+        r.why = "the game has FSR 3.1 frame generation: its inputs go to HelixSR (FGInput = fsrfg)";
     }
     else if (game.fsrfg30)
     {
         input = Input::FSRFG30;
-        r.why = "the game has FSR 3.0 frame generation: its inputs go to HelixSR (FGInput = fsrfg30, FGOutput = dlssg)";
+        r.why = "the game has FSR 3.0 frame generation: its inputs go to HelixSR (FGInput = fsrfg30)";
     }
     else if (game.xefg)
     {
         input = Input::XeFG;
-        r.why = "the game has XeSS frame generation: its inputs go to HelixSR (FGInput = xefg, FGOutput = dlssg)";
+        r.why = "the game has XeSS frame generation: its inputs go to HelixSR (FGInput = xefg)";
     }
     else
     {
         input = Input::Upscaler;
-        r.why = "no frame generation in the game: the upscaler's inputs go to HelixSR (FGInput = upscaler, "
-                "FGOutput = dlssg, HUD fix)";
+        r.why = "no frame generation in the game: the upscaler's inputs go to HelixSR (FGInput = upscaler, HUD fix)";
     }
 
     if (input == Input::NoFG)
@@ -196,7 +231,7 @@ inline Route Decide(const Game& game, const Settings& s)
         return r;
     }
 
-    if (input == Input::DLSSG && s.optiPresent)
+    if (input == Input::DLSSG && s.present == Present::OptiScaler)
     {
         if (!s.input.has_value())
             r.input = input;
@@ -207,7 +242,26 @@ inline Route Decide(const Game& game, const Settings& s)
         return r;
     }
 
-    // every other input: OptiScaler's Streamline presents (FGOutput = dlssg), HelixSR as its nvngx_dlssg
+    // the other inputs (FSR / XeSS frame generation, the upscaler): the OptiFG route, OptiScaler's FSR FG swapchain
+    // presents and HelixSR generates in its callback. FGPresent = streamline keeps OptiScaler's Streamline (below),
+    // and without a FidelityFX frame-generation DLL auto takes it too.
+    if (input != Input::DLSSG && s.present != Present::Streamline && (s.ffxFg || s.present == Present::OptiScaler))
+    {
+        if (!s.input.has_value())
+            r.input = input;
+        if (!s.output.has_value())
+            r.output = Output::FSRFG;
+        if (!s.provider.has_value())
+            r.provider = Provider::HelixSR;
+        if (!s.enabled.has_value())
+            r.enabled = true;
+        if (input == Input::Upscaler && !s.hudfix.has_value())
+            r.hudfix = true;
+        r.why += ": OptiFG route, OptiScaler's FSR FG swapchain presents, HelixSR generates (FGOutput = fsrfg)";
+        return r;
+    }
+
+    // OptiScaler's Streamline presents (FGOutput = dlssg), HelixSR as its nvngx_dlssg
     if (!s.streamline)
     {
         r = {};
@@ -215,6 +269,10 @@ inline Route Decide(const Game& game, const Settings& s)
                 "HelixSR's frame generation is not set up for this game";
         return r;
     }
+
+    r.why += s.present == Present::Streamline
+                 ? ": FGPresent = streamline, OptiScaler's Streamline presents (FGOutput = dlssg)"
+                 : ": no FidelityFX frame-generation DLL, OptiScaler's Streamline presents (FGOutput = dlssg)";
 
     if (!s.input.has_value())
         r.input = input;

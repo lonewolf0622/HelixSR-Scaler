@@ -124,9 +124,11 @@ void DLSSG_Common::SetOptions(bool gameMarkersReachStreamline)
         LOG_ERROR("Couldn't set Reflex options, error: {}", magic_enum::enum_name(reflexSetOptionsResult));
 }
 
-bool DLSSG_Common::SetConstants(int fIndex, uint32_t frameId, uint32_t mvWidth, uint32_t mvHeight)
+// HelixSR Scaler: the frame's Streamline constants from the FG input's values, shared with HelixSR's frame generation
+// on the FSR FG swapchain (HelixSRPresent_Dx12.cpp) for inputs without Streamline constants of their own
+void IFGFeature::FillDlssgConstants(int fIndex, uint32_t mvWidth, uint32_t mvHeight, sl::Constants& constData)
 {
-    sl::Constants constData = {};
+    constData = {};
 
     // Streamline wants near < far, the upscaler input has them swapped for inverted depth like FFX wants
     float cameraNear = std::min(_cameraNear[fIndex], _cameraFar[fIndex]);
@@ -245,6 +247,12 @@ bool DLSSG_Common::SetConstants(int fIndex, uint32_t frameId, uint32_t mvWidth, 
     constData.orthographicProjection = sl::Boolean::eFalse;
     constData.motionVectorsDilated = IsLowResMV() ? sl::Boolean::eFalse : sl::Boolean::eTrue;
     constData.motionVectorsJittered = IsJitteredMVs() ? sl::Boolean::eTrue : sl::Boolean::eFalse;
+}
+
+bool DLSSG_Common::SetConstants(int fIndex, uint32_t frameId, uint32_t mvWidth, uint32_t mvHeight)
+{
+    sl::Constants constData = {};
+    FillDlssgConstants(fIndex, mvWidth, mvHeight, constData);
 
     auto tokenResult = StreamlineProxy::GetNewFrameToken()(_frameToken, &frameId);
     if (tokenResult != sl::Result::eOk)

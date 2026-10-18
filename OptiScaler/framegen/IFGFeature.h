@@ -7,6 +7,11 @@
 class Reproject;
 struct FilloutData;
 
+namespace sl
+{
+struct Constants;
+}
+
 enum class FG_Flags : uint64_t
 {
     Async,
@@ -165,6 +170,10 @@ class IFGFeature
 
     void ResetCounters();
     void UpdateTarget();
+
+    // HelixSR Scaler: Streamline constants of frame slot fIndex built from these values, as the DLSSG output sends
+    // them (DLSSG_Common.cpp); mvWidth / mvHeight: the motion vectors' size (mvecScale is normalized by it)
+    void FillDlssgConstants(int fIndex, uint32_t mvWidth, uint32_t mvHeight, sl::Constants& out);
 
     UINT64 FrameCount();
     UINT64 TargetFrame();

@@ -1028,7 +1028,8 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
         return FFX_API_RETURN_OK;
     }
 
-    // HelixSR Scaler: HelixSR generates the frame ([HelixSR] FGPresent = optiscaler), this swapchain presents it
+    // HelixSR Scaler: HelixSR generates the frame (FGPresent = optiscaler, or the OptiFG route), this swapchain
+    // presents it
     if (HelixSRPresent::Active())
     {
         bool generated = false;
@@ -2151,8 +2152,10 @@ bool FSRFG_Dx12::Present()
 {
     auto fIndex = GetIndexWillBeDispatched();
 
-    // HelixSR Scaler: HelixSR's generated frames have the game's UI already
-    if (Config::Instance()->FGDrawUIOverFG.value_or_default() && !HelixSRPresent::Active())
+    // HelixSR Scaler: HelixSR's generated frames have the game's UI already with the DLSS-G input (the OptiFG inputs
+    // keep the overlay: it draws the UI into the real frame HelixSR generates from)
+    if (Config::Instance()->FGDrawUIOverFG.value_or_default() &&
+        !(HelixSRPresent::Active() && State::Instance().activeFgInput == FGInput::DLSSG))
     {
         auto ui = GetResource(FG_ResourceType::UIColor, fIndex);
         if (ui)

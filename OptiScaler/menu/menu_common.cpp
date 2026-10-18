@@ -3706,7 +3706,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     outputOptions = {
         { FGOutput::NoFG, "None" },
         HelixSRPresent::Labeled()
-            ? MenuOption<FGOutput> { FGOutput::FSRFG, "HelixSR FG", "HelixSR FG (FSR FG pacing)\n\nHelixSR generates the frames from the game's DLSS Frame Generation inputs,\nthe FSR FG swapchain presents and paces them ([HelixSR] FGPresent = optiscaler)" }
+            ? MenuOption<FGOutput> { FGOutput::FSRFG, "HelixSR FG", "HelixSR FG (FSR FG pacing)\n\nHelixSR generates the frames from the FG input's data (DLSS / FSR / XeSS frame generation or the upscaler),\nthe FSR FG swapchain presents and paces them (OptiFG route, [HelixSR] FGPresent)" }
             : MenuOption<FGOutput> { FGOutput::FSRFG, "FSR FG", "FSR3/4-FG, RDNA4 autoupgrades to FSR4-FG\n\nFSR4-FG sometimes better/worse than XeFG" },
         { FGOutput::DLSSG, "DLSSG", "DLSSG output\nCan be used in conjuction with Nukem's for example" },
         { FGOutput::XeFG, "XeFG", "XeFG - heaviest, but best universal FG\n\nXeFG 3 overall deals best with HUD\n\nEnable UI Composition if HUD ghosting" },

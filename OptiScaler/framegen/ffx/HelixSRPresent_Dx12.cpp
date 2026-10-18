@@ -12,10 +12,15 @@
 #include <sl.h>
 #include <sl_dlss_g.h>
 
+#include <magic_enum.hpp>
+
 // The NGX DLSS-G parameters are the keys and value types of Streamline's sl.dlss_g (as recorded from games and read
 // by helixsr.dll from an OptiScaler parameter object); the values come from the game's sl::Constants, sl::DLSSGOptions
 // and resource tags without any processing of our own, except the motion vector scale (Streamline's normalized scale
 // times the motion vector size, as OptiScaler's other DLSSG input conversions do).
+// The OptiFG route (FSR 3.1 / FSR 3.0 / XeSS frame generation or the upscaler as the input) has no Streamline data:
+// its constants are the ones OptiScaler's DLSSG output builds from the same input values (IFGFeature::
+// FillDlssgConstants), and its images are the input's depth, motion vectors, HUD-less and UI images.
 
 namespace HelixSRPresent
 {
@@ -89,6 +94,9 @@ void TickRetired()
 }
 
 int SlBool(sl::Boolean b) { return b == sl::Boolean::eTrue ? 1 : 0; }
+
+// The DLSS-G input: the game's Streamline constants and options; the OptiFG inputs have none
+bool StreamlineData() { return State::Instance().activeFgInput == FGInput::DLSSG; }
 
 bool IsHdrFormat(DXGI_FORMAT f)
 {
@@ -241,8 +249,10 @@ bool EnsureFeature(ID3D12GraphicsCommandList* list, ID3D12Resource* backbuffer, 
         params = GetNGXParameters(API::DX12, true);
 
     // sl.dlss_g's creation keys
-    const UINT internalWidth = optionDynResWidth > 0 ? optionDynResWidth : depth.width;
-    const UINT internalHeight = optionDynResHeight > 0 ? optionDynResHeight : depth.height;
+    // (the game's dynamic resolution size with the DLSS-G input, else the depth size)
+    const bool slData = StreamlineData();
+    const UINT internalWidth = slData && optionDynResWidth > 0 ? optionDynResWidth : depth.width;
+    const UINT internalHeight = slData && optionDynResHeight > 0 ? optionDynResHeight : depth.height;
 
     params->Set("Width", static_cast<unsigned int>(bb.Width));
     params->Set("Height", static_cast<unsigned int>(bb.Height));
@@ -276,11 +286,17 @@ bool EnsureFeature(ID3D12GraphicsCommandList* list, ID3D12Resource* backbuffer, 
 }
 } // namespace
 
-bool Requested()
+bool Requested() { return !HelixSR::FgPresentStreamline(); }
+
+static bool SupportedInput(FGInput input)
 {
-    auto v =
-        Config::Instance()->HelixSRFGPresent.value_or("streamline"); // HelixSR Scaler: optiscaler only when written
-    return v == "optiscaler";
+    return input == FGInput::DLSSG || input == FGInput::FSRFG || input == FGInput::FSRFG30 || input == FGInput::XeFG ||
+           input == FGInput::Upscaler;
+}
+
+bool Configured(FGInput input, FGOutput output, FGNvngxReplacement nvngx)
+{
+    return Requested() && SupportedInput(input) && output == FGOutput::FSRFG && nvngx == FGNvngxReplacement::HelixSR;
 }
 
 // set when HelixSR's frame generation could not start: FSR FG then generates by itself and keeps its own name
@@ -289,8 +305,7 @@ static bool unavailable = false;
 bool Labeled()
 {
     const auto& state = State::Instance();
-    return Requested() && !unavailable && state.activeFgInput == FGInput::DLSSG &&
-           state.activeFgOutput == FGOutput::FSRFG && state.activeFgNvngx == FGNvngxReplacement::HelixSR;
+    return !unavailable && Configured(state.activeFgInput, state.activeFgOutput, state.activeFgNvngx);
 }
 
 bool Active() { return Labeled() && State::Instance().currentFG != nullptr; }
@@ -315,10 +330,11 @@ void StoreOptions(const sl::DLSSGOptions& options)
 
 void Init(ID3D12Device* device)
 {
-    if (initDone || device == nullptr || !Requested())
+    const auto& state = State::Instance();
+    if (initDone || device == nullptr || !Configured(state.activeFgInput, state.activeFgOutput, state.activeFgNvngx))
         return;
 
-    if (State::Instance().activeFgNvngx != FGNvngxReplacement::HelixSR || !Nvngx_FG::isDx12Available())
+    if (!Nvngx_FG::isDx12Available())
     {
         LOG_WARN("HelixSR FG present: HelixSR's frame generation (helixsr.dll with helixsr-fg) is not available");
         unavailable = true;
@@ -357,7 +373,10 @@ bool Generate(IFGFeature_Dx12* fg, const Frame& f)
         return false;
     }
 
+    const bool streamlineData = StreamlineData();
+
     uint32_t flags = 0;
+    if (streamlineData)
     {
         std::scoped_lock lock(dataMutex);
         if (!constantsSet[fIndex])
@@ -377,12 +396,16 @@ bool Generate(IFGFeature_Dx12* fg, const Frame& f)
     const Input ui = GetInput(fg, FG_ResourceType::UIColor, fIndex);
 
     // The required inputs: never generate with a missing binding
-    if (depth.resource == nullptr || mvecs.resource == nullptr)
+    if (depth.resource == nullptr || mvecs.resource == nullptr || mvecs.width == 0 || mvecs.height == 0)
     {
         device->Release();
         LOG_WARN("HelixSR FG present: depth or motion vectors missing for frame {}", f.frameID);
         return false;
     }
+
+    // OptiFG route: the constants OptiScaler's DLSSG output would send for this frame, from the input's values
+    if (!streamlineData)
+        fg->FillDlssgConstants(fIndex, mvecs.width, mvecs.height, current);
 
     // A game that tags HUD-less / UI images and misses them this frame: no generation without them
     if ((hudlessSeen && hudless.resource == nullptr) || (uiSeen && ui.resource == nullptr))
@@ -415,7 +438,8 @@ bool Generate(IFGFeature_Dx12* fg, const Frame& f)
     p->Set("DLSSG.MultiFrameCount", 1u);
     p->Set("DLSSG.MultiFrameIndex", 1u);
     p->Set("DLSSG.MultiFrameCountMax", 1u);
-    p->Set("DLSSG.ColorBuffersHDR", (state.hdrOutputActive || IsHdrFormat(bb.Format)) ? 1 : 0);
+    p->Set("DLSSG.ColorBuffersHDR",
+           (state.hdrOutputActive || IsHdrFormat(bb.Format) || (!streamlineData && fg->IsHdr())) ? 1 : 0);
     p->Set("DLSSG.DepthInverted", SlBool(current.depthInverted));
     p->Set("DLSSG.CameraMotionIncluded", SlBool(current.cameraMotionIncluded));
     p->Set("DLSSG.OrthoProjection", SlBool(current.orthographicProjection));
@@ -509,9 +533,15 @@ bool Generate(IFGFeature_Dx12* fg, const Frame& f)
     if (logged < 3 || result != NVSDK_NGX_Result_Success)
     {
         logged++;
-        LOG_INFO("HelixSR FG present: frame {} generated: {:X} (depth {}x{}, mvecs {}x{}, hudless {}, ui {})",
-                 f.frameID, (UINT) result, depth.width, depth.height, mvecs.width, mvecs.height,
-                 hudless.resource != nullptr, ui.resource != nullptr);
+        LOG_INFO("HelixSR FG present: frame {} generated: {:X} ({} input {}; depth {}x{}, mvecs {}x{}, "
+                 "mvec scale {} {}, jitter {} {}, near {}, far {}, fov {}, depth inverted {}, reset {}, hudless {}, "
+                 "ui {})",
+                 f.frameID, (UINT) result, streamlineData ? "Streamline" : "OptiFG",
+                 magic_enum::enum_name(state.activeFgInput), depth.width, depth.height, mvecs.width, mvecs.height,
+                 current.mvecScale.x * static_cast<float>(mvecs.width),
+                 current.mvecScale.y * static_cast<float>(mvecs.height), current.jitterOffset.x, current.jitterOffset.y,
+                 current.cameraNear, current.cameraFar, current.cameraFOV, SlBool(current.depthInverted),
+                 SlBool(current.reset) || f.reset, hudless.resource != nullptr, ui.resource != nullptr);
     }
 
     return result == NVSDK_NGX_Result_Success;

@@ -51,7 +51,8 @@
 #include <version_check.h>
 #include <misc/IdentifyGpu.h>
 #include <sha1/sha1.hpp>
-#include "helixsr/HelixSR.h" // HelixSR Scaler
+#include "helixsr/HelixSR.h"                  // HelixSR Scaler
+#include "framegen/ffx/HelixSRPresent_Dx12.h" // HelixSR Scaler
 
 static std::vector<HMODULE> _asiHandles;
 static std::vector<std::filesystem::directory_entry> _lateLoadingEntries;
@@ -1644,12 +1645,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
             State::Instance().activeFgInput = FGInput::NoFG;
         }
 
-        // HelixSR Scaler: with [HelixSR] FGPresent = optiscaler, HelixSR stays the NGX frame generation behind the
-        // FSR FG output (FGInput = dlssg, FGOutput = fsrfg)
-        const bool helixsrPresent = Config::Instance()->HelixSRFGPresent.value_or("streamline") == "optiscaler" &&
-                                    State::Instance().activeFgInput == FGInput::DLSSG &&
-                                    State::Instance().activeFgOutput == FGOutput::FSRFG &&
-                                    State::Instance().activeFgNvngx == FGNvngxReplacement::HelixSR;
+        // HelixSR Scaler: HelixSR stays the NGX frame generation behind the FSR FG output when it generates there
+        // (FGPresent = optiscaler with FGInput = dlssg, or the OptiFG route with fsrfg / fsrfg30 / xefg / upscaler)
+        const bool helixsrPresent = HelixSRPresent::Configured(
+            State::Instance().activeFgInput, State::Instance().activeFgOutput, State::Instance().activeFgNvngx);
 
         if (State::Instance().activeFgInput != FGInput::NvngxFG &&
             State::Instance().activeFgOutput != FGOutput::DLSSG && !helixsrPresent)

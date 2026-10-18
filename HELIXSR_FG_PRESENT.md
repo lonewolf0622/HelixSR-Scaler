@@ -6,8 +6,9 @@ uses) instead of the game's Streamline `sl.dlss_g`. On non-NVIDIA GPUs `sl.dlss_
 "CPU pacer is skipping the frame because of timeout" and "Frame rate over 100ms, reseting frame timer", and players see
 stutter.
 
-Option: `OptiScaler.ini [HelixSR] FGPresent = streamline | optiscaler`. The default is `streamline`, which is today's
-route and stays unchanged. Set it to `optiscaler` only after the tests below.
+Option: `OptiScaler.ini [HelixSR] FGPresent = auto | optiscaler | streamline`. For DLSS-G games the default (`auto`)
+is the game's own Streamline (FGInput = nvngxfg), unchanged; `optiscaler` takes them to this route. Games without DLSS-G
+get the OptiFG route (below) by default; `streamline` gives them OptiScaler's Streamline (FGOutput = dlssg) instead.
 
 ## Today's route (FGPresent = streamline)
 
@@ -89,10 +90,25 @@ is given, direct or compute. No closed-source change is needed.
 Optional, for checking: helixsr.dll already prints all evaluate parameters with `[FrameGeneration] Log = 1`
 (`ngx_param_dump`, first two frames). That dump is the equivalence gate below.
 
-## Other FG inputs (later)
+## Other FG inputs: the OptiFG route
 
-The same `HelixSRPresent::Generate` could be fed from FSR FG or XeFG inputs. Those inputs have no HUD-less/UI split
-and no DLSS-G matrices, so the parameters would be our own construction. That is out of scope for this change.
+Games without DLSS-G (FSR 3.1 frame generation: FGInput = fsrfg; FSR 3.0: fsrfg30; XeSS: xefg; none: upscaler, with
+the HUD fix) use the same `HelixSRPresent::Generate` on the FSR FG swapchain (FGOutput = fsrfg, FGNvngxReplacement =
+HelixSR, set by `HelixSRFgRoute.h` when OptiScaler.ini leaves them on auto). These inputs have no Streamline data:
+
+- Constants: `IFGFeature::FillDlssgConstants`, the code OptiScaler's DLSSG output uses to send Streamline constants
+  from the same input values (near / far ordered, a projection from the vertical FOV and aspect ratio with a reverse-Z
+  one for inverted depth, identity reprojection matrices, the camera vectors when given, jitter, mvecScale normalized
+  by the motion-vector size, reset, depth inverted, dilated / jittered motion vectors). `MvecScaleX/Y` is then the
+  input's pixel scale again.
+- Images: the input's depth and motion vectors; its HUD-less image (the game's, the one OptiScaler captures around the
+  game's FSR present callback, or the HUD fix's) and UI image when there is one, under the same rule as above (once
+  seen, a frame without it shows the real frame).
+- No DLSS-G options: no dynamic-resolution size (InternalWidth/Height = depth size), no menu detection.
+  `ColorBuffersHDR` also follows the input's HDR flag. `DrawUIOverFG` stays usable (it draws into the real frame).
+
+A game with both DLSS-G and FSR frame generation stays on the DLSS-G route (the folder scan decides); for its FSR frame
+generation set `[FrameGen] FGInput = fsrfg` and switch FSR frame generation on in the game.
 
 ## Test plan (main session, FF7 Rebirth, HelixSR Scaler, quiet system)
 

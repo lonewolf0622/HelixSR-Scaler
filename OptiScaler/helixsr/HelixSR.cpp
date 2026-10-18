@@ -762,9 +762,23 @@ static_assert((uint32_t) ::FGNvngxReplacement::HelixSR == (uint32_t) FgRoute::Pr
 // What the game ships (ScanGame at startup), for the default route and the menu's frame-generation choice
 static FgRoute::Game scannedGame;
 
+// [HelixSR] FGPresent: optiscaler, streamline, or auto (anything else)
+static FgRoute::Present PresentSetting()
+{
+    const auto v = Lower(Trim(Config::Instance()->HelixSRFGPresent.value_or("auto")));
+    if (v == "optiscaler")
+        return FgRoute::Present::OptiScaler;
+    if (v == "streamline")
+        return FgRoute::Present::Streamline;
+    return FgRoute::Present::Auto;
+}
+
+bool FgPresentStreamline() { return PresentSetting() == FgRoute::Present::Streamline; }
+
 // HelixSR's frame generation for every DirectX 12 game (HelixSRFgRoute.h): DLSS-G games through their own Streamline,
-// the others through OptiScaler's (FGOutput = dlssg) with the inputs of the game's FSR / XeSS frame generation or of
-// its upscaler. Only settings OptiScaler.ini leaves on auto are set, as volatile values (never saved).
+// the others through OptiScaler's FSR FG swapchain (the OptiFG route, FGOutput = fsrfg) with the inputs of the game's
+// FSR / XeSS frame generation or of its upscaler. Only settings OptiScaler.ini leaves on auto are set, as volatile
+// values (never saved).
 static void ApplyFrameGenDefaults()
 {
     auto cfg = Config::Instance();
@@ -775,7 +789,13 @@ static void ApplyFrameGenDefaults()
     s.switchedOn = cfg->HelixSRFrameGeneration.value_or(false); // on only when the app or the user switched it on
     s.streamline =
         fs::is_regular_file(fs::path(cfg->MainDllPath.value_or(L"")) / L"streamline" / L"sl.interposer.dll", ec);
-    s.optiPresent = cfg->HelixSRFGPresent.has_value() && cfg->HelixSRFGPresent.value() == "optiscaler";
+    s.present = PresentSetting();
+    // a FidelityFX frame-generation DLL for the FSR FG swapchain: OptiScaler's, the one FfxDx12FGPath names, or the
+    // game's (FSR 3.1 frame generation, checked after the scan)
+    const auto ffxFgPath = cfg->FfxDx12FGPath.value_or(L"");
+    s.ffxFg = fs::is_regular_file(fs::path(cfg->MainDllPath.value_or(L"")) / L"amd_fidelityfx_framegeneration_dx12.dll",
+                                  ec) ||
+              (!ffxFgPath.empty() && _wcsicmp(ffxFgPath.c_str(), L"auto") != 0 && fs::exists(ffxFgPath, ec));
     if (cfg->FGInput.has_value())
         s.input = (FgRoute::Input) cfg->FGInput.value();
     if (cfg->FGOutput.has_value())
@@ -794,6 +814,7 @@ static void ApplyFrameGenDefaults()
     scannedGame = ScanGame();
     LOG_INFO("HelixSR Scaler: the game has DLSS-G {}, FSR 3.1 FG {}, FSR 3.0 FG {}, XeSS FG {}", scannedGame.dlssg,
              scannedGame.fsrfg, scannedGame.fsrfg30, scannedGame.xefg);
+    s.ffxFg = s.ffxFg || scannedGame.fsrfg;
     const auto route = FgRoute::Decide(scannedGame, s);
 
     if (route.input.has_value())
@@ -807,7 +828,10 @@ static void ApplyFrameGenDefaults()
     if (route.hudfix.has_value())
         cfg->FGHUDFix.set_volatile_value(route.hudfix.value());
 
-    LOG_INFO("HelixSR Scaler: frame generation: {}", route.why);
+    LOG_INFO("HelixSR Scaler: frame generation: {} (FGPresent = {})", route.why,
+             s.present == FgRoute::Present::OptiScaler   ? "optiscaler"
+             : s.present == FgRoute::Present::Streamline ? "streamline"
+                                                         : "auto");
     LOG_INFO("HelixSR Scaler: frame generation settings: input={}, output={}, provider={}, enabled={}, hudfix={} "
              "(DirectX 12 only: DirectX 11 and Vulkan games get no HelixSR frame generation)",
              magic_enum::enum_name(cfg->FGInput.value_or_default()),

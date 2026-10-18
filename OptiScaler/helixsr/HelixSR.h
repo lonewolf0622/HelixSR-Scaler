@@ -27,6 +27,10 @@ std::filesystem::path DllPath();
 // The HelixSR folder has frame generation (its helixsr-fg folder)
 bool FrameGenFound();
 
+// [HelixSR] FGPresent = streamline: OptiScaler's FSR FG swapchain never presents HelixSR's frames (auto and optiscaler
+// let it, see HelixSRFgRoute.h)
+bool FgPresentStreamline();
+
 // Without helixsr.dll in a HelixSR folder: HelixSR's FidelityFX DLL ([Libraries] FfxDx12SRPath) as the DLSS
 // frame-generation provider, when it serves DLSS frame generation too (it exports HelixSR_NgxFgVersion). Loaded, or
 // null. Files in its folder then load as they are (LoadsAsIs).
