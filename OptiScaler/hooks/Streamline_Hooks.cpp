@@ -467,6 +467,40 @@ sl::Result StreamlineHooks::hkslSetFeatureLoaded(sl::Feature feature, bool loade
     return o_slSetFeatureLoaded(feature, loaded);
 }
 
+// The game's HUD-less tag, logged when it changes (resource, lifecycle, state, extent): which image the game hands to
+// frame generation and when it switches to another one (at most 64 lines)
+static void LogHudlessTag(const char* where, const sl::ResourceTag& tag, uint32_t frame)
+{
+    if (tag.type != sl::kBufferTypeHUDLessColor)
+        return;
+
+    static std::mutex m;
+    static void* lastNative = nullptr;
+    static uint32_t lastState = 0, lastLifecycle = 0, lastW = 0, lastH = 0;
+    static int told = 0;
+
+    void* native = tag.resource ? tag.resource->native : nullptr;
+    const uint32_t state = tag.resource ? tag.resource->state : 0;
+
+    std::scoped_lock lock(m);
+
+    if (native == lastNative && state == lastState && (uint32_t) tag.lifecycle == lastLifecycle &&
+        tag.extent.width == lastW && tag.extent.height == lastH)
+        return;
+
+    lastNative = native, lastState = state, lastLifecycle = (uint32_t) tag.lifecycle;
+    lastW = tag.extent.width, lastH = tag.extent.height;
+
+    if (told >= 64)
+        return;
+
+    ++told;
+    LOG_INFO("{}: HUD-less tag for frame {}: resource {:X} ({}x{} format {}) lifecycle {} state {:X} extent {},{} {}x{}", where,
+             frame, (size_t) native, tag.resource ? tag.resource->width : 0, tag.resource ? tag.resource->height : 0,
+             tag.resource ? tag.resource->nativeFormat : 0, (uint32_t) tag.lifecycle, state, tag.extent.left, tag.extent.top,
+             tag.extent.width, tag.extent.height);
+}
+
 sl::Result StreamlineHooks::hkslSetTag(const sl::ViewportHandle& viewport, const sl::ResourceTag* tags,
                                        uint32_t numTags, sl::CommandBuffer* cmdBuffer)
 {
@@ -518,6 +552,7 @@ sl::Result StreamlineHooks::hkslSetTag(const sl::ViewportHandle& viewport, const
     for (uint32_t i = 0; i < numTags; i++)
     {
         const auto typeEnum = (BufferType) tags[i].type;
+        LogHudlessTag("slSetTag", tags[i], 0);
 
         if (tags[i].resource == nullptr || tags[i].resource->native == nullptr)
         {
@@ -610,6 +645,7 @@ sl::Result StreamlineHooks::hkslSetTagForFrame(const sl::FrameToken& frame, cons
     for (uint32_t i = 0; i < numResources; i++)
     {
         const auto typeEnum = (BufferType) resources[i].type;
+        LogHudlessTag("slSetTagForFrame", resources[i], (uint32_t) frame);
 
         if (resources[i].resource == nullptr || resources[i].resource->native == nullptr)
         {
@@ -654,6 +690,7 @@ sl::Result StreamlineHooks::hkslEvaluateFeature(sl::Feature feature, const sl::F
             if (inputs[i]->structType == sl::ResourceTag::s_structType)
             {
                 auto tag = (const sl::ResourceTag*) inputs[i];
+                LogHudlessTag("slEvaluateFeature", *tag, (uint32_t) frame);
 
                 if (tag->type == sl::kBufferTypeHUDLessColor || tag->type == sl::kBufferTypeDepth ||
                     tag->type == sl::kBufferTypeHiResDepth || tag->type == sl::kBufferTypeLinearDepth ||
