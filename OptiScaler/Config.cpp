@@ -497,14 +497,6 @@ bool Config::Reload(std::filesystem::path iniPath)
             HelixSRInt8.set_from_config(readString("HelixSR", "Int8", true));
             HelixSRWaveSize.set_from_config(readInt("HelixSR", "WaveSize"));
             HelixSRVulkanComputeQueue.set_from_config(readBool("HelixSR", "VulkanComputeQueue"));
-            HelixSRFGPresent.set_from_config(readString("HelixSR", "FGPresent", true));
-            if (auto fg = readString("HelixSR", "FrameGeneration", true); fg.has_value())
-            {
-                if (fg.value() == "on" || fg.value() == "true" || fg.value() == "1")
-                    HelixSRFrameGeneration.set_from_config(true);
-                else if (fg.value() == "off" || fg.value() == "false" || fg.value() == "0")
-                    HelixSRFrameGeneration.set_from_config(false);
-            }
             if (auto preset = readString("HelixSR", "FGPreset", true); preset.has_value())
             {
                 if (auto p = HelixSR::FgQuality::ParsePreset(preset.value()); p.has_value())
@@ -1346,11 +1338,6 @@ bool Config::SaveIni()
         // HelixSR Scaler: HelixSR's settings
         ini.SetValue("HelixSR", "Int8", Instance()->HelixSRInt8.value_for_config_or("auto").c_str());
         ini.SetValue("HelixSR", "WaveSize", GetIntValue(Instance()->HelixSRWaveSize.value_for_config()).c_str());
-        if (auto fg = Instance()->HelixSRFrameGeneration.value_for_config(); fg.has_value())
-            ini.SetValue("HelixSR", "FrameGeneration", fg.value() ? "on" : "off");
-        else
-            ini.SetValue("HelixSR", "FrameGeneration", "auto");
-        ini.SetValue("HelixSR", "FGPresent", Instance()->HelixSRFGPresent.value_for_config_or("auto").c_str());
         if (auto vcq = Instance()->HelixSRVulkanComputeQueue.value_for_config(); vcq.has_value())
             ini.SetValue("HelixSR", "VulkanComputeQueue", vcq.value() ? "true" : "false");
         else

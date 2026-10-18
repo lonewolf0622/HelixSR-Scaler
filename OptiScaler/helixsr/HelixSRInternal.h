@@ -1,6 +1,6 @@
 #pragma once
 
-// HelixSR Scaler: what HelixSR.cpp shares with the HUD (HelixSRHud.cpp). Not for OptiScaler's files.
+// HelixSR Scaler: what HelixSR.cpp and HelixSRFsrDll.cpp share. Not for OptiScaler's files.
 
 #include <filesystem>
 #include <string>
@@ -14,9 +14,8 @@ namespace HelixSR::detail
 // helixsr.ini, as the menu shows it
 struct Settings
 {
-    int int8 = 0;     // Auto, On, Off
-    int wave = 0;     // Auto, 64, 32
-    int frameGen = 0; // On, Off (HelixSR's frame generation)
+    int int8 = 0; // Auto, On, Off
+    int wave = 0; // Auto, 64, 32
 };
 
 // The last start of the upscaler, from helixsr.log
@@ -49,12 +48,6 @@ inline constexpr const char* kInt8Help =
     "int8 (e.g. GTX 16xx). If the picture shimmers or flickers, try Off. Restart the game after changing it.";
 extern const char* const kWave[];
 inline constexpr int kWaveCount = 3;
-extern const char* const kFrameGen[];
-inline constexpr int kFrameGenCount = 2;
-inline constexpr const char* kFrameGenHelp =
-    "HelixSR's frame generation: the game's DLSS Frame Generation runs HelixSR's. Off if the game crashes or "
-    "stutters with it. Restart the game after changing it.";
-bool FrameGenInstalled(); // the HelixSR folder has frame generation, switched on or off
 
 inline constexpr const char* kWaveHelp = "How many threads HelixSR runs together (wave size). Auto (32) is right for "
                                          "most cards. For AMD RX 7000 / 9000 with a broken picture, try 64.";

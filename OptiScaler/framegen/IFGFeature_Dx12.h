@@ -114,10 +114,6 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     virtual void ReleaseObjects() = 0;
     virtual void CreateObjects(ID3D12Device* InDevice) = 0;
 
-    // After a failed CreateObjects: releases a partial set of UI / SC command objects so the next call creates them
-    // again
-    bool DropIncompleteCommandObjects();
-
   public:
     virtual void* FrameGenerationContext() = 0;
     virtual void* SwapchainContext() = 0;
@@ -147,5 +143,5 @@ class IFGFeature_Dx12 : public virtual IFGFeature
     const Reproject* GetReproject() const override { return _reproject.get(); };
 
     IFGFeature_Dx12() = default;
-    virtual ~IFGFeature_Dx12();
+    virtual ~IFGFeature_Dx12() { DestroyCopyCmdList(); }
 };

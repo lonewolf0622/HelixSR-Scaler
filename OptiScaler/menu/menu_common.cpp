@@ -37,8 +37,7 @@
 #include <type_traits>
 #include <misc/IdentifyGpu.h>
 #include <proxies/NVNGX_Proxy.h>
-#include <helixsr/HelixSR.h>                  // HelixSR Scaler
-#include <framegen/ffx/HelixSRPresent_Dx12.h> // HelixSR Scaler
+#include <helixsr/HelixSR.h> // HelixSR Scaler
 #include <hooks/Xell_Hooks.h>
 #include <low_latency/input/input_common.h>
 #include <hooks/Vulkan_Hooks.h>
@@ -1713,10 +1712,6 @@ void MenuCommon::ApplyThemeStyle()
     c[ImGuiCol_NavWindowingDimBg] = dimBg;
     c[ImGuiCol_ModalWindowDimBg] = modalDimBg;
 
-    // HelixSR Scaler: the HUD's square corners and accent lines
-    if (HelixSR::HudEnabled())
-        HelixSR::ApplyHudStyle();
-
     _hdrTonemapApplied = false;
     MenuHdrCheck(ImGui::GetIO());
 }
@@ -2399,13 +2394,7 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             };
 
             const FGNvngxReplacement activeNvngxFg = state.activeFgNvngx;
-            if (HelixSRPresent::Labeled()) // HelixSR Scaler: HelixSR generates, the FSR FG swapchain presents
-            {
-                fgText = (fg != nullptr && fg->IsActive() && !fg->IsPaused())
-                             ? std::format(" (HelixSR FG x{})", fg->GetInterpolatedFrameCount() + 1)
-                             : std::string(" (HelixSR FG off)");
-            }
-            else if (activeNvngxFg == FGNvngxReplacement::Arturs)
+            if (activeNvngxFg == FGNvngxReplacement::Arturs)
             {
                 fgText = formatFg("Enabler", Nvngx_FG::getMaxFakeFramesCount());
             }
@@ -2975,6 +2964,14 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
     ImGui::TextDisabled("%dx%d -> %dx%d (%.2fx)", currentFeature->RenderWidth(), currentFeature->RenderHeight(),
                         currentFeature->TargetWidth(), currentFeature->TargetHeight(),
                         (float) currentFeature->TargetWidth() / (float) currentFeature->RenderWidth());
+
+    // HelixSR Scaler: HelixSR's own settings (helixsr.ini) while HelixSR upscales
+    if (HelixSR::IsActive())
+    {
+        ImGui::Spacing();
+        HelixSR::RenderSettings(menuResScale, toneMapColor);
+        ImGui::Spacing();
+    }
 
     if (!usesDlssd)
     {
@@ -3705,9 +3702,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
     outputOptions = {
         { FGOutput::NoFG, "None" },
-        HelixSRPresent::Labeled()
-            ? MenuOption<FGOutput> { FGOutput::FSRFG, "HelixSR FG", "HelixSR FG (FSR FG pacing)\n\nHelixSR generates the frames from the FG input's data (DLSS / FSR / XeSS frame generation or the upscaler),\nthe FSR FG swapchain presents and paces them (OptiFG route, [HelixSR] FGPresent)" }
-            : MenuOption<FGOutput> { FGOutput::FSRFG, "FSR FG", "FSR3/4-FG, RDNA4 autoupgrades to FSR4-FG\n\nFSR4-FG sometimes better/worse than XeFG" },
+        { FGOutput::FSRFG, "FSR FG", "FSR3/4-FG, RDNA4 autoupgrades to FSR4-FG\n\nFSR4-FG sometimes better/worse than XeFG" },
         { FGOutput::DLSSG, "DLSSG", "DLSSG output\nCan be used in conjuction with Nukem's for example" },
         { FGOutput::XeFG, "XeFG", "XeFG - heaviest, but best universal FG\n\nXeFG 3 overall deals best with HUD\n\nEnable UI Composition if HUD ghosting" },
         { FGOutput::Reprojection, "Reprojection (WIP)", "Reprojects the game image using new mouse data\nKinda like Reflex 2, perceived latency improvement\n\n- REQUIRES DLSSG VIA STREAMLINE AS INPUT\n- Only works with first person perspective games\n- Only mouse, no controller\n- If possible, disable any mouse/camera smoothing in the game\n" },
@@ -3784,7 +3779,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
                                                       "FFX used for the middle fake frame, Enabler for the rest\n\n"
                                                       "2x - FFX\n3x - Enabler\n4x - FFX + Enabler\n5x - Enabler\n6x - FFX + Enabler\n\n"
                                                       "Due to pacing, only odd number of fake frames are able to use FFX"},
-        { FGNvngxReplacement::HelixSR, "HelixSR", "DLSS FG network on any GPU (requires the HelixSR folder)" },
+        { FGNvngxReplacement::HelixSR, "HelixSR", "HelixSR's frame generation, DirectX 12 only\n\nRequires HelixSR-fsrfg\\amd_fidelityfx_dx12.dll with its helixsr-fg folder" },
     };
 
     // clang-format on
@@ -3830,9 +3825,10 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
         "Missing amd_fidelityfx_framegeneration_dx12.dll\nor missing dlss-enabler-headless.dll");
 
     auto constexpr fgNvngxHelixSRIndex = (uint32_t) FGNvngxReplacement::HelixSR;
-    nvngxOptions[fgNvngxHelixSRIndex].set_disabled(!state.helixsrFgFileAvailable,
-                                                   "Missing HelixSR's frame generation (the helixsr-fg folder next to "
-                                                   "HelixSR's DLL), or [HelixSR] FrameGeneration = off");
+    nvngxOptions[fgNvngxHelixSRIndex].set_disabled(state.swapchainApi == API::Vulkan, "Unsupported API");
+    nvngxOptions[fgNvngxHelixSRIndex].set_disabled(
+        !state.helixsrFgFileAvailable, "Missing HelixSR's frame generation\n(HelixSR-fsrfg\\amd_fidelityfx_dx12.dll "
+                                       "with its helixsr-fg folder)");
 
     // TODO: Automatically switch to any other option
 
@@ -3889,9 +3885,6 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
             else if (FfxApiProxy::IsFGReady(false))
                 config->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::FFX);
-
-            else if (state.helixsrFgFileAvailable)
-                config->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::HelixSR);
         }
 
         const bool nvngxFgChanged = (replaceFgOutputWithNvngx || showNvngxFgDowndown) &&
@@ -4278,7 +4271,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         if (state.activeFgInput != FGInput::Upscaler || (currentFeature != nullptr && !currentFeature->IsFrozen()) &&
                                                             (state.currentVkFG != nullptr || FfxApiProxy::IsFGReady()))
         {
-            ScopedCard card { HelixSRPresent::Labeled() ? "HelixSR FG Settings (FSR FG pacing)" : "FSR FG Settings" };
+            ScopedCard card { "FSR FG Settings" };
 
             // The output resets an index from a game with more FFX versions
             if (_ffxFGIndex < 0 || _ffxFGIndex >= (int) state.ffxFGVersionNames.size())
@@ -4442,7 +4435,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                 }
 
                 auto fg = state.currentFG;
-                if (fg != nullptr && (strcmp(fg->Name(), "FSR-FG") == 0 || strcmp(fg->Name(), "HelixSR FG") == 0) &&
+                if (fg != nullptr && strcmp(fg->Name(), "FSR-FG") == 0 &&
                     FfxApiProxy::VersionDx12_FG() >= feature_version { 3, 1, 3 })
                 {
                     ImGui::Spacing();
@@ -5352,13 +5345,12 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         }
         else if (activeNvngxFg == FGNvngxReplacement::HelixSR)
         {
-            SeparatorWithHelpMarker("Frame Generation (DLSS FG network via HelixSR)",
-                                    "HelixSR frame generation (HelixSR folder next to the game)");
+            SeparatorWithHelpMarker("Frame Generation (HelixSR)", "HelixSR's frame generation, uses the SL swapchain");
 
             if (!state.helixsrFgFileAvailable)
             {
                 ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)),
-                                   "Put HelixSR (with its helixsr-fg folder) next to the game");
+                                   "Missing HelixSR-fsrfg\\amd_fidelityfx_dx12.dll with its helixsr-fg folder");
             }
             else
             {
@@ -9548,16 +9540,11 @@ void MenuCommon::RenderMainMenuWindow(RenderMenuContext& ctx)
     ImGuiWindowFlags mainFlags = ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse |
                                  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
-    // HelixSR Scaler: the HUD draws its own header and is wider than OptiScaler's menu
-    const bool hud = HelixSR::HudEnabled();
-    if (hud)
-        mainFlags |= ImGuiWindowFlags_NoTitleBar;
-
-    const float menuWidth = std::min((hud ? 1010.0f : 680.0f) * menuResScale, io.DisplaySize.x - 20.0f);
+    const float menuWidth = std::min(680.0f * menuResScale, io.DisplaySize.x - 20.0f);
     const float maxMenuHeight = io.DisplaySize.y - 20.0f;
     const float minMenuHeight = std::min(300.0f * menuResScale, maxMenuHeight);
     const float menuHeight =
-        std::clamp(config->MenuHeight.value_or(hud ? 1040.0f : 815.0f) * menuResScale, minMenuHeight, maxMenuHeight);
+        std::clamp(config->MenuHeight.value_or(815.0f) * menuResScale, minMenuHeight, maxMenuHeight);
 
     ImGui::SetNextWindowSize(ImVec2(menuWidth, menuHeight), ImGuiCond_Always);
     ImGui::SetNextWindowSizeConstraints(ImVec2(menuWidth, minMenuHeight), ImVec2(menuWidth, maxMenuHeight));
@@ -9573,10 +9560,6 @@ void MenuCommon::RenderMainMenuWindow(RenderMenuContext& ctx)
     {
         // Update and config notices shown above the tabs.
         RenderMainMenuHeaderMessages(ctx);
-
-        // HelixSR Scaler: the HUD (upscaler, HelixSR's settings, timings, state) above OptiScaler's settings
-        if (hud)
-            HelixSR::RenderHud(menuResScale, toneMapColor);
 
         // Tabs on the left, tab content on the right.
         RenderMainMenuTabs(ctx);

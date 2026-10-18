@@ -472,8 +472,6 @@ void DLSSG_Dx12::CreateObjects(ID3D12Device* InDevice)
         }
 
     } while (false);
-
-    DropIncompleteCommandObjects();
 }
 
 bool DLSSG_Dx12::Present()
@@ -737,8 +735,6 @@ bool DLSSG_Dx12::SetResource(Dx12Resource* inputResource)
 
             if (lastFormat[fIndex] != DXGI_FORMAT_UNKNOWN && lastFormat[fIndex] != desc.Format)
             {
-                // Remember the new format: frame generation restarts once for it instead of rejecting every frame
-                lastFormat[fIndex] = desc.Format;
                 State::Instance().fgChanged = true;
                 return false;
             }
@@ -814,8 +810,12 @@ bool DLSSG_Dx12::SetResource(Dx12Resource* inputResource)
             }
         }
 
-        // No restore barrier here: unlike XeFG, DLSSG never moves a COPY_SOURCE input to COPY_DEST (a copy restores
-        // its source itself), and a resource valid until present may come without a command list
+        // Potentially we don't need to restore but do it just to be safe
+        if (inputResource->state == D3D12_RESOURCE_STATE_COPY_SOURCE)
+        {
+            ResourceBarrier(inputResource->cmdList, inputResource->resource, D3D12_RESOURCE_STATE_COPY_DEST,
+                            inputResource->state);
+        }
 
         SetResourceReady(type, fIndex);
     }

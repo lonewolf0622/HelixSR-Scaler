@@ -212,9 +212,6 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClInclude Include="framegen\dlssg\DLSSG_Dx12.h" />
     <ClInclude Include="framegen\dlssg\DLSSG_Vk.h" />
     <ClInclude Include="framegen\ffx\FSRFG_Dx12.h" />
-    <ClInclude Include="framegen\ffx\HelixSRPresent_Dx12.h" />
-    <ClInclude Include="framegen\ffx\HelixSRDlssg_Dx12.h" />
-    <ClInclude Include="framegen\ffx\helixsr_ffx_dlssg.h" />
     <ClInclude Include="framegen\ffx\FSRFG_Vk.h" />
     <ClInclude Include="framegen\IFGFeature.h" />
     <ClInclude Include="framegen\IFGFeature_Dx12.h" />
@@ -566,8 +563,6 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="framegen\dlssg\DLSSG_Dx12.cpp" />
     <ClCompile Include="framegen\dlssg\DLSSG_Vk.cpp" />
     <ClCompile Include="framegen\ffx\FSRFG_Dx12.cpp" />
-    <ClCompile Include="framegen\ffx\HelixSRPresent_Dx12.cpp" />
-    <ClCompile Include="framegen\ffx\HelixSRDlssg_Dx12.cpp" />
     <ClCompile Include="framegen\ffx\FSRFG_Vk.cpp" />
     <ClCompile Include="framegen\IFGFeature.cpp" />
     <ClCompile Include="framegen\IFGFeature_Dx12.cpp" />
@@ -833,7 +828,6 @@ copy NUL "$(SolutionDir)x64\Release\a\!! EXTRACT ALL FILES TO GAME FOLDER !!" /Y
     <ClCompile Include="Util.cpp" />
     <ClCompile Include="version_check.cpp" />
     <ClCompile Include="helixsr\HelixSR.cpp" />
-    <ClCompile Include="helixsr\HelixSRHud.cpp" />
     <ClCompile Include="helixsr\HelixSRFsrDll.cpp" />
     <ClCompile Include="inputs\XeSS_Debug.cpp" />
     <ClCompile Include="inputs\XeSS_Dx12.cpp" />

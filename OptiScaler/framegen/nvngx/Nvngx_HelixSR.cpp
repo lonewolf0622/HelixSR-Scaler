@@ -5,7 +5,7 @@
 void Nvngx_HelixSR::LoadLibraries()
 {
     HMODULE memModule = nullptr;
-    // the HelixSR folder next to the game (HelixSR Scaler), else OptiScaler's folder
+    // an older install's HelixSR folder (helixsr.dll), else OptiScaler's folder
     const std::wstring optiPath =
         HelixSR::Found() ? HelixSR::Folder().wstring() : Config::Instance()->MainDllPath.value();
     Util::LoadProxyLibrary(L"helixsr.dll", L"", optiPath, &memModule, &dll);
@@ -13,7 +13,8 @@ void Nvngx_HelixSR::LoadLibraries()
     if (dll == nullptr && memModule != nullptr)
         dll = memModule;
 
-    // no helixsr.dll: HelixSR's FidelityFX DLL when it serves DLSS frame generation too
+    // no helixsr.dll: HelixSR's FidelityFX DLL (HelixSR-fsrfg\amd_fidelityfx_dx12.dll), which serves DLSS frame
+    // generation too
     if (dll == nullptr)
         dll = HelixSR::LoadFfxFrameGenDll();
 
@@ -57,6 +58,6 @@ void Nvngx_HelixSR::LoadLibraries()
     }
     else
     {
-        LOG_WARN("HelixSR frame generation enabled but helixsr.dll cannot be loaded");
+        LOG_WARN("HelixSR frame generation enabled but HelixSR's DLL cannot be loaded");
     }
 }

@@ -4,7 +4,8 @@
 with [HelixSR](https://github.com/lonewolf0622/HelixSR) built in.
 
 - **HelixSR is in the upscaler list**, next to XeSS, FSR and DLSS, with its settings under it: speed boost (int8) and GPU mode. Everything else OptiScaler does is still there, its sharpening (RCAS) too.
-- **No setup files to edit.** Put the `HelixSR` folder next to it and HelixSR is the upscaler.
+- **It behaves like OptiScaler.** Frame generation is set in `OptiScaler.ini` or the menu exactly as in OptiScaler; HelixSR's frame generation is one more DLSS frame-generation provider (like Nukem's): `[FrameGen] FGInput=nvngxfg` and `FGNvngxReplacement=HelixSR`, in DirectX 12 games with DLSS Frame Generation.
+- **No setup files to edit for upscaling.** Put the `HelixSR-fsrfg` folder (HelixSR's `amd_fidelityfx_dx12.dll`) next to the game's .exe and HelixSR is the upscaler (OptiScaler's FFX upscaler with HelixSR's DLL).
 - **Windows, Linux and Steam Deck.** On Linux the same DLL runs through Proton or Wine; the Linux download has a setup
   that finds your Steam games, installs, and gives you the launch options.
 - **Updates** come from this repository's releases.

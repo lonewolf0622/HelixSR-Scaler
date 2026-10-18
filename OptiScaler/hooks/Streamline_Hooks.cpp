@@ -8,8 +8,6 @@
 #include <nvapi/fakenvapi.h>
 #include <misc/IdentifyGpu.h>
 #include <framegen/nvngx/Nvngx_FG.h>
-#include <framegen/ffx/HelixSRPresent_Dx12.h>
-#include <framegen/ffx/HelixSRDlssg_Dx12.h>
 #include <framegen/xefg/XeFG_Dx12.h>
 #include <proxies/KernelBase_Proxy.h>
 #include <imgui/ImGuiNotify.hpp>
@@ -62,17 +60,6 @@ static bool IsWritableMemory(const void* address, size_t size)
     return end <= regionEnd;
 }
 
-// HelixSR Scaler: the OptiFG route takes another input (FSR / XeSS frame generation, the upscaler) while HelixSR
-// generates on OptiScaler's FSR FG swapchain: the game's own DLSS-G must not load (its swapchain would wrap the same
-// swapchain as the FSR FG one). DLSS-G games on FGInput = nvngxfg or dlssg are not affected.
-static bool HelixSRHidesGameDlssg()
-{
-    const auto& state = State::Instance();
-
-    return state.activeFgInput != FGInput::DLSSG &&
-           HelixSRPresent::Configured(state.activeFgInput, state.activeFgOutput, state.activeFgNvngx);
-}
-
 static bool IsSL1AndFGActive()
 {
     const auto& state = State::Instance();
@@ -87,8 +74,8 @@ static bool IsSL1AndDLSSGManaged()
 {
     const auto& state = State::Instance();
 
-    return state.streamlineVersion.major == 1 && (state.activeFgInput == FGInput::DLSSG ||
-                                                  state.activeFgOutput == FGOutput::DLSSG || HelixSRHidesGameDlssg());
+    return state.streamlineVersion.major == 1 &&
+           (state.activeFgInput == FGInput::DLSSG || state.activeFgOutput == FGOutput::DLSSG);
 }
 
 static void PatchSL1PluginJson(nlohmann::json& configJson)
@@ -297,13 +284,8 @@ sl::Result StreamlineHooks::hkslInit(const sl::Preferences& pref, uint64_t sdkVe
         }
     }
 
-    // HelixSR Scaler: also on the OptiFG route (HelixSRHidesGameDlssg): the game's DLSS-G is not loaded
-    if (State::Instance().activeFgInput == FGInput::DLSSG || State::Instance().activeFgOutput == FGOutput::DLSSG ||
-        HelixSRHidesGameDlssg())
+    if (State::Instance().activeFgInput == FGInput::DLSSG || State::Instance().activeFgOutput == FGOutput::DLSSG)
     {
-        if (HelixSRHidesGameDlssg())
-            LOG_INFO("HelixSR Scaler: OptiFG route, the game's DLSS Frame Generation (sl.dlss_g) is not loaded");
-
         std::vector<sl::Feature> localFeaturesToLoad(pref.featuresToLoad, pref.featuresToLoad + pref.numFeaturesToLoad);
         std::erase(localFeaturesToLoad, sl::kFeatureDLSS_G);
 
@@ -428,10 +410,6 @@ static sl::Result dummy_slDLSSGSetOptions(const sl::ViewportHandle& viewport, co
 {
     auto& state = State::Instance();
 
-    // HelixSR Scaler: the game's options for HelixSR's DLSS-G parameters (version 1 fields)
-    HelixSRPresent::StoreOptions(options);
-    HelixSRDlssg::SetDlssgViewport((uint32_t) viewport);
-
     // Only reading v1 fields, safe for any struct version
     const bool enabled = options.mode != sl::DLSSGMode::eOff;
     const int count = std::max(static_cast<int>(options.numFramesToGenerate), 1);
@@ -481,41 +459,6 @@ sl::Result StreamlineHooks::hkslSetFeatureLoaded(sl::Feature feature, bool loade
     }
 
     return o_slSetFeatureLoaded(feature, loaded);
-}
-
-// The game's HUD-less tag, logged when it changes (resource, lifecycle, state, extent): which image the game hands to
-// frame generation and when it switches to another one (at most 64 lines)
-static void LogHudlessTag(const char* where, const sl::ResourceTag& tag, uint32_t frame)
-{
-    if (tag.type != sl::kBufferTypeHUDLessColor)
-        return;
-
-    static std::mutex m;
-    static void* lastNative = nullptr;
-    static uint32_t lastState = 0, lastLifecycle = 0, lastW = 0, lastH = 0;
-    static int told = 0;
-
-    void* native = tag.resource ? tag.resource->native : nullptr;
-    const uint32_t state = tag.resource ? tag.resource->state : 0;
-
-    std::scoped_lock lock(m);
-
-    if (native == lastNative && state == lastState && (uint32_t) tag.lifecycle == lastLifecycle &&
-        tag.extent.width == lastW && tag.extent.height == lastH)
-        return;
-
-    lastNative = native, lastState = state, lastLifecycle = (uint32_t) tag.lifecycle;
-    lastW = tag.extent.width, lastH = tag.extent.height;
-
-    if (told >= 64)
-        return;
-
-    ++told;
-    LOG_INFO(
-        "{}: HUD-less tag for frame {}: resource {:X} ({}x{} format {}) lifecycle {} state {:X} extent {},{} {}x{}",
-        where, frame, (size_t) native, tag.resource ? tag.resource->width : 0, tag.resource ? tag.resource->height : 0,
-        tag.resource ? tag.resource->nativeFormat : 0, (uint32_t) tag.lifecycle, state, tag.extent.left, tag.extent.top,
-        tag.extent.width, tag.extent.height);
 }
 
 sl::Result StreamlineHooks::hkslSetTag(const sl::ViewportHandle& viewport, const sl::ResourceTag* tags,
@@ -569,7 +512,6 @@ sl::Result StreamlineHooks::hkslSetTag(const sl::ViewportHandle& viewport, const
     for (uint32_t i = 0; i < numTags; i++)
     {
         const auto typeEnum = (BufferType) tags[i].type;
-        LogHudlessTag("slSetTag", tags[i], 0);
 
         if (tags[i].resource == nullptr || tags[i].resource->native == nullptr)
         {
@@ -594,9 +536,6 @@ sl::Result StreamlineHooks::hkslSetTag(const sl::ViewportHandle& viewport, const
              tags[i].type == sl::kBufferTypeBidirectionalDistortionField))
         {
             State::Instance().slFGInputs.reportResource(tags[i], cmdBuffer, 0);
-
-            // HelixSR Scaler: the tag as sl.dlss_g keeps it (the last one per type and frame, this viewport)
-            HelixSRDlssg::Tag((uint32_t) viewport, State::Instance().slFGInputs.CurrentFrameId(), tags[i], cmdBuffer);
         }
         else if (State::Instance().activeFgInput == FGInput::NvngxFG)
         {
@@ -662,7 +601,6 @@ sl::Result StreamlineHooks::hkslSetTagForFrame(const sl::FrameToken& frame, cons
     for (uint32_t i = 0; i < numResources; i++)
     {
         const auto typeEnum = (BufferType) resources[i].type;
-        LogHudlessTag("slSetTagForFrame", resources[i], (uint32_t) frame);
 
         if (resources[i].resource == nullptr || resources[i].resource->native == nullptr)
         {
@@ -677,9 +615,6 @@ sl::Result StreamlineHooks::hkslSetTagForFrame(const sl::FrameToken& frame, cons
              resources[i].type == sl::kBufferTypeBidirectionalDistortionField))
         {
             State::Instance().slFGInputs.reportResource(resources[i], cmdBuffer, (uint32_t) frame);
-
-            // HelixSR Scaler: the tag as sl.dlss_g keeps it (the last one per type and frame, this viewport)
-            HelixSRDlssg::Tag((uint32_t) viewport, (uint32_t) frame, resources[i], cmdBuffer);
         }
         else if (State::Instance().activeFgInput == FGInput::NvngxFG)
         {
@@ -707,7 +642,6 @@ sl::Result StreamlineHooks::hkslEvaluateFeature(sl::Feature feature, const sl::F
             if (inputs[i]->structType == sl::ResourceTag::s_structType)
             {
                 auto tag = (const sl::ResourceTag*) inputs[i];
-                LogHudlessTag("slEvaluateFeature", *tag, (uint32_t) frame);
 
                 if (tag->type == sl::kBufferTypeHUDLessColor || tag->type == sl::kBufferTypeDepth ||
                     tag->type == sl::kBufferTypeHiResDepth || tag->type == sl::kBufferTypeLinearDepth ||
@@ -1139,9 +1073,8 @@ bool StreamlineHooks::hkdlssg_slOnPluginLoad(sl::param::IParameters* params, con
         return result;
     }
 
-    // Kill the DLSSG streamline swapchain hooks (HelixSR Scaler: also on the OptiFG route, should it load anyway)
-    if (State::Instance().activeFgInput == FGInput::DLSSG || State::Instance().activeFgOutput == FGOutput::DLSSG ||
-        HelixSRHidesGameDlssg())
+    // Kill the DLSSG streamline swapchain hooks
+    if (State::Instance().activeFgInput == FGInput::DLSSG || State::Instance().activeFgOutput == FGOutput::DLSSG)
     {
         if (configJson.contains("/hooks"_json_pointer))
             configJson["hooks"].clear();
@@ -1366,10 +1299,6 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
 {
     if (o_slDLSSGSetOptions == nullptr)
         return sl::Result::eErrorFeatureMissing;
-
-    // HelixSR Scaler: the game's options for HelixSR's DLSS-G parameters (version 1 fields)
-    HelixSRPresent::StoreOptions(options);
-    HelixSRDlssg::SetDlssgViewport((uint32_t) viewport);
 
     lastDlssgViewport = viewport;
     lastDlssgOptions = options;

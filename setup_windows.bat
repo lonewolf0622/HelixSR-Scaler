@@ -638,22 +638,36 @@ try {
 }
 Write-Host 'HelixSR copied to HelixSR-fsrfg\amd_fidelityfx_dx12.dll'
 if ($fg) {
-    # Frame generation is off unless switched on ([HelixSR] FrameGeneration=on in OptiScaler.ini)
+    # Frame generation: HelixSR is OptiScaler's DLSS frame-generation provider, on with [FrameGen] FGInput=nvngxfg and
+    # FGNvngxReplacement=HelixSR in OptiScaler.ini (asked when OptiScaler.ini leaves frame generation on auto)
     $ini = Join-Path $game 'OptiScaler.ini'
     $on = $false
     if (Test-Path -LiteralPath $ini -PathType Leaf) {
         $text = [IO.File]::ReadAllText($ini)
-        if ($text -match '(?m)^FrameGeneration[ \t]*=[ \t]*(on|true|1)[ \t]*\r?$') { $on = $true }
-        elseif ($text -match '(?m)^FrameGeneration[ \t]*=[ \t]*auto[ \t]*\r?$' -and -not [Console]::IsInputRedirected) {
-            $a = (Read-Host 'Turn on HelixSR frame generation in this game (DirectX 12 games)? [Y/n]').Trim()
+        $switchOn = {
+            param($t)
+            $t = $t -replace '(?m)^FGInput[ \t]*=[^\r\n]*', 'FGInput=nvngxfg'
+            $t -replace '(?m)^FGNvngxReplacement[ \t]*=[^\r\n]*', 'FGNvngxReplacement=HelixSR'
+        }
+        $inputAuto = $text -match '(?m)^FGInput[ \t]*=[ \t]*auto[ \t]*\r?$'
+        # settings from before: [HelixSR] FrameGeneration=on is now the two [FrameGen] lines
+        if ($inputAuto -and $text -match '(?m)^FrameGeneration[ \t]*=[ \t]*(on|true|1)[ \t]*\r?$') {
+            $text = & $switchOn $text
+            $inputAuto = $false
+        }
+        $text = $text -replace '(?m)^(FrameGeneration|FGPresent)[ \t]*=[^\r\n]*\r?\n', ''
+        if ($text -match '(?m)^FGInput[ \t]*=[ \t]*nvngxfg[ \t]*\r?$' -and $text -match '(?m)^FGNvngxReplacement[ \t]*=[ \t]*HelixSR[ \t]*\r?$') { $on = $true }
+        elseif ($inputAuto -and -not [Console]::IsInputRedirected) {
+            $a = (Read-Host 'Turn on HelixSR frame generation in this game (DirectX 12 games with DLSS Frame Generation)? [Y/n]').Trim()
             if ($a -eq '' -or $a -match '^(y|yes)$') {
-                [IO.File]::WriteAllText($ini, ($text -replace '(?m)^FrameGeneration[ \t]*=[ \t]*auto[ \t]*(?=\r?$)', 'FrameGeneration=on'))
+                $text = & $switchOn $text
                 $on = $true
             }
         }
+        [IO.File]::WriteAllText($ini, $text)
     }
     if ($on) { Write-Host 'Frame generation included and on (HelixSR-fsrfg\helixsr-fg). In the game, turn on its frame generation.' }
-    else { Write-Host 'Frame generation included, off: turn it on in the menu (Insert, Frame Generation: HelixSR) or with FrameGeneration=on in OptiScaler.ini.' }
+    else { Write-Host 'Frame generation included, off: turn it on in the menu (Insert, Frame Generation: HelixSR) or with FGInput=nvngxfg and FGNvngxReplacement=HelixSR in OptiScaler.ini.' }
 }
 else { Write-Host "Frame generation isn't set up (no helixsr-fg folder next to HelixSR's DLL): upscaling only." }
 [Environment]::Exit(0)

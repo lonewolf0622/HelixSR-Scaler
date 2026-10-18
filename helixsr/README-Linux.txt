@@ -47,7 +47,7 @@ INSTALLING BY HAND
 
 5. Start the game. In its graphics settings, turn on DLSS (or FSR or XeSS if there is no DLSS).
 
-6. Press Insert for the menu. The top of the menu shows ONLINE when HelixSR is running.
+6. Press Insert for the menu. The upscaler list shows HelixSR when it is running.
    The Steam Deck has no Insert key: in the game's controller settings, set a back button to
    the keyboard key Insert.
 
@@ -59,20 +59,28 @@ next to the game's .exe (HelixSR's amd_fidelityfx_dx12.dll and its helixsr-fg fo
 
 FRAME GENERATION
 
-HelixSR frame generation works in DirectX 12 games. It is off until you turn it on: the setup asks
-when HelixSR's frame generation was found, and the HelixSR app asks too. Later, in the menu
-(Insert key): Frame Generation, pick HelixSR (or AMD FSR, Intel XeSS, Off), then restart the game.
-Or set FrameGeneration=on under [HelixSR] in OptiScaler.ini.
+Frame generation is OptiScaler's, set like in OptiScaler. HelixSR's frame generation is one more
+DLSS frame-generation provider (like Nukem's) for DirectX 12 games with DLSS Frame Generation: the
+game's own DLSS Frame Generation runs HelixSR's. It is off until you turn it on: the setup asks when
+HelixSR's frame generation was found, and the HelixSR app asks too. Later, in the menu (Insert key):
+Frame Generation, pick HelixSR (or AMD FSR, Intel XeSS, Off), then restart the game. Or set these
+under [FrameGen] in OptiScaler.ini:
+
+    FGInput=nvngxfg
+    FGNvngxReplacement=HelixSR
+
+Then turn on DLSS Frame Generation in the game's graphics settings.
 
 
 IN THE MENU (Insert key)
 
-In the HELIXSR CONFIG panel at the top (pick HelixSR in the UPSCALER panel next to it):
+Under the upscaler list, while HelixSR is the upscaler:
 - Speed boost: faster int8 math. Auto lets HelixSR decide by the card; On can help cards it leaves
   off (e.g. GTX 16xx). Turn it off if the picture shimmers.
 - GPU mode: Auto is right for most cards.
-- The STATUS panel shows if HelixSR runs, and opens HelixSR's folder (helixsr.log tells what it did).
-Under them is everything from OptiScaler, its sharpening (RCAS) too.
+- Open the HelixSR folder (helixsr.log tells what it did).
+Everything else is OptiScaler's menu, its sharpening (RCAS) too. With HelixSR as the frame-generation
+provider, its quality (Light / Full, QuickFlow) is under Frame Generation.
 
 Changes are saved in OptiScaler.ini in the game's folder ([HelixSR]). It is the only settings
 file, and you can edit it with a text editor too. Restart the game after changing it.

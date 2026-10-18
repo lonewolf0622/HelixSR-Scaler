@@ -425,15 +425,6 @@
     <ClInclude Include="framegen\ffx\FSRFG_Dx12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="framegen\ffx\HelixSRPresent_Dx12.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="framegen\ffx\HelixSRDlssg_Dx12.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="framegen\ffx\helixsr_ffx_dlssg.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="framegen\ffx\FSRFG_Vk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1172,9 +1163,6 @@
     <ClCompile Include="helixsr\HelixSR.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="helixsr\HelixSRHud.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="helixsr\HelixSRFsrDll.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -1401,12 +1389,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="framegen\ffx\FSRFG_Dx12.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="framegen\ffx\HelixSRPresent_Dx12.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="framegen\ffx\HelixSRDlssg_Dx12.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="framegen\ffx\FSRFG_Vk.cpp">

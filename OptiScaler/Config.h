@@ -122,25 +122,6 @@ template <class T, HasDefaultValue defaultState = WithDefault> class CustomOptio
         return this->value();
     }
 
-    // HelixSR Scaler: as value_for_config, but a value equal to the default is returned too (saved explicitly):
-    // HelixSR Scaler's defaults differ from OptiScaler's
-    constexpr std::optional<T> value_for_config_forced()
-        requires(defaultState == WithDefault)
-    {
-        if (_volatile)
-        {
-            if (_configIni != _defaultValue)
-                return _configIni;
-
-            return std::nullopt;
-        }
-
-        if (!this->has_value())
-            return std::nullopt;
-
-        return this->value();
-    }
-
     constexpr std::optional<T> value_for_config()
         requires(defaultState != WithDefault)
     {
@@ -396,7 +377,6 @@ class Config
     CustomOptional<int> FGShortcutKey { VK_END };
     CustomOptional<bool> LightTheme { false };
     CustomOptional<bool> OverlaysUseTheme { false };
-    // HelixSR Scaler: with HelixSR installed, HelixSR's teal / ink unless set (HelixSR.cpp, ApplyMenuTheme)
     CustomOptional<float> MenuAccentColorR { 0.00f };
     CustomOptional<float> MenuAccentColorG { 0.40f };
     CustomOptional<float> MenuAccentColorB { 0.77f };
@@ -406,15 +386,10 @@ class Config
     CustomOptional<float> MenuBGColorA { 0.93f };
 
     // HelixSR Scaler: HelixSR's settings, [HelixSR] in OptiScaler.ini. HelixSR Scaler writes them to
-    // HelixSR\helixsr.ini, the file HelixSR reads, when the game starts and when they change in the menu.
+    // helixsr.ini next to HelixSR's DLL, the file HelixSR reads, when the game starts and when they change in the menu.
     // Sharpening is OptiScaler's (RCAS, [Sharpness] and [CAS]); HelixSR's own sharpener stays off.
     CustomOptional<std::string, NoDefault> HelixSRInt8; // on, off (auto: HelixSR decides by the GPU)
     CustomOptional<int, NoDefault> HelixSRWaveSize;     // 64, 32
-    // HelixSR's frame generation (the helixsr-fg folder next to HelixSR's DLL): on or off (auto: off)
-    CustomOptional<bool, NoDefault> HelixSRFrameGeneration;
-    // Who presents HelixSR's generated frames: streamline (the game's sl.dlss_g, FGInput = nvngxfg) or optiscaler
-    // (OptiScaler's FSR FG swapchain with its pacing, FGInput = dlssg, FGOutput = fsrfg; see HELIXSR_FG_PRESENT.md)
-    CustomOptional<std::string, NoDefault> HelixSRFGPresent;
     // HelixSR's frame generation quality ([HelixSR] FGPreset = auto | c | full): 0 Light (NVIDIA's preset C), 1 Full;
     // auto = Light. helixsr.ini [DlssFrameGeneration] Preset, read at the game start (helixsr/HelixSRFgQuality.h)
     CustomOptional<int, NoDefault> HelixSRFGPreset;

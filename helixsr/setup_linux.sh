@@ -232,7 +232,7 @@ remove_from() { # remove_from EXE_FOLDER [quiet]
     rm -f "$dir/OptiScaler.log" "$dir/HelixSR/helixsr_upscaler.dll" "$dir/$FSRFG/amd_fidelityfx_upscaler_dx12.amd.dll"
     for h in "$dir/HelixSR" "$dir/$FSRFG"; do
         rm -f "$h/helixsr.log" "$h/helixsr.ini" "$h/helixsr-fg/nvexec.log" "$h/helixsr-fg/hxfg.log"
-        # frame generation off in OptiScaler.ini ([HelixSR] FrameGeneration): HelixSR Scaler parked its folder
+        # earlier versions parked the frame-generation folder under this name while it was switched off
         rm -rf "${h:?}/helixsr-fg.off"
     done
     if [ -d "$dir/$BACKUP" ]; then
@@ -476,20 +476,27 @@ if [ -n "$SETTINGS" ]; then
     cp -f "$SETTINGS" "$TARGET/OptiScaler.ini"
     rm -f "$SETTINGS"
 fi
-# Frame generation is off unless switched on ([HelixSR] FrameGeneration=on); asked when OptiScaler.ini leaves it on auto
+# Frame generation: HelixSR is OptiScaler's DLSS frame-generation provider, on when OptiScaler.ini says
+# [FrameGen] FGInput=nvngxfg and FGNvngxReplacement=HelixSR (asked when OptiScaler.ini leaves frame generation on auto)
 FG_ON=0
+fg_value() { tr -d '\r' <"$TARGET/OptiScaler.ini" | sed -n "s/^$1[[:space:]]*=[[:space:]]*//p" | head -n 1; }
+fg_switch_on() {
+    sed -i 's/^FGInput[[:space:]]*=.*/FGInput=nvngxfg/; s/^FGNvngxReplacement[[:space:]]*=.*/FGNvngxReplacement=HelixSR/' "$TARGET/OptiScaler.ini"
+}
 if [ $FG = 1 ] && [ -f "$TARGET/OptiScaler.ini" ]; then
-    fg_now=$(tr -d '\r' <"$TARGET/OptiScaler.ini" | sed -n 's/^FrameGeneration[[:space:]]*=[[:space:]]*//p' | head -n 1)
-    case "$fg_now" in
-        on | true | 1) FG_ON=1 ;;
-        auto)
-            if ask "Turn on HelixSR frame generation in this game (DirectX 12 games)?"; then
-                sed -i 's/^FrameGeneration[[:space:]]*=.*/FrameGeneration=on/' "$TARGET/OptiScaler.ini"
-                FG_ON=1
-            fi
-            ;;
-        *) ;;
-    esac
+    fg_input=$(fg_value FGInput)
+    fg_provider=$(fg_value FGNvngxReplacement)
+    # settings from before: [HelixSR] FrameGeneration=on is now the two [FrameGen] lines
+    case "$(fg_value FrameGeneration)" in on | true | 1) [ "$fg_input" = auto ] && fg_switch_on && fg_input=nvngxfg && fg_provider=HelixSR ;; esac
+    sed -i '/^FrameGeneration[[:space:]]*=/d; /^FGPresent[[:space:]]*=/d' "$TARGET/OptiScaler.ini"
+    if [ "$fg_input" = nvngxfg ] && [ "$fg_provider" = HelixSR ]; then
+        FG_ON=1
+    elif [ "$fg_input" = auto ]; then
+        if ask "Turn on HelixSR frame generation in this game (DirectX 12 games with DLSS Frame Generation)?"; then
+            fg_switch_on
+            FG_ON=1
+        fi
+    fi
 fi
 cp -f "$SELF" "$TARGET/$REMOVER" && chmod +x "$TARGET/$REMOVER"
 mv -f "$TARGET/$MANIFEST.tmp" "$TARGET/$MANIFEST"
@@ -499,7 +506,7 @@ ok "HelixSR Scaler installed as ${B}$NAME${N}"
 if [ $FG_ON = 1 ]; then
     ok "Frame generation included and on"
 elif [ $FG = 1 ]; then
-    ok "Frame generation included, off (Insert menu > Frame Generation > HelixSR, or FrameGeneration=on in OptiScaler.ini)"
+    ok "Frame generation included, off (Insert menu > Frame Generation > HelixSR, or FGInput=nvngxfg and FGNvngxReplacement=HelixSR in OptiScaler.ini)"
 else
     say "  ${D}Frame generation isn't set up (no helixsr-fg folder next to HelixSR's DLL): upscaling only${N}"
 fi

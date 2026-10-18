@@ -1,8 +1,6 @@
 #include "pch.h"
 
 #include "FSRFG_Dx12.h"
-#include "HelixSRPresent_Dx12.h"
-#include "HelixSRDlssg_Dx12.h"
 
 #include <State.h>
 #include <Util.h>
@@ -154,64 +152,6 @@ static inline void ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID3
     barrier.Transition.StateAfter = InAfterState;
     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     InCommandList->ResourceBarrier(1, &barrier);
-}
-
-// HelixSR Scaler: the UI registration flag of HelixSR's frame-generation DLL (its export HelixSR_FfxFgUiFlag), 0 for
-// any other DLL. Registered with it, the UI is "already in the presented frames": HelixSR's DLL gives it to its network
-// and registers no UI with AMD's swapchain, so the UI is never composed a second time.
-static uint32_t HelixSRUiFlag()
-{
-    static HMODULE checked = nullptr;
-    static uint32_t flag = 0;
-
-    auto module = FfxApiProxy::Dx12Module_FG() != nullptr ? FfxApiProxy::Dx12Module_FG() : FfxApiProxy::Dx12Module();
-
-    if (module != checked)
-    {
-        checked = module;
-        flag = 0;
-
-        using PfnUiFlag = uint32_t(__cdecl*)();
-        auto uiFlag =
-            module != nullptr ? (PfnUiFlag) KernelBaseProxy::GetProcAddress_()(module, "HelixSR_FfxFgUiFlag") : nullptr;
-
-        if (uiFlag != nullptr)
-            flag = uiFlag();
-
-        LOG_INFO("HelixSR FG UI: the frame-generation DLL {} the game's UI ({:X})",
-                 flag != 0 ? "takes" : "does not take", flag);
-    }
-
-    return flag;
-}
-
-// HelixSR Scaler: the version of the game's DLSS-G inputs HelixSR's frame-generation DLL takes chained to the prepare
-// (its export HelixSR_FfxFgDlssgVersion, see helixsr_ffx_dlssg.h), 0 for any other DLL (nothing is chained then)
-static uint32_t HelixSRDlssgVersion()
-{
-    static HMODULE checked = nullptr;
-    static uint32_t version = 0;
-
-    auto module = FfxApiProxy::Dx12Module_FG() != nullptr ? FfxApiProxy::Dx12Module_FG() : FfxApiProxy::Dx12Module();
-
-    if (module != checked)
-    {
-        checked = module;
-        version = 0;
-
-        using PfnVersion = uint32_t(__cdecl*)();
-        auto dlssgVersion = module != nullptr
-                                ? (PfnVersion) KernelBaseProxy::GetProcAddress_()(module, "HelixSR_FfxFgDlssgVersion")
-                                : nullptr;
-
-        if (dlssgVersion != nullptr)
-            version = dlssgVersion();
-
-        LOG_INFO("HelixSR FG DLSS-G inputs: the frame-generation DLL {} the game's DLSS-G inputs (version {})",
-                 version >= HELIXSR_FFX_DLSSG_INPUTS_VERSION ? "takes" : "does not take", version);
-    }
-
-    return version;
 }
 
 bool FSRFG_Dx12::HudlessFormatTransfer(int index, ID3D12Device* device, DXGI_FORMAT targetFormat,
@@ -373,8 +313,7 @@ feature_version FSRFG_Dx12::Version()
 
 HWND FSRFG_Dx12::Hwnd() { return _hwnd; }
 
-// HelixSR Scaler: with HelixSR generating, the output is "HelixSR FG" (FSR FG pacing)
-const char* FSRFG_Dx12::Name() { return HelixSRPresent::Labeled() ? "HelixSR FG" : "FSR-FG"; }
+const char* FSRFG_Dx12::Name() { return "FSR-FG"; }
 
 static void fgLogCallback(uint32_t type, const wchar_t* message)
 {
@@ -410,9 +349,7 @@ bool FSRFG_Dx12::Dispatch()
     if (state.fsrfgFramePaceTuningChanged)
         ConfigureFramePaceTuning();
 
-    // HelixSR Scaler: no reprojection with HelixSR generating (it would replace the real frame given to HelixSR)
-    _reprojectionActive =
-        config->FGReprojectionEnabled.value_or_default() && HasReprojection() && !HelixSRPresent::Active();
+    _reprojectionActive = config->FGReprojectionEnabled.value_or_default() && HasReprojection();
 
     LOG_DEBUG("_frameCount: {}, willDispatchFrame: {}, fIndex: {}", _frameCount, willDispatchFrame, fIndex);
 
@@ -469,32 +406,6 @@ bool FSRFG_Dx12::Dispatch()
         else
         {
             fgConfig.HUDLessColor = FfxApiResource({});
-        }
-    }
-
-    // HelixSR Scaler: HelixSR's frame-generation DLL gets the game's UI of this frame (the one being generated) for its
-    // network. It is the image tagged for this frame index: a copy when it was only valid at tagging (made in
-    // SetResource, kept until this index is reused), or the game's image when it is valid until present, which is
-    // where this frame is generated (as the HUD-less colour above). Not with DisableUI or DrawUIOverFG (that overlay
-    // draws the UI itself). Otherwise the empty registration, as before.
-    bool helixsrUi = false; // the UI registered for HelixSR's network (also given with the DLSS-G inputs below)
-
-    if (auto helixsrUiFlag = HelixSRUiFlag();
-        helixsrUiFlag != 0 && !config->FGDisableUI.value_or_default() && !config->FGDrawUIOverFG.value_or_default())
-    {
-        helixsrUi = true;
-
-        auto ui = GetResource(FG_ResourceType::UIColor, fIndex);
-
-        if (ui && ui->GetResource() != nullptr && IsResourceReady(FG_ResourceType::UIColor, fIndex))
-        {
-            LOG_TRACE("Using UI for HelixSR: {:X}", (size_t) ui->GetResource());
-
-            uiDesc.uiResource = ffxApiGetResourceDX12(ui->GetResource(), GetFfxApiState(ui->state));
-            uiDesc.flags = helixsrUiFlag;
-
-            if (config->FGUIPremultipliedAlpha.value_or_default())
-                uiDesc.flags |= FFX_FRAMEGENERATION_UI_COMPOSITION_FLAG_USE_PREMUL_ALPHA;
         }
     }
 
@@ -708,37 +619,6 @@ bool FSRFG_Dx12::Dispatch()
                                         : static_cast<float>(state.lastFGFrameTime);
 
         dfgPrepare.viewSpaceToMetersFactor = _meterFactor[fIndex];
-
-        // HelixSR Scaler: HelixSR's frame-generation DLL gets the game's DLSS-G inputs of this frame chained right
-        // after the prepare (it takes them instead of the FSR values above and unchains them before AMD's DLL). Only
-        // that DLL, only with the DLSS-G input; not while HelixSR's NGX frame generation generates the frames instead.
-        HelixSRFfxDlssgInputs dlssgInputs {};
-
-        const bool dlssgWanted = HelixSRDlssgVersion() >= HELIXSR_FFX_DLSSG_INPUTS_VERSION && !HelixSRPresent::Active();
-        HelixSRDlssg::SetWanted(dlssgWanted);
-
-        if (dlssgWanted)
-        {
-            HelixSRDlssg::Options options {};
-            options.hudless = !config->FGDisableHudless.value_or_default();
-            options.ui = helixsrUi;
-            options.uiPremultiplied = config->FGUIPremultipliedAlpha.value_or_default();
-
-            if (HelixSRDlssg::Fill(fIndex, willDispatchFrame, options, dlssgInputs))
-            {
-                // a HUD-less image in another format than the swapchain's is left out (HelixSR's DLL then takes the
-                // configure's, which OptiScaler converted to the swapchain format)
-                if (auto* hudless = static_cast<ID3D12Resource*>(dlssgInputs.hudlessColor.resource);
-                    hudless != nullptr &&
-                    !CompareResourceFormats(hudless->GetDesc().Format, state.currentSwapchainDesc.BufferDesc.Format))
-                {
-                    dlssgInputs.hudlessColor = {};
-                }
-
-                dlssgInputs.pNext = dfgPrepare.header.pNext;
-                dfgPrepare.header.pNext = reinterpret_cast<ffxApiHeader*>(&dlssgInputs);
-            }
-        }
 
         retCode = FfxApiProxy::D3D12_Dispatch(&_fgContext, &dfgPrepare.header);
         LOG_DEBUG("D3D12_Dispatch result: {0}, frame: {1}, fIndex: {2}, commandList: {3:X}", retCode, willDispatchFrame,
@@ -1028,34 +908,6 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
         return FFX_API_RETURN_OK;
     }
 
-    // HelixSR Scaler: HelixSR generates the frame (FGPresent = optiscaler, or the OptiFG route), this swapchain
-    // presents it
-    if (HelixSRPresent::Active())
-    {
-        bool generated = false;
-
-        if (params->numGeneratedFrames > 0)
-        {
-            HelixSRPresent::Frame frame {};
-            frame.cmdList = cmdList;
-            frame.backbuffer = (ID3D12Resource*) params->presentColor.resource;
-            frame.backbufferState = GetD3D12State((FfxApiResourceState) params->presentColor.state);
-            frame.output = (ID3D12Resource*) params->outputs[0].resource;
-            frame.outputState = GetD3D12State((FfxApiResourceState) params->outputs[0].state);
-            frame.frameID = params->frameID;
-            frame.reset = params->reset;
-
-            generated = HelixSRPresent::Generate(this, frame);
-        }
-
-        // Nothing generated: the real frame in its place, never an unwritten image
-        if (!generated && !ShowRealFrame(params))
-            params->numGeneratedFrames = 0;
-
-        _lastFrameId = params->frameID;
-        return FFX_API_RETURN_OK;
-    }
-
     auto scFormat = (FfxApiSurfaceFormat) params->presentColor.description.format;
     auto lhFormat = _lastHudlessFormat;
     auto uhFormat = _usingHudlessFormat;
@@ -1196,41 +1048,6 @@ ffxReturnCode_t FSRFG_Dx12::DispatchCallback(ffxDispatchDescFrameGeneration* par
     return dispatchResult;
 }
 
-// HelixSR Scaler: the real frame copied into the generated frame's image (nothing was generated)
-bool FSRFG_Dx12::ShowRealFrame(ffxDispatchDescFrameGeneration* params)
-{
-    auto cmdList = (ID3D12GraphicsCommandList*) params->commandList;
-    auto real = (ID3D12Resource*) params->presentColor.resource;
-    auto output = (ID3D12Resource*) params->outputs[0].resource;
-
-    if (cmdList == nullptr || real == nullptr || output == nullptr)
-        return false;
-
-    const auto realDesc = real->GetDesc();
-    const auto outputDesc = output->GetDesc();
-
-    if (realDesc.Width != outputDesc.Width || realDesc.Height != outputDesc.Height ||
-        !CompareResourceFormats(realDesc.Format, outputDesc.Format))
-    {
-        return false;
-    }
-
-    auto realState = GetD3D12State((FfxApiResourceState) params->presentColor.state);
-    auto outputState = GetD3D12State((FfxApiResourceState) params->outputs[0].state);
-
-    ResourceBarrier(cmdList, real, realState, D3D12_RESOURCE_STATE_COPY_SOURCE);
-    ResourceBarrier(cmdList, output, outputState, D3D12_RESOURCE_STATE_COPY_DEST);
-
-    D3D12_TEXTURE_COPY_LOCATION dst { output, D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX };
-    D3D12_TEXTURE_COPY_LOCATION src { real, D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX };
-    cmdList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
-
-    ResourceBarrier(cmdList, real, D3D12_RESOURCE_STATE_COPY_SOURCE, realState);
-    ResourceBarrier(cmdList, output, D3D12_RESOURCE_STATE_COPY_DEST, outputState);
-
-    return true;
-}
-
 FSRFG_Dx12::~FSRFG_Dx12() { Shutdown(); }
 
 bool FSRFG_Dx12::SetInterpolatedFrameCount(UINT interpolatedFrameCount) { return true; }
@@ -1256,9 +1073,6 @@ void FSRFG_Dx12::DestroyFGContext()
     LOG_DEBUG("");
 
     Deactivate();
-
-    HelixSRPresent::Release();
-    HelixSRDlssg::Release();
 
     if (_fgContext != nullptr)
     {
@@ -1874,8 +1688,6 @@ bool FSRFG_Dx12::SetResource(Dx12Resource* inputResource)
     fResource->resource = inputResource->resource;
     fResource->width = inputResource->width;
     fResource->height = inputResource->height;
-    fResource->left = inputResource->left;
-    fResource->top = inputResource->top;
     fResource->cmdList = inputResource->cmdList;
 
     auto willFlip = State::Instance().activeFgInput == FGInput::Upscaler &&
@@ -1988,9 +1800,6 @@ void FSRFG_Dx12::SetCommandQueue(FG_ResourceType type, ID3D12CommandQueue* queue
 void FSRFG_Dx12::CreateObjects(ID3D12Device* InDevice)
 {
     _device = InDevice;
-
-    // HelixSR Scaler: HelixSR's frame generation started early, as when the game starts NGX
-    HelixSRPresent::Init(InDevice);
 
     if (_fgCommandAllocator[0] != nullptr)
         return;
@@ -2152,10 +1961,7 @@ bool FSRFG_Dx12::Present()
 {
     auto fIndex = GetIndexWillBeDispatched();
 
-    // HelixSR Scaler: HelixSR's generated frames have the game's UI already with the DLSS-G input (the OptiFG inputs
-    // keep the overlay: it draws the UI into the real frame HelixSR generates from)
-    if (Config::Instance()->FGDrawUIOverFG.value_or_default() &&
-        !(HelixSRPresent::Active() && State::Instance().activeFgInput == FGInput::DLSSG))
+    if (Config::Instance()->FGDrawUIOverFG.value_or_default())
     {
         auto ui = GetResource(FG_ResourceType::UIColor, fIndex);
         if (ui)

@@ -124,11 +124,9 @@ void DLSSG_Common::SetOptions(bool gameMarkersReachStreamline)
         LOG_ERROR("Couldn't set Reflex options, error: {}", magic_enum::enum_name(reflexSetOptionsResult));
 }
 
-// HelixSR Scaler: the frame's Streamline constants from the FG input's values, shared with HelixSR's frame generation
-// on the FSR FG swapchain (HelixSRPresent_Dx12.cpp) for inputs without Streamline constants of their own
-void IFGFeature::FillDlssgConstants(int fIndex, uint32_t mvWidth, uint32_t mvHeight, sl::Constants& constData)
+bool DLSSG_Common::SetConstants(int fIndex, uint32_t frameId, uint32_t mvWidth, uint32_t mvHeight)
 {
-    constData = {};
+    sl::Constants constData = {};
 
     // Streamline wants near < far, the upscaler input has them swapped for inverted depth like FFX wants
     float cameraNear = std::min(_cameraNear[fIndex], _cameraFar[fIndex]);
@@ -136,18 +134,6 @@ void IFGFeature::FillDlssgConstants(int fIndex, uint32_t mvWidth, uint32_t mvHei
 
     if (IsInfiniteDepth())
         cameraFar = std::numeric_limits<float>::infinity();
-
-    // HelixSR Scaler: sl::float4x4 / float2 start as INVALID_FLOAT. With the camera's position given (FSR 3.1.4+
-    // camera info) the reprojection matrices and the pinhole offset were left like that; no input here gives them, so
-    // they are identity / zero in both cases (the motion vectors include the camera's motion, cameraMotionIncluded)
-    {
-        XMFLOAT4X4 identity;
-        XMStoreFloat4x4(&identity, XMMatrixIdentity());
-        memcpy(&constData.clipToLensClip, &identity, sizeof(sl::float4x4));
-        memcpy(&constData.clipToPrevClip, &identity, sizeof(sl::float4x4));
-        memcpy(&constData.prevClipToClip, &identity, sizeof(sl::float4x4));
-        constData.cameraPinholeOffset = { 0.0f, 0.0f };
-    }
 
     if (_cameraPosition[fIndex][0] != 0.0f || _cameraPosition[fIndex][1] != 0.0f || _cameraPosition[fIndex][2] != 0.0f)
     {
@@ -190,23 +176,17 @@ void IFGFeature::FillDlssgConstants(int fIndex, uint32_t mvWidth, uint32_t mvHei
 
         float vFov = _cameraVFov[fIndex];
 
-        // HelixSR Scaler: an infinite far plane left the projection all zeros ("Can't calculate"); it is built with a
-        // far plane far beyond the near one instead (cameraFar stays infinite in the constants)
-        float projectionFarPlane = cameraFar;
-        if (!std::isfinite(projectionFarPlane) && cameraNear > 0.f)
-            projectionFarPlane = std::max(cameraNear * 1.0e6f, 1.0e6f);
-
         // XMMatrixPerspectiveFovRH will fail if input values are incorrect
-        if (cameraNear > 0.f && std::isfinite(projectionFarPlane) && !XMScalarNearEqual(vFov, 0.0f, 0.00001f) &&
+        if (cameraNear > 0.f && std::isfinite(cameraFar) && !XMScalarNearEqual(vFov, 0.0f, 0.00001f) &&
             !XMScalarNearEqual(_cameraAspectRatio[fIndex], 0.0f, 0.00001f))
         {
-            if (XMScalarNearEqual(cameraNear, projectionFarPlane, 0.00001f))
-                projectionFarPlane++;
+            if (XMScalarNearEqual(cameraNear, cameraFar, 0.00001f))
+                cameraFar++;
 
             // A reverse-Z projection for inverted depth, like the game's. DLSSG replacements like Nukem's read near
             // and far back out of it, a regular one loses the far plane to float precision.
-            auto projectionNear = IsInvertedDepth() ? projectionFarPlane : cameraNear;
-            auto projectionFar = IsInvertedDepth() ? cameraNear : projectionFarPlane;
+            auto projectionNear = IsInvertedDepth() ? cameraFar : cameraNear;
+            auto projectionFar = IsInvertedDepth() ? cameraNear : cameraFar;
 
             cameraViewToClip =
                 XMMatrixPerspectiveFovRH(vFov, _cameraAspectRatio[fIndex], projectionNear, projectionFar);
@@ -247,12 +227,6 @@ void IFGFeature::FillDlssgConstants(int fIndex, uint32_t mvWidth, uint32_t mvHei
     constData.orthographicProjection = sl::Boolean::eFalse;
     constData.motionVectorsDilated = IsLowResMV() ? sl::Boolean::eFalse : sl::Boolean::eTrue;
     constData.motionVectorsJittered = IsJitteredMVs() ? sl::Boolean::eTrue : sl::Boolean::eFalse;
-}
-
-bool DLSSG_Common::SetConstants(int fIndex, uint32_t frameId, uint32_t mvWidth, uint32_t mvHeight)
-{
-    sl::Constants constData = {};
-    FillDlssgConstants(fIndex, mvWidth, mvHeight, constData);
 
     auto tokenResult = StreamlineProxy::GetNewFrameToken()(_frameToken, &frameId);
     if (tokenResult != sl::Result::eOk)

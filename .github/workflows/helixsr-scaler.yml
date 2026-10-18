@@ -150,7 +150,7 @@ jobs:
     - name: Test setup_linux.sh
       run: helixsr/tests/test_setup_linux.sh "linux/$name"
 
-    - name: Test HelixSR's upscaler list names and frame-generation routes
+    - name: Test HelixSR's upscaler list names and frame-generation quality settings
       run: helixsr/tests/test_names.sh
 
     - name: Test under Wine

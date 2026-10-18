@@ -111,7 +111,6 @@ class FSRFG_Dx12 : public virtual IFGFeature_Dx12
 
     ffxReturnCode_t PresentCallback(ffxCallbackDescFrameGenerationPresent* params);
     ffxReturnCode_t DispatchCallback(ffxDispatchDescFrameGeneration* params);
-    bool ShowRealFrame(ffxDispatchDescFrameGeneration* params); // HelixSR Scaler
 
     FSRFG_Dx12() : IFGFeature_Dx12(), IFGFeature()
     {

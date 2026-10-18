@@ -91,8 +91,9 @@ check "setup files stay out of the game" '[ ! -e "$B/setup_linux.sh" ] && [ ! -e
 check "no launch options for dxgi.dll" 'grep -q "No launch options needed" "$W/out.txt" && ! grep -q "WINEDLLOVERRIDES=" "$W/out.txt"'
 check "frame generation copied in" 'cmp -s "$B/HelixSR-fsrfg/helixsr-fg/nvexec64.dll" "$H/Downloads/HelixSR-1.9.0/helixsr-fg/nvexec64.dll" && [ -f "$B/HelixSR-fsrfg/helixsr-fg/_nvngx.dll" ]'
 check "frame generation's data files and subfolders too, not its logs" '[ -f "$B/HelixSR-fsrfg/helixsr-fg/hxfg.cfg" ] && [ -f "$B/HelixSR-fsrfg/helixsr-fg/310.9.16/data.bin" ] && [ ! -e "$B/HelixSR-fsrfg/helixsr-fg/nvexec.log" ]'
-if [ -f "$B/OptiScaler.ini" ] && grep -q "^FrameGeneration=" "$B/OptiScaler.ini"; then
-    check "--yes switches frame generation on" 'grep -q "^FrameGeneration=on" "$B/OptiScaler.ini" && grep -q "Frame generation included and on" "$W/out.txt"'
+if grep -q "^FGInput=" "$B/OptiScaler.ini" 2>/dev/null; then
+    check "--yes switches HelixSR frame generation on (FGInput=nvngxfg, FGNvngxReplacement=HelixSR)" 'grep -q "^FGInput=nvngxfg" "$B/OptiScaler.ini" && grep -q "^FGNvngxReplacement=HelixSR" "$B/OptiScaler.ini" && grep -q "Frame generation included and on" "$W/out.txt"'
+    check "no [HelixSR] FrameGeneration / FGPresent lines" '! grep -q "^FrameGeneration=\|^FGPresent=" "$B/OptiScaler.ini"'
 fi
 list=$("$P/setup_linux.sh" --list | cut -f1,2)
 check "own files don't count as the game's upscalers" 'grep -q "^Unreal Game	DLSS FSR$" <<<"$list"'
@@ -101,13 +102,23 @@ check "own files don't count as the game's upscalers" 'grep -q "^Unreal Game	DLS
 echo "WaveSize=64" >>"$B/OptiScaler.ini"
 run --yes --game "$U"
 check "update keeps OptiScaler.ini" 'grep -q "^WaveSize=64" "$B/OptiScaler.ini"'
+# settings from before: [HelixSR] FrameGeneration=on becomes the two [FrameGen] lines; a choice made stays
+if grep -q "^FGInput=" "$B/OptiScaler.ini"; then
+    sed -i 's/^FGInput=.*/FGInput=auto/; s/^FGNvngxReplacement=.*/FGNvngxReplacement=auto/' "$B/OptiScaler.ini"
+    printf 'FrameGeneration=on\nFGPresent=auto\n' >>"$B/OptiScaler.ini"
+    run --yes --game "$U"
+    check "update: old FrameGeneration=on -> FGInput=nvngxfg, FGNvngxReplacement=HelixSR" 'grep -q "^FGInput=nvngxfg" "$B/OptiScaler.ini" && grep -q "^FGNvngxReplacement=HelixSR" "$B/OptiScaler.ini" && ! grep -q "^FrameGeneration=\|^FGPresent=" "$B/OptiScaler.ini"'
+    sed -i 's/^FGInput=.*/FGInput=nofg/' "$B/OptiScaler.ini"
+    run --yes --game "$U"
+    check "update: a frame-generation choice in OptiScaler.ini stays" 'grep -q "^FGInput=nofg" "$B/OptiScaler.ini" && grep -q "Frame generation included, off" "$W/out.txt"'
+fi
 check "update keeps the game's file" 'grep -q "the game'"'"'s own" "$GAMEFILE"'
 check "update says so" 'grep -q "updating" "$W/out.txt"'
 
 # --- remove with the copy left in the game: everything as before ---
 F="$B/HelixSR-fsrfg"
 touch "$B/OptiScaler.log" "$F/helixsr.log" "$F/helixsr.ini" "$F/helixsr-fg/nvexec.log"
-mkdir -p "$F/helixsr-fg.off" && touch "$F/helixsr-fg.off/nvexec64.dll" # frame generation switched off
+mkdir -p "$F/helixsr-fg.off" && touch "$F/helixsr-fg.off/nvexec64.dll" # parked by an earlier version
 cp "$F/amd_fidelityfx_dx12.dll" "$F/amd_fidelityfx_upscaler_dx12.amd.dll" # AMD's FSR, put there by HelixSR Scaler
 "$B/HelixSR-Scaler-remove.sh" --yes </dev/null >"$W/out.txt" 2>&1
 check "remove restores the game exactly" '[ "$before" = "$(snap "$U")" ]'

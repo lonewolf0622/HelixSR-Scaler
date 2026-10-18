@@ -3,8 +3,6 @@
 #include <Config.h>
 #include <resource_tracking/ResTrack_dx12.h>
 #include <magic_enum.hpp>
-#include <framegen/ffx/HelixSRPresent_Dx12.h>
-#include <framegen/ffx/HelixSRDlssg_Dx12.h>
 
 void Sl_Inputs::CheckForFrame(IFGFeature* fg, uint32_t frameId)
 {
@@ -86,14 +84,6 @@ bool Sl_Inputs::setConstants(const sl::Constants& values, uint32_t frameId)
     if (dataFound)
     {
         auto config = Config::Instance();
-
-        // HelixSR Scaler: the game's constants as given, for HelixSR's DLSS-G parameters (FGPresent = optiscaler)
-        if (HelixSRPresent::Requested())
-            HelixSRPresent::StoreConstants(fgOutput->GetIndex(), data);
-
-        // HelixSR Scaler: the same constants for HelixSR's FidelityFX frame-generation DLL (FGOutput = fsrfg, chained
-        // to the FSR prepare when that DLL takes them)
-        HelixSRDlssg::StoreConstants(fgOutput->GetIndex(), frameId != 0 ? frameId : _currentFrameId, data);
 
         // FG Evaluate part
         FG_Constants fgConstants {};
@@ -446,8 +436,6 @@ bool Sl_Inputs::reportResource(const sl::ResourceTag& tag, void* cmdBuffer, uint
         res.cmdList = (ID3D12GraphicsCommandList*) cmdBuffer; // Critical for eOnlyValidNow
         res.width = width;
         res.height = height;
-        res.left = tag.extent ? tag.extent.left : 0;
-        res.top = tag.extent ? tag.extent.top : 0;
         res.state = (D3D12_RESOURCE_STATES) tag.resource->state;
         res.validity = validity;
         res.frameIndex = frameIndex;
@@ -470,9 +458,6 @@ void Sl_Inputs::markPresent(uint64_t frameId)
     LOG_TRACE("frameId: {}", frameId);
     _isFrameFinished = true;
     _lastPresentFrameId = static_cast<uint32_t>(frameId);
-
-    // HelixSR Scaler: the Streamline frame being presented (its DLSS-G inputs go to HelixSR's FSR FG DLL)
-    HelixSRDlssg::MarkPresent(static_cast<uint32_t>(frameId));
 
     if (auto fg = State::Instance().CurrentFG(); fg != nullptr)
         fg->SetFrameCount(frameId);

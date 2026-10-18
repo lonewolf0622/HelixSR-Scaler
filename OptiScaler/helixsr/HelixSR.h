@@ -12,8 +12,9 @@
 
 namespace HelixSR
 {
-// Finds the HelixSR folder next to this DLL (or the game's .exe) and points OptiScaler at it: HelixSR as the DLSS
-// upscaler and the DLSS frame-generation provider, unless OptiScaler.ini sets them. Called once at startup, after
+// Finds HelixSR next to this DLL (or the game's .exe) and points OptiScaler's upscaler at it (HelixSR's FidelityFX DLL
+// as the FFX upscaler module, or an older install's helixsr.dll as DLSS), unless OptiScaler.ini sets them. Frame
+// generation is left to OptiScaler.ini ([FrameGen] FGNvngxReplacement = HelixSR). Called once at startup, after
 // OptiScaler's own paths.
 void ApplyDefaults();
 
@@ -24,16 +25,12 @@ const std::filesystem::path& Folder();
 // helixsr.dll in the HelixSR folder (empty when the folder was not found)
 std::filesystem::path DllPath();
 
-// The HelixSR folder has frame generation (its helixsr-fg folder)
+// HelixSR has frame generation (its helixsr-fg folder next to HelixSR's DLL)
 bool FrameGenFound();
 
-// [HelixSR] FGPresent = streamline: OptiScaler's FSR FG swapchain never presents HelixSR's frames (auto and optiscaler
-// let it, see HelixSRFgRoute.h)
-bool FgPresentStreamline();
-
-// Without helixsr.dll in a HelixSR folder: HelixSR's FidelityFX DLL ([Libraries] FfxDx12SRPath) as the DLSS
-// frame-generation provider, when it serves DLSS frame generation too (it exports HelixSR_NgxFgVersion). Loaded, or
-// null. Files in its folder then load as they are (LoadsAsIs).
+// Without helixsr.dll in a HelixSR folder: HelixSR's FidelityFX DLL (HelixSR-fsrfg\amd_fidelityfx_dx12.dll, or
+// [Libraries] FfxDx12SRPath) as the DLSS frame-generation provider, when it serves DLSS frame generation too (it
+// exports HelixSR_NgxFgVersion). Loaded, or null. Files in its folder then load as they are (LoadsAsIs).
 HMODULE LoadFfxFrameGenDll();
 
 // A file in the HelixSR folder, or in the folder of the FidelityFX DLL that serves DLSS frame generation: it loads as
@@ -71,19 +68,11 @@ void Choose();
 // drawn in the menu's frame generation section. Applies at the next game start.
 void RenderFrameGenQuality(float scale);
 
-// The menu's frame-generation choice (HelixSR / AMD FSR / Intel XeSS / Off), above OptiScaler's own FG lists; saved
-// to OptiScaler.ini, applies at the next game start
+// The menu's frame-generation choice (HelixSR / AMD FSR / Intel XeSS / Off), above OptiScaler's own FG lists: writes
+// OptiScaler.ini's [FrameGen] lines as a user would, applies at the next game start
 void RenderFrameGenChoice(float scale);
 
 // HelixSR's settings, drawn under the upscaler list while HelixSR is the upscaler:
 // speed boost (int8), GPU mode and the folder button. Writes helixsr.ini; the game has to restart for them to apply.
 void RenderSettings(float scale, ImVec4 (*color)(const ImVec4&));
-
-// The HUD (HelixSRHud.cpp): the top of the menu window, with the upscaler choice, HelixSR's settings, live timings and
-// HelixSR's state, in the style of a game overlay. OptiScaler's settings follow under it.
-bool HudEnabled();
-void RenderHud(float scale, ImVec4 (*color)(const ImVec4&));
-
-// The HUD's shapes for OptiScaler's own widgets (square corners, accent lines); called after OptiScaler's theme
-void ApplyHudStyle();
 } // namespace HelixSR

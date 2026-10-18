@@ -65,7 +65,7 @@ try {
     Check "finds the HelixSR app's" ($r.code -eq 0 -and (Same (Join-Path $g2 'HelixSR-fsrfg/amd_fidelityfx_dx12.dll') (Join-Path $app 'amd_fidelityfx_dx12.dll')))
     Check 'without helixsr-fg: upscaling only' (-not (Test-Path (Join-Path $g2 'HelixSR-fsrfg/helixsr-fg')) -and $r.out -match "isn't set up")
 
-    # nothing found: a wrong file, then HelixSR's folder typed in (frame generation parked by an earlier switch-off)
+    # nothing found: a wrong file, then HelixSR's folder typed in (frame generation parked by an earlier version)
     Remove-Item -Recurse -Force (Join-Path $w 'home'), (Join-Path $w 'local')
     $else = Join-Path $w 'else/HelixSR'
     Built (Join-Path $else 'amd_fidelityfx_dx12.dll'); Fg (Join-Path $else 'helixsr-fg.off')
@@ -88,6 +88,19 @@ try {
     Built (Join-Path $g5 'HelixSR/helixsr.dll'); Fg (Join-Path $g5 'HelixSR/helixsr-fg')
     $r = Run $g5
     Check 'older install: moved to HelixSR-fsrfg, HelixSR folder taken out' ($r.code -eq 0 -and (Test-Path (Join-Path $g5 'HelixSR-fsrfg/amd_fidelityfx_dx12.dll')) -and (Test-Path (Join-Path $g5 'HelixSR-fsrfg/helixsr-fg/nvexec64.dll')) -and -not (Test-Path (Join-Path $g5 'HelixSR')))
+
+    # settings from before: [HelixSR] FrameGeneration=on becomes [FrameGen] FGInput=nvngxfg + FGNvngxReplacement=HelixSR
+    # (Windows only: the \ to / rewrite above breaks the script's ini patterns elsewhere)
+    if ($IsWindows -or $null -eq $IsWindows) {
+        $g6 = Join-Path $w 'g6'
+        Built (Join-Path $g6 'HelixSR-fsrfg/amd_fidelityfx_dx12.dll'); Fg (Join-Path $g6 'HelixSR-fsrfg/helixsr-fg')
+        $ini6 = Join-Path $g6 'OptiScaler.ini'
+        [IO.File]::WriteAllText($ini6, "[HelixSR]`r`nFrameGeneration=on`r`nFGPresent=auto`r`nWaveSize=auto`r`n[FrameGen]`r`nFGInput=auto`r`nFGNvngxReplacement=auto`r`n")
+        $r = Run $g6
+        $t = [IO.File]::ReadAllText($ini6)
+        Check 'old FrameGeneration=on: FGInput=nvngxfg, FGNvngxReplacement=HelixSR' ($r.code -eq 0 -and $t -match '(?m)^FGInput=nvngxfg\r?$' -and $t -match '(?m)^FGNvngxReplacement=HelixSR\r?$' -and $r.out -match 'included and on')
+        Check 'old FrameGeneration / FGPresent lines removed, the rest kept' ($t -notmatch 'FrameGeneration=' -and $t -notmatch 'FGPresent=' -and $t -match '(?m)^WaveSize=auto\r?$')
+    }
 } finally {
     Remove-Item -Recurse -Force $w -ErrorAction SilentlyContinue
 }
