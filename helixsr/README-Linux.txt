@@ -40,12 +40,10 @@ INSTALLING BY HAND
 3. It lists your Steam games that have DLSS, FSR or XeSS. Type the number of the game.
    For Heroic, Lutris or other games, drag the game's folder into the terminal window instead.
 
-4. It shows the Steam launch options to use, and copies them to the clipboard. In Steam:
-   right-click the game > Properties > General > Launch Options, and paste:
-
-       WINEDLLOVERRIDES="dxgi=n,b" %command%
-
-   (Heroic or Lutris: add the environment variable WINEDLLOVERRIDES with the value dxgi=n,b.)
+4. Installed as dxgi.dll (the usual case), it needs no launch options. If the setup installs it under
+   another name, it shows the Steam launch options to use and copies them to the clipboard. In Steam:
+   right-click the game > Properties > General > Launch Options, and paste them.
+   (Heroic or Lutris: add the environment variable WINEDLLOVERRIDES with the value the setup shows.)
 
 5. Start the game. In its graphics settings, turn on DLSS (or FSR or XeSS if there is no DLSS).
 
