@@ -85,10 +85,10 @@ check "OptiScaler's own FidelityFX / XeSS DLLs don't count as the game's" '[ -f 
 (cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
 check "...so the stand-in game is upscaler-only again" 'grep -q "frame generation settings: input=Upscaler, output=DLSSG" "$G/OptiScaler.log"'
 
-# Startup recovery: an abandoned start marker switches frame generation off for one launch
+# No startup recovery any more: an old start marker left by an earlier version does not switch frame generation off
 : >"$G/HelixSR/helixsr-dlssg.starting"
 (cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
-check "abandoned helixsr-dlssg.starting: frame generation off this launch" 'grep -q "previous startup was interrupted" "$G/OptiScaler.log"'
+check "old helixsr-dlssg.starting: frame generation not switched off" '! grep -q "previous startup was interrupted" "$G/OptiScaler.log"'
 rm -f "$G/HelixSR/helixsr-dlssg.starting"
 
 # A GPU that can't run HelixSR's frame generation (helixsr.log says so): switched off and saved, unless set on
@@ -122,7 +122,7 @@ mkdir -p "$G/HelixSR-fsrfg/helixsr-fg" && echo stand-in >"$G/HelixSR-fsrfg/helix
 sed -i 's/^QuickFlow=.*/QuickFlow=on/' "$G/OptiScaler.ini"
 (cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
 check "FSR DLL with helixsr-fg: HelixSR frame generation through OptiScaler's Streamline" 'grep -q "frame generation settings: input=Upscaler, output=DLSSG, provider=HelixSR" "$G/OptiScaler.log"'
-check "FSR DLL: QuickFlow in [DlssFrameGeneration]" 'awk '"'"'{sub(/\r$/, "")} /^\[/{s=$0} s=="[DlssFrameGeneration]" && /^QuickFlow = on/{f=1} END{exit !f}'"'"' "$G/HelixSR-fsrfg/helixsr.ini"'
+check "FSR DLL: QuickFlow always off in [DlssFrameGeneration] (out of the menu, an old on is cleared)" 'awk '"'"'{sub(/\r$/, "")} /^\[/{s=$0} s=="[DlssFrameGeneration]" && /^QuickFlow = off/{f=1} END{exit !f}'"'"' "$G/HelixSR-fsrfg/helixsr.ini"'
 sed -i 's/^QuickFlow=.*/QuickFlow=auto/' "$G/OptiScaler.ini"
 
 # OptiScaler.ini's choices stay

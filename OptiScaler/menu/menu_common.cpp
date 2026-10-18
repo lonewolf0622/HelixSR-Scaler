@@ -5359,11 +5359,12 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             if (!state.helixsrFgFileAvailable)
             {
                 ImGui::TextColored(toneMapColor(ImVec4(1.f, 0.f, 0.f, 1.f)),
-                                   "Put the HelixSR folder (helixsr.dll, helixsr-fg) next to the game");
+                                   "Put HelixSR (with its helixsr-fg folder) next to the game");
             }
             else
             {
-                HelixSR::RenderQuickFlow(); // HelixSR Scaler
+                // HelixSR Scaler: no quality choice (QuickFlow is gone): HelixSR runs NVIDIA's light mode (preset C)
+                ImGui::TextDisabled("HelixSR frame generation: NVIDIA's light mode (preset C)");
             }
         }
 

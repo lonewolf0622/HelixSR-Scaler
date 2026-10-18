@@ -65,7 +65,6 @@ void Choose();
 // Frame generation quality Best / Fast / Fastest ([HelixSR] QuickFlow = auto | on | off | fastest, auto = off;
 // helixsr.ini [FrameGeneration] QuickFlow), drawn in the menu's frame generation section. Applies at the next game
 // start.
-void RenderQuickFlow();
 
 // The menu's frame-generation choice (HelixSR / AMD FSR / Intel XeSS / Off), above OptiScaler's own FG lists; saved
 // to OptiScaler.ini, applies at the next game start

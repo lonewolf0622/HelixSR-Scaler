@@ -260,11 +260,10 @@ std::optional<std::string> ConfigValue(const std::string& key)
         return cfg->HelixSRInt8.value();
     if (key == "WaveSize" && cfg->HelixSRWaveSize.has_value())
         return std::to_string(cfg->HelixSRWaveSize.value());
-    if (key == "QuickFlow" && cfg->HelixSRQuickFlow.has_value())
-    {
-        const int qf = cfg->HelixSRQuickFlow.value();
-        return std::string(qf == 2 ? "fastest" : qf == 1 ? "on" : "off");
-    }
+    // QuickFlow is out of the menu (preset C, NVIDIA's light mode, is faster at the same or better quality): always off,
+    // which also clears a Fast / Fastest left in OptiScaler.ini by an earlier version
+    if (key == "QuickFlow")
+        return std::string("off");
     // OptiScaler's "Disable Reactive Mask" (InitFlags): unticked gives the game's reactive mask to HelixSR's network
     // (its bias-current-colour input: particles, hair and other things without good motion vectors)
     if (key == "UseReactiveMask" && cfg->DisableReactiveMask.has_value())
@@ -1069,62 +1068,6 @@ void RenderFrameGenChoice(float scale)
         ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "Restart the game to apply");
     else if (running == FgChoiceHelixSR && State::Instance().api != DX12 && State::Instance().api != NotSelected)
         ImGui::TextDisabled("HelixSR frame generation runs in DirectX 12 games only");
-}
-
-// The QuickFlow setting the game started with (restart note): 0 Best, 1 Fast, 2 Fastest
-int quickFlowAtStart = 0;
-bool quickFlowAtStartSet = false;
-
-void RenderQuickFlow()
-{
-    if (!FrameGenFound())
-        return;
-
-    auto cfg = Config::Instance();
-    const int now = std::clamp(cfg->HelixSRQuickFlow.value_or(0), 0, 2);
-
-    if (!quickFlowAtStartSet)
-    {
-        quickFlowAtStart = now;
-        quickFlowAtStartSet = true;
-    }
-
-    const char* names[] = { "Best", "Fast", "Fastest" };
-    int pick = now;
-
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8.0f);
-    if (ImGui::BeginCombo("Frame generation quality", names[pick]))
-    {
-        for (int i = 0; i < 3; i++)
-        {
-            if (ImGui::Selectable(names[i], i == pick))
-                pick = i;
-        }
-        ImGui::EndCombo();
-    }
-
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip(
-            "Best: full quality.\nFast: QuickFlow, a faster motion estimate for lower-end GPUs, slightly "
-            "softer in-between frames.\nFastest: QuickFlow at half size, upscaled with detail restore. The "
-            "fastest; it can shimmer (mostly at 4K).\n\nApplies after restarting the game.");
-
-    if (pick != now)
-    {
-        cfg->HelixSRQuickFlow = pick;
-        const bool opti = WriteOptiScalerIni();
-        const bool helix = WriteHelixIni();
-        LOG_INFO(
-            "HelixSR Scaler: QuickFlow = {} saved (OptiScaler.ini {}, helixsr.ini {}); it applies at the next game "
-            "start",
-            pick == 2   ? "fastest"
-            : pick == 1 ? "on"
-                        : "off",
-            opti, helix);
-    }
-
-    if (std::clamp(cfg->HelixSRQuickFlow.value_or(0), 0, 2) != quickFlowAtStart)
-        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "Restart the game to use the new quality");
 }
 
 bool IsActive()
