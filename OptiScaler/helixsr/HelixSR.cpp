@@ -24,6 +24,8 @@
 #include <sstream>
 #include <vector>
 
+extern "C" __declspec(dllexport) unsigned int HelixSR_SeparateFgLoaderVersion() { return 1; }
+
 namespace fs = std::filesystem;
 
 // Shared through HelixSRInternal.h
@@ -876,44 +878,53 @@ fs::path DllPath() { return found ? folder / kDll : fs::path(); }
 static std::vector<fs::path> ffxFgFolders;
 static std::mutex ffxFgMutex;
 
-// HelixSR's FidelityFX DLL loaded for DLSS frame generation when it serves that too (it exports HelixSR_NgxFgVersion),
-// else null
-static HMODULE LoadNgxFgDll(const fs::path& path)
+// Only absolute paths selected here are exempted while their dependency tree loads.
+// Register before LoadLibrary: FG loads its NGX dependencies during initialization.
+static HMODULE LoadNgxFgDll(const fs::path& input)
 {
+    std::error_code ec;
+    const auto path = fs::absolute(input, ec).lexically_normal();
+    if (ec)
+        return nullptr;
+    {
+        std::lock_guard<std::mutex> lock(ffxFgMutex);
+        ffxFgFolders = { path.parent_path() };
+    }
     HMODULE dll = NtdllProxy::LoadLibraryExW_Ldr(path.c_str(), NULL, 0);
     using VersionFn = uint32_t (*)();
     auto version = dll != nullptr ? (VersionFn) GetProcAddress(dll, "HelixSR_NgxFgVersion") : nullptr;
-    if (version == nullptr || version() < 1)
+    const char* required[] = { "NVSDK_NGX_D3D12_Init", "NVSDK_NGX_D3D12_Shutdown",
+                              "NVSDK_NGX_D3D12_GetScratchBufferSize", "NVSDK_NGX_D3D12_CreateFeature",
+                              "NVSDK_NGX_D3D12_ReleaseFeature", "NVSDK_NGX_D3D12_GetFeatureRequirements",
+                              "NVSDK_NGX_D3D12_EvaluateFeature", "NVSDK_NGX_D3D12_PopulateParameters_Impl" };
+    bool valid = version != nullptr && version() == 1;
+    for (const auto* symbol : required)
+        valid = valid && GetProcAddress(dll, symbol) != nullptr;
+    if (!valid)
     {
-        LOG_WARN("HelixSR Scaler: {} {}", wstring_to_string(path.wstring()),
-                 dll == nullptr ? "can't be loaded" : "doesn't serve DLSS frame generation (no HelixSR_NgxFgVersion)");
+        LOG_ERROR("HelixSR FG provider {} failed to load or has an incompatible NGX FG interface; repair the package. "
+                  "No alternate provider will be selected", wstring_to_string(path.wstring()));
         if (dll != nullptr)
             FreeLibrary(dll);
+        std::lock_guard<std::mutex> lock(ffxFgMutex);
+        ffxFgFolders.clear();
         return nullptr;
     }
-
     wchar_t loaded[MAX_PATH * 2] = {};
     GetModuleFileNameW(dll, loaded, MAX_PATH * 2);
     {
-        std::error_code ec;
         std::lock_guard<std::mutex> lock(ffxFgMutex);
-        ffxFgFolders = { fs::absolute(path, ec).parent_path(), fs::path(loaded).parent_path() };
+        ffxFgFolders.push_back(fs::path(loaded).parent_path());
     }
-
-    LOG_INFO("HelixSR Scaler: DLSS frame generation by HelixSR's FidelityFX DLL {} (NGX frame generation version {})",
-             wstring_to_string(loaded), version());
+    LOG_INFO("HelixSR FG provider: {} (NGX FG interface {})", wstring_to_string(loaded), version());
     return dll;
 }
 
-// HelixSR's FidelityFX DLL for the HelixSR frame-generation provider: the one found at the start
-// (HelixSR-fsrfg\amd_fidelityfx_dx12.dll next to the game's .exe or this DLL), else the FfxDx12SRPath set in
-// OptiScaler.ini, else HelixSR-fsrfg\amd_fidelityfx_dx12.dll next to the .exe or this DLL
 HMODULE LoadFfxFrameGenDll()
 {
     std::vector<fs::path> candidates;
     if (FsrDllFound())
         candidates.push_back(FsrDllPath());
-
     if (const auto configured = Config::Instance()->FfxDx12SRPath.value_or(L"");
         !configured.empty() && _wcsicmp(configured.c_str(), L"auto") != 0)
     {
@@ -923,26 +934,36 @@ HMODULE LoadFfxFrameGenDll()
             path /= L"amd_fidelityfx_dx12.dll";
         candidates.push_back(path);
     }
-
     candidates.push_back(Util::ExePath().parent_path() / L"HelixSR-fsrfg" / L"amd_fidelityfx_dx12.dll");
     candidates.push_back(Util::DllPath().parent_path() / L"HelixSR-fsrfg" / L"amd_fidelityfx_dx12.dll");
+    if (Found())
+        candidates.push_back(DllPath());
 
+    // Prefer the dedicated FG provider across every supported installation location.
+    // An existing but broken dedicated DLL is an installation error, never a reason
+    // to silently initialize the old shared SR/FG module instead.
     std::error_code ec;
     for (const auto& path : candidates)
     {
-        if (!fs::is_regular_file(path, ec))
-            continue;
-
-        if (auto dll = LoadNgxFgDll(path); dll != nullptr)
-            return dll;
+        const auto dedicated = path.parent_path() / L"helixsr_fg.dll";
+        const bool exists = fs::exists(dedicated, ec);
+        if (exists || ec)
+            return LoadNgxFgDll(dedicated);
     }
-
-    LOG_WARN("HelixSR Scaler: no HelixSR-fsrfg\\amd_fidelityfx_dx12.dll with DLSS frame generation found");
+    LOG_INFO("HelixSR: dedicated helixsr_fg.dll absent; checking legacy combined SR/FG provider compatibility");
+    for (const auto& path : candidates)
+    {
+        if (fs::is_regular_file(path, ec))
+            return LoadNgxFgDll(path);
+    }
+    LOG_ERROR("HelixSR: no helixsr_fg.dll or legacy combined FG provider found");
     return nullptr;
 }
 
 bool LoadsAsIs(const fs::path& path)
 {
+    if (!path.is_absolute())
+        return false;
     if (found && Util::IsSubpath(path, folder))
         return true;
 

@@ -156,7 +156,9 @@ NVSDK_NGX_Result Nvngx_DllProxy::D3D12_EvaluateFeature(ID3D12GraphicsCommandList
         // Fixes an issue with the depth being corrupted on AMD under Windows
         ID3D12Resource* dlssgDepth = nullptr;
 
-        if (Config::Instance()->NvngxFGMakeDepthCopy.value_or_default())
+        // HelixSR consumes the native NGX shader-readable depth contract. The
+        // Nukem-specific COPY_DEST workaround must not be handed to HelixSR.
+        if (getType() != FGNvngxReplacement::HelixSR && Config::Instance()->NvngxFGMakeDepthCopy.value_or_default())
             InParameters->Get("DLSSG.Depth", &dlssgDepth);
 
         if (dlssgDepth)

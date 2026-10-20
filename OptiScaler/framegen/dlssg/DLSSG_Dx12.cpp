@@ -353,6 +353,7 @@ void DLSSG_Dx12::ReleaseObjects()
 
 void DLSSG_Dx12::CreateObjects(ID3D12Device* InDevice)
 {
+    _uiFenceOnSubmission = true;
     _device = InDevice;
 
     if (_uiCommandAllocator[0] != nullptr)
@@ -509,6 +510,8 @@ bool DLSSG_Dx12::Present()
                 else if (_renderUI->IsInit())
                 {
                     auto commandList = GetSCCommandList(fIndex);
+                    if (commandList == nullptr)
+                        return false;
                     _renderUI->Dispatch((IDXGISwapChain3*) _swapChain, commandList, ui->GetResource(), ui->state);
                 }
             }
@@ -538,6 +541,8 @@ bool DLSSG_Dx12::Present()
                     if (_hudlessCompare->IsInit())
                     {
                         auto commandList = GetSCCommandList(fIndex);
+                        if (commandList == nullptr)
+                            return false;
                         _hudlessCompare->Dispatch((IDXGISwapChain3*) _swapChain, commandList, hudless->GetResource(),
                                                   hudless->state);
                     }
@@ -554,30 +559,29 @@ bool DLSSG_Dx12::Present()
 
     // if (IsActive() && !IsPaused())
     {
-        if (_uiCommandListResetted[fIndex])
-        {
-            LOG_DEBUG("Executing _uiCommandList[{}]: {:X}", fIndex, (size_t) _uiCommandList[fIndex]);
-            auto closeResult = _uiCommandList[fIndex]->Close();
-
-            if (closeResult == S_OK)
-                _gameCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList**) &_uiCommandList[fIndex]);
-            else
-                LOG_ERROR("_uiCommandList[{}]->Close() error: {:X}", fIndex, (UINT) closeResult);
-
-            _gameCommandQueue->Signal(_uiFence, _uiAllocatorFenceValues[fIndex]);
-
-            _uiCommandListResetted[fIndex] = false;
-        }
+        if (!SubmitUICommandList(fIndex))
+            return false;
 
         if (_scCommandListResetted[fIndex])
         {
             LOG_DEBUG("Executing _scCommandList[{}]: {:X}", fIndex, (size_t) _scCommandList[fIndex]);
             auto closeResult = _scCommandList[fIndex]->Close();
 
-            if (closeResult == S_OK)
-                _gameCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList**) &_scCommandList[fIndex]);
-            else
+            if (FAILED(closeResult))
+            {
                 LOG_ERROR("_scCommandList[{}]->Close() error: {:X}", fIndex, (UINT) closeResult);
+                return false;
+            }
+            _gameCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList**) &_scCommandList[fIndex]);
+            _scAllocatorFenceValues[fIndex] = ++_scFenceValue;
+            auto signalResult = _gameCommandQueue->Signal(_scFence, _scAllocatorFenceValues[fIndex]);
+            if (FAILED(signalResult))
+            {
+                _scAllocatorFenceValues[fIndex] = UINT64_MAX;
+                _scCommandListResetted[fIndex] = false;
+                LOG_ERROR("SC allocator fence signal failed: {:X}", (UINT) signalResult);
+                return false;
+            }
 
             _scCommandListResetted[fIndex] = false;
         }

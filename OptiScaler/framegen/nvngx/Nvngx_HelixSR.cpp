@@ -4,19 +4,7 @@
 
 void Nvngx_HelixSR::LoadLibraries()
 {
-    HMODULE memModule = nullptr;
-    // an older install's HelixSR folder (helixsr.dll), else OptiScaler's folder
-    const std::wstring optiPath =
-        HelixSR::Found() ? HelixSR::Folder().wstring() : Config::Instance()->MainDllPath.value();
-    Util::LoadProxyLibrary(L"helixsr.dll", L"", optiPath, &memModule, &dll);
-
-    if (dll == nullptr && memModule != nullptr)
-        dll = memModule;
-
-    // no helixsr.dll: HelixSR's FidelityFX DLL (HelixSR-fsrfg\amd_fidelityfx_dx12.dll), which serves DLSS frame
-    // generation too
-    if (dll == nullptr)
-        dll = HelixSR::LoadFfxFrameGenDll();
+    dll = HelixSR::LoadFfxFrameGenDll();
 
     if (dll != nullptr)
     {

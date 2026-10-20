@@ -59,6 +59,8 @@ bool IFGFeature_Dx12::WaitForUIAllocator(UINT index)
         return true;
 
     const auto completedValue = _uiFence->GetCompletedValue();
+    if (completedValue == UINT64_MAX || fenceValue == UINT64_MAX)
+        return false;
     if (completedValue >= fenceValue)
         return true;
 
@@ -78,7 +80,43 @@ bool IFGFeature_Dx12::WaitForUIAllocator(UINT index)
         return false;
     }
 
-    return true;
+    const auto afterWait = _uiFence->GetCompletedValue();
+    return afterWait != UINT64_MAX && afterWait >= fenceValue;
+}
+
+bool IFGFeature_Dx12::WaitForSCAllocator(UINT index)
+{
+    if (_scFence == nullptr || _scFenceEvent == nullptr)
+        return true;
+
+    const auto fenceValue = _scAllocatorFenceValues[index];
+    if (fenceValue == 0)
+        return true;
+
+    const auto completedValue = _scFence->GetCompletedValue();
+    if (completedValue == UINT64_MAX || fenceValue == UINT64_MAX)
+        return false;
+    if (completedValue >= fenceValue)
+        return true;
+
+    auto result = _scFence->SetEventOnCompletion(fenceValue, _scFenceEvent);
+    if (FAILED(result))
+    {
+        LOG_ERROR("SC allocator fence SetEventOnCompletion failed. slot {}, fence {}, completed {}, result {:X}", index,
+                  fenceValue, completedValue, (UINT) result);
+        return false;
+    }
+
+    const auto waitResult = WaitForSingleObject(_scFenceEvent, 5000);
+    if (waitResult != WAIT_OBJECT_0)
+    {
+        LOG_ERROR("SC allocator fence wait failed. slot {}, fence {}, completed {}, waitResult {:X}", index, fenceValue,
+                  _scFence->GetCompletedValue(), waitResult);
+        return false;
+    }
+
+    const auto afterWait = _scFence->GetCompletedValue();
+    return afterWait != UINT64_MAX && afterWait >= fenceValue;
 }
 
 bool IFGFeature_Dx12::SubmitUICommandList(UINT index)
@@ -106,9 +144,12 @@ bool IFGFeature_Dx12::SubmitUICommandList(UINT index)
     _gameCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList**) &_uiCommandList[index]);
     _uiCommandListResetted[index] = false;
 
+    if (_uiFenceOnSubmission)
+        _uiAllocatorFenceValues[index] = ++_uiFenceValue;
     auto signalResult = _gameCommandQueue->Signal(_uiFence, _uiAllocatorFenceValues[index]);
     if (FAILED(signalResult))
     {
+        _uiAllocatorFenceValues[index] = UINT64_MAX; // No trustworthy completion marker.
         LOG_ERROR("UI allocator fence signal failed. slot {}, fence {}, result {:X}", index,
                   _uiAllocatorFenceValues[index], (UINT) signalResult);
         return false;
@@ -159,7 +200,8 @@ ID3D12GraphicsCommandList* IFGFeature_Dx12::GetUICommandList(int index)
             if (result == S_OK)
             {
                 _uiCommandListResetted[index] = true;
-                _uiAllocatorFenceValues[index] = ++_uiFenceValue;
+                if (!_uiFenceOnSubmission)
+                    _uiAllocatorFenceValues[index] = ++_uiFenceValue;
             }
             else
             {
@@ -179,7 +221,7 @@ ID3D12GraphicsCommandList* IFGFeature_Dx12::GetUICommandList(int index)
 
 ID3D12GraphicsCommandList* IFGFeature_Dx12::GetSCCommandList(int index)
 {
-    if (index < 0)
+    if (index < 0 || index >= BUFFER_COUNT)
         index = GetIndex();
 
     LOG_DEBUG("index: {}", index);
@@ -212,6 +254,8 @@ ID3D12GraphicsCommandList* IFGFeature_Dx12::GetSCCommandList(int index)
 
     if (!_scCommandListResetted[index])
     {
+        if (!WaitForSCAllocator((UINT) index))
+            return nullptr;
         auto result = _scCommandAllocator[index]->Reset();
 
         if (result == S_OK)
@@ -221,11 +265,15 @@ ID3D12GraphicsCommandList* IFGFeature_Dx12::GetSCCommandList(int index)
             if (result == S_OK)
                 _scCommandListResetted[index] = true;
             else
+            {
                 LOG_ERROR("_scCommandList[{}]->Reset() error: {:X}", index, (UINT) result);
+                return nullptr;
+            }
         }
         else
         {
             LOG_ERROR("_scCommandAllocator[{}]->Reset() error: {:X}", index, (UINT) result);
+            return nullptr;
         }
     }
 

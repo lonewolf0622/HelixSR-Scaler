@@ -28,9 +28,9 @@ std::filesystem::path DllPath();
 // HelixSR has frame generation (its helixsr-fg folder next to HelixSR's DLL)
 bool FrameGenFound();
 
-// Without helixsr.dll in a HelixSR folder: HelixSR's FidelityFX DLL (HelixSR-fsrfg\amd_fidelityfx_dx12.dll, or
-// [Libraries] FfxDx12SRPath) as the DLSS frame-generation provider, when it serves DLSS frame generation too (it
-// exports HelixSR_NgxFgVersion). Loaded, or null. Files in its folder then load as they are (LoadsAsIs).
+// Dedicated helixsr_fg.dll beside the configured/discovered SR DLL is preferred.
+// If absent, a legacy combined DLL may supply FG after NGX interface validation.
+// A present but incompatible dedicated DLL fails without falling back.
 HMODULE LoadFfxFrameGenDll();
 
 // A file in the HelixSR folder, or in the folder of the FidelityFX DLL that serves DLSS frame generation: it loads as

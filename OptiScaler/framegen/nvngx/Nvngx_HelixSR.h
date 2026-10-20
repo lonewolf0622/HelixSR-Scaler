@@ -2,8 +2,8 @@
 #include "Nvngx_DllProxy.h"
 
 // HelixSR Scaler: HelixSR's frame generation as a DLSSG provider ([FrameGen] FGNvngxReplacement = HelixSR), like
-// Nukem's: HelixSR's FidelityFX DLL (HelixSR-fsrfg\amd_fidelityfx_dx12.dll with its helixsr-fg folder), or an older
-// install's HelixSR\helixsr.dll. DirectX 12 only.
+// Nukem's: dedicated HelixSR-fsrfg\helixsr_fg.dll with its helixsr-fg dependencies.
+// Legacy combined DLLs remain compatible when the dedicated DLL is absent. DirectX 12 only.
 class Nvngx_HelixSR : public Nvngx_DllProxy
 {
   protected:
