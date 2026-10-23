@@ -1,0 +1,13 @@
+OpenDLSS-NR
+https://github.com/maanHimself/OpenDLSS-NR
+Commit: 9d08f4184bbcb9d858e2fb7a7834ec0837a9d2f1
+Browser-webgpu graph modules and WGSL sources; browser development entry points omitted.
+Local patches: geometry.js accepts an optional minimum field (default unchanged at 320);
+network.js forwards that option. Compact mode changes model context. WGSL sources are unmodified.
+License: opendlss-nr/LICENSE (MIT, copyright 2026 maan)
+
+DLSSNR-RDNA3
+https://github.com/mauri870/DLSSNR-RDNA3
+Commit: aa3922846437185fbc94eaf62243f2e00d323408
+Unmodified linux/package/model-tools/inspect_nr.py
+License: dlssnr-rdna3/LICENSE (MIT, copyright 2026 mochizuki0323)
