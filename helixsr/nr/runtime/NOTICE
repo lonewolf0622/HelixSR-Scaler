@@ -1,5 +1,6 @@
 Frame feature conditioning, Gaussian ordering, Catmull-Rom history reprojection,
-and temporal blend are derived from OpenDLSS-NR, copyright (c) 2026 maan, MIT.
+temporal blend, and luminance-only color transfer are derived from OpenDLSS-NR,
+copyright (c) 2026 maan, MIT.
 Reference: https://github.com/maanHimself/OpenDLSS-NR
 Pinned source: 9d08f4184bbcb9d858e2fb7a7834ec0837a9d2f1
 See LICENSE for the retained permission notice.

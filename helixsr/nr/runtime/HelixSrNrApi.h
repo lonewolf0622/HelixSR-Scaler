@@ -59,6 +59,12 @@ HELIXSR_NR_API HRESULT HelixSR_NR_Create(const HelixSrNrCreateInfo*, HelixSrNrCo
 // RetireRecording only after Reset/release makes further replay impossible.
 // Abort is for discarded work that was never submitted.
 HELIXSR_NR_API HRESULT HelixSR_NR_Record(HelixSrNrContext*, const HelixSrNrFrameInfo*, uint64_t* ticket);
+// ABI v2 extension: 0 retains the source's RGB proportions while applying the
+// neural luminance correction; 1 transfers the full neural color. Intermediate
+// values blend in linear light. Record keeps its original full-color behavior.
+// The value is captured with the recording; it does not change neural history.
+HELIXSR_NR_API HRESULT HelixSR_NR_RecordColor(HelixSrNrContext*, const HelixSrNrFrameInfo*, float colorStrength,
+                                            uint64_t* ticket);
 HELIXSR_NR_API HRESULT HelixSR_NR_PrepareSubmission(HelixSrNrContext*, uint64_t ticket, ID3D12CommandQueue*);
 HELIXSR_NR_API HRESULT HelixSR_NR_Submitted(HelixSrNrContext*, uint64_t ticket, ID3D12CommandQueue*);
 HELIXSR_NR_API HRESULT HelixSR_NR_RetireRecording(HelixSrNrContext*, uint64_t ticket);

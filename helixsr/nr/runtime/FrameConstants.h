@@ -20,7 +20,7 @@ struct NrFrameConstants {
     float localTone, localStructure, skinStructure, style;
     float intensity, historyBlend, depthThreshold, reserved;
     NR_UINT colorSpace;
-    float paperWhite,reserved1,reserved2;
+    float paperWhite,colorStrength,reserved2;
 };
 #ifdef __cplusplus
 static_assert(sizeof(NrFrameConstants)==144,"GPU root constant layout changed");

@@ -158,7 +158,8 @@ struct HelixSrNrContext {
         require(info.colorSpace<=2,"Unsupported color encoding");
         if(info.colorSpace!=0)finiteRange(info.paperWhite,.05f,65504.f,"Invalid paper white");
     }
-    void record(const HelixSrNrFrameInfo& info,uint64_t* ticket){
+    void record(const HelixSrNrFrameInfo& info,uint64_t* ticket,float colorStrength){
+        finiteRange(colorStrength,0,1,"Color strength is out of range");
         if(poisoned)throw Error(E_FAIL,"The NR context failed submission; its resources are retained");
         if(pending)throw Error(E_PENDING,"Report submission or discard the previous recorded frame first");
         collect();if(frames.size()>=maximumInFlight)throw Error(E_PENDING,"NR frame retirement is pending");
@@ -172,7 +173,7 @@ struct HelixSrNrContext {
         constants.historyValid=historyValid&&!info.reset&&info.motion;constants.autoMask=info.autoMask;constants.depthInverted=info.depthInverted;
         constants.localTone=info.localTone;constants.localStructure=info.localStructure;constants.skinStructure=info.skinStructure;
         constants.style=info.style;constants.intensity=info.intensity;constants.historyBlend=info.historyBlend;constants.depthThreshold=info.depthThreshold;
-        constants.colorSpace=info.colorSpace;constants.paperWhite=info.paperWhite;
+        constants.colorSpace=info.colorSpace;constants.paperWhite=info.paperWhite;constants.colorStrength=colorStrength;
         // Everything that can fail or allocate is complete before writing any
         // GPU commands, so an E_PENDING/validation failure allows host fallback.
         frames.push_back(std::move(frame));auto& retained=frames.back();pending=retained.id;*ticket=pending;nextId++;
@@ -224,8 +225,11 @@ HRESULT HelixSR_NR_Create(const HelixSrNrCreateInfo* info,HelixSrNrContext** out
         auto context=std::make_unique<HelixSrNrContext>(*info);*output=context.release();});
 }
 HRESULT HelixSR_NR_Record(HelixSrNrContext* context,const HelixSrNrFrameInfo* info,uint64_t* ticket){
+    return HelixSR_NR_RecordColor(context,info,1.f,ticket);
+}
+HRESULT HelixSR_NR_RecordColor(HelixSrNrContext* context,const HelixSrNrFrameInfo* info,float colorStrength,uint64_t* ticket){
     if(ticket)*ticket=0;
-    return guarded([&]{require(context&&info&&ticket,"Invalid record arguments");std::lock_guard lock(context->mutex);context->record(*info,ticket);});
+    return guarded([&]{require(context&&info&&ticket,"Invalid record arguments");std::lock_guard lock(context->mutex);context->record(*info,ticket,colorStrength);});
 }
 HRESULT HelixSR_NR_PrepareSubmission(HelixSrNrContext* context,uint64_t ticket,ID3D12CommandQueue* queue){
     return guarded([&]{require(context&&queue&&ticket,"Invalid submission arguments");std::lock_guard lock(context->mutex);

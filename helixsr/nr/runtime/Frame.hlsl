@@ -83,6 +83,15 @@ float3 upgrade_tone(float3 original,float3 proxy,float3 neural){
     float scale=chroma==0?1:length(lab.yz)/chroma;lab.yz=correct.yz*scale;
     return clamp_ap1(from_oklab(lab));
 }
+// The pinned MIT frame pipeline separates neural luminance from color transfer.
+// A neutral-style head can remove scene chroma: preserving RGB proportions here
+// retains the game's color while still applying the neural light/detail result.
+float3 transfer_color(float3 original,float3 corrected){
+    float sourceY=luminance(original);
+    float gain=sourceY<=.000001?1:clamp(luminance(corrected)/sourceY,0,4);
+    float3 sourceColor=original*gain;
+    return lerp(sourceColor,corrected,P.colorStrength);
+}
 uint mirror(uint x,uint width) {
     // Periodic reflection also defines unusually narrow aspect ratios, without
     // unsigned-underflow reads outside the source rectangle.
@@ -187,7 +196,11 @@ void FramePost(uint3 id:SV_DispatchThreadID) {
     float3 published=P.intensity==1?stored:truncate_half3(saturate(lerp(code,neural,P.intensity)));
     if(P.colorSpace!=0){
         float3 corrected=P.colorSpace==1?upgrade_tone(scene,decode3(code),decode3(stored)):decode3(stored);
+        if(P.colorStrength<1&&P.intensity>0)corrected=transfer_color(scene,corrected);
         published=P.intensity==0?scene:clamp(lerp(scene,corrected,P.intensity),-65504,65504);
+    }else if(P.colorStrength<1&&P.intensity>0){
+        float3 corrected=transfer_color(decode3(code),decode3(published));
+        published=float3(srgb_encode(corrected.r),srgb_encode(corrected.g),srgb_encode(corrected.b));
     }
     Output[id.xy]=float4(published,1);NextHistory[id.xy]=float4(stored,1);
     NextDepth[id.xy]=current_depth(uv);

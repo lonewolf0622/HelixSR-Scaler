@@ -24,6 +24,7 @@ struct Api {
     HMODULE module=LoadLibraryW(L"helixsr-nr.dll");
     decltype(&HelixSR_NR_Create) create=nullptr;
     decltype(&HelixSR_NR_Record) record=nullptr;
+    decltype(&HelixSR_NR_RecordColor) recordColor=nullptr;
     decltype(&HelixSR_NR_Submitted) submitted=nullptr;
     decltype(&HelixSR_NR_PrepareSubmission) prepare=nullptr;
     decltype(&HelixSR_NR_RetireRecording) retire=nullptr;
@@ -37,6 +38,7 @@ struct Api {
 #define LOAD(name,field) field=reinterpret_cast<decltype(field)>(GetProcAddress(module,"HelixSR_NR_" name));require(field!=nullptr,"Missing backend export")
         LOAD("Create",create);LOAD("Record",record);LOAD("Submitted",submitted);LOAD("Abort",abort);
         LOAD("PrepareSubmission",prepare);LOAD("RetireRecording",retire);
+        LOAD("RecordColor",recordColor);
         LOAD("Destroy",destroy);LOAD("Collect",collect);LOAD("LastError",error);LOAD("DebugEndpoints",endpoints);
 #undef LOAD
     }
