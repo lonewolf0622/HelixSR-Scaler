@@ -1,0 +1,10 @@
+Frame feature conditioning, Gaussian ordering, Catmull-Rom history reprojection,
+and temporal blend are derived from OpenDLSS-NR, copyright (c) 2026 maan, MIT.
+Reference: https://github.com/maanHimself/OpenDLSS-NR
+Pinned source: 9d08f4184bbcb9d858e2fb7a7834ec0837a9d2f1
+See LICENSE for the retained permission notice.
+
+The graph-preparation tool uses that project's MIT graph/shader declarations.
+Generated NVIDIA model weights and user-provided runtime DLLs are private input
+data, not source or redistributable project assets. No rights in that software
+or those weights are granted by this project's license.

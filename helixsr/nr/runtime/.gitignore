@@ -1,0 +1,12 @@
+/build*/
+/generated/
+*.dll
+*.exe
+*.lib
+*.exp
+*.obj
+*.pdb
+*.rgba16f
+*.bin
+*.log
+/private-cache/
