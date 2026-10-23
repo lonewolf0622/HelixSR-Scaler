@@ -6795,11 +6795,13 @@ void MenuCommon::RenderInitFlagsSettings(RenderMenuContext& ctx)
 
         ImGui::TableNextColumn();
         auto accessToReactiveMask = currentFeature->AccessToReactiveMask();
-        ImGui::BeginDisabled(!accessToReactiveMask);
+        const bool helixsrMaskControl = IsHelixSR(currentBackend, state.api);
+        ImGui::BeginDisabled(!accessToReactiveMask && !helixsrMaskControl);
 
         bool canUseReactiveMask =
-            accessToReactiveMask && currentBackend != Upscaler::DLSS && currentBackend != Upscaler::DLSS_on12 &&
-            (currentBackend != Upscaler::XeSS || currentFeature->Version() >= feature_version { 2, 0, 1 });
+            helixsrMaskControl ||
+            (accessToReactiveMask && currentBackend != Upscaler::DLSS && currentBackend != Upscaler::DLSS_on12 &&
+             (currentBackend != Upscaler::XeSS || currentFeature->Version() >= feature_version { 2, 0, 1 }));
 
         bool disableReactiveMask = config->DisableReactiveMask.value_or(!canUseReactiveMask);
 
@@ -6816,7 +6818,11 @@ void MenuCommon::RenderInitFlagsSettings(RenderMenuContext& ctx)
 
         ImGui::EndDisabled();
 
-        if (accessToReactiveMask)
+        if (helixsrMaskControl)
+            ShowTooltip("Unchecked: allow HelixSR to use masks. Checked: disable all masks.\n"
+                        "The game may not supply a mask. This checkbox does not generate one.\n"
+                        "Generated masks remain an opt-in setting in helixsr.ini.");
+        else if (accessToReactiveMask)
             ShowTooltip("Allows the use of a Reactive mask\n"
                         "Keep in mind that a Reactive mask sent to DLSS\n"
                         "will not produce a good image in combination with FSR/XeSS");
