@@ -25,7 +25,7 @@ void IFeature_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID
 }
 
 void IFeature_Dx12::CompatibilityBarrier(ID3D12GraphicsCommandList* commands, ID3D12Resource* resource,
-                                        D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) const
+                                         D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) const
 {
     if (!_pipelineStatesManaged)
         ResourceBarrier(commands, resource, before, after);
@@ -135,8 +135,8 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
             return std::nullopt;
         };
         std::array states = { state(cfg.ColorResourceBarrier), state(cfg.DepthResourceBarrier),
-                                    state(cfg.MVResourceBarrier),    state(cfg.ExposureResourceBarrier),
-                                    state(cfg.MaskResourceBarrier),  state(cfg.OutputResourceBarrier) };
+                              state(cfg.MVResourceBarrier),    state(cfg.ExposureResourceBarrier),
+                              state(cfg.MaskResourceBarrier),  state(cfg.OutputResourceBarrier) };
         const std::array configured = {
             state(cfg.ColorResourceBarrier.value_for_config()), state(cfg.DepthResourceBarrier.value_for_config()),
             state(cfg.MVResourceBarrier.value_for_config()),    state(cfg.ExposureResourceBarrier.value_for_config()),
@@ -149,8 +149,10 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
                             (State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine);
         if (legacyBackend && unreal)
         {
-            if (!states[0]) states[0] = D3D12_RESOURCE_STATE_RENDER_TARGET;
-            if (!states[2]) states[2] = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            if (!states[0])
+                states[0] = D3D12_RESOURCE_STATE_RENDER_TARGET;
+            if (!states[2])
+                states[2] = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         }
         for (unsigned i = 0; i < states.size(); ++i)
         {
@@ -207,17 +209,14 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
 
     if (NeuralRendering && Config::Instance()->HelixSRNREnabled.value_or_default())
     {
-        pipeline.push_back({
-            [&](ID3D12Resource* nextOutput) -> ID3D12Resource*
-            {
-                return NeuralRendering->Prepare(Device, InCommandList, nextOutput);
-            },
-            [&](ID3D12Resource* input, ID3D12Resource* output) -> bool
-            {
-                return NeuralRendering->Dispatch(InCommandList, input, output, paramDepth, paramMotion, InParameters,
-                                                  IsHdr(), DepthInverted(), LowResMV(), RenderWidth(), RenderHeight());
-            }
-        });
+        pipeline.push_back({ [&](ID3D12Resource* nextOutput) -> ID3D12Resource*
+                             { return NeuralRendering->Prepare(Device, InCommandList, nextOutput); },
+                             [&](ID3D12Resource* input, ID3D12Resource* output) -> bool
+                             {
+                                 return NeuralRendering->Dispatch(InCommandList, input, output, paramDepth, paramMotion,
+                                                                  InParameters, IsHdr(), DepthInverted(), LowResMV(),
+                                                                  RenderWidth(), RenderHeight());
+                             } });
     }
 
     else if (NeuralRendering)
