@@ -110,8 +110,10 @@ bool Shader_Dx12::CreateComputePipeline(ID3D12Device* device, ID3D12PipelineStat
 bool Shader_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InResource,
                                        D3D12_RESOURCE_STATES InState, ID3D12Resource** OutResource,
                                        D3D12_RESOURCE_FLAGS ResourceFlags, uint64_t InWidth, uint32_t InHeight,
-                                       DXGI_FORMAT InFormat)
+                                       DXGI_FORMAT InFormat, bool* Created)
 {
+    if (Created)
+        *Created = false;
     if (InDevice == nullptr || InResource == nullptr)
         return false;
 
@@ -167,6 +169,8 @@ bool Shader_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* I
     }
 
     LOG_DEBUG("Created new one: {}x{}", inDesc.Width, inDesc.Height);
+    if (Created)
+        *Created = true;
     return true;
 }
 

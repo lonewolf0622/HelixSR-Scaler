@@ -37,7 +37,7 @@ class Shader_Dx12
     static bool CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InResource, D3D12_RESOURCE_STATES InState,
                                      ID3D12Resource** OutResource, D3D12_RESOURCE_FLAGS ResourceFlags,
                                      uint64_t InWidth = 0, uint32_t InHeight = 0,
-                                     DXGI_FORMAT InFormat = DXGI_FORMAT_UNKNOWN);
+                                     DXGI_FORMAT InFormat = DXGI_FORMAT_UNKNOWN, bool* Created = nullptr);
     static void SetBufferState(ID3D12GraphicsCommandList* InCommandList, D3D12_RESOURCE_STATES InState,
                                ID3D12Resource* Buffer, D3D12_RESOURCE_STATES* BufferState);
 
