@@ -19,6 +19,7 @@
 static std::unordered_map<ffxContext, ffxCreateContextDescUpscale> _initParams;
 static std::unordered_map<ffxContext, NVSDK_NGX_Parameter*> _nvParams;
 static std::unordered_map<ffxContext, NVSDK_NGX_Handle*> _contexts;
+static std::unordered_map<ffxContext, ffxContext> _reactiveContexts;
 static ID3D12Device* _d3d12Device = nullptr;
 static bool _nvnxgInited = false;
 static float qualityRatios[] = { 1.0f, 1.5f, 1.7f, 2.0f, 3.0f };
@@ -89,6 +90,7 @@ static bool CreateDLSSContext(ffxContext handle, const ffxDispatchDescUpscale* p
         initFlags |= NVSDK_NGX_DLSS_Feature_Flags_MVLowRes;
 
     params->Set(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, initFlags);
+    params->Set("FSR.createFlags", initParams->flags);
 
     params->Set(NVSDK_NGX_Parameter_Width, pExecParams->renderSize.width);
     params->Set(NVSDK_NGX_Parameter_Height, pExecParams->renderSize.height);
@@ -322,6 +324,11 @@ ffxReturnCode_t ffxDestroyContext_Dx12(ffxContext* context, const ffxAllocationC
     if (_contexts.contains(*context))
         NVSDK_NGX_D3D12_ReleaseFeature(_contexts[*context]);
 
+    if (auto helper = _reactiveContexts.find(*context); helper != _reactiveContexts.end())
+    {
+        FfxApiProxy::D3D12_DestroyContext(&helper->second, nullptr);
+        _reactiveContexts.erase(helper);
+    }
     _contexts.erase(*context);
     _nvParams.erase(*context);
     _initParams.erase(*context);
@@ -595,7 +602,23 @@ ffxReturnCode_t ffxDispatch_Dx12(ffxContext* context, ffxDispatchDescHeader* des
     else if (!Config::Instance()->EnableHotSwapping.value_or_default() &&
              header->type == FFX_API_DISPATCH_DESC_TYPE_UPSCALE_GENERATEREACTIVEMASK)
     {
-        return FFX_API_RETURN_OK;
+        // A custom upscaler handle is not a provider context. Keep a separate
+        // provider context for the game's opaque/final-colour reactive pass.
+        if (!_initParams.contains(*context)) return FFX_API_RETURN_ERROR_PARAMETER;
+        auto& helper = _reactiveContexts[*context];
+        if (!helper)
+        {
+            ffxCreateBackendDX12Desc backend {};
+            backend.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_DX12;
+            backend.device = _d3d12Device;
+            auto createDesc = _initParams.at(*context);
+            createDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE;
+            createDesc.header.pNext = &backend.header;
+            ScopedSkipHeapCapture skipHeapCapture {};
+            auto result = FfxApiProxy::D3D12_CreateContext(&helper, &createDesc.header, nullptr);
+            if (result != FFX_API_RETURN_OK) return result;
+        }
+        return FfxApiProxy::D3D12_Dispatch(&helper, desc);
     }
 
     if (dispatchDesc == nullptr)
@@ -632,6 +655,8 @@ ffxReturnCode_t ffxDispatch_Dx12(ffxContext* context, ffxDispatchDescHeader* des
     if (dispatchDesc->reactive.description.width >= dispatchDesc->renderSize.width &&
         dispatchDesc->reactive.description.height >= dispatchDesc->renderSize.height)
         params->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, dispatchDesc->reactive.resource);
+    else
+        params->Set(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void*) nullptr);
 
     params->Set(NVSDK_NGX_Parameter_Color, dispatchDesc->color.resource);
     params->Set(NVSDK_NGX_Parameter_MotionVectors, dispatchDesc->motionVectors.resource);
@@ -649,7 +674,10 @@ ffxReturnCode_t ffxDispatch_Dx12(ffxContext* context, ffxDispatchDescHeader* des
     if (dispatchDesc->reactive.description.width >= dispatchDesc->renderSize.width &&
         dispatchDesc->reactive.description.height >= dispatchDesc->renderSize.height)
         params->Set("FSR.reactive", dispatchDesc->reactive.resource);
+    else
+        params->Set("FSR.reactive", (void*) nullptr);
 
+    params->Set("FSR.dispatchFlags", dispatchDesc->flags);
     params->Set(NVSDK_NGX_Parameter_Sharpness, dispatchDesc->sharpness);
     params->Set("FSR.upscaleSize.width", dispatchDesc->upscaleSize.width);
     params->Set("FSR.upscaleSize.height", dispatchDesc->upscaleSize.height);

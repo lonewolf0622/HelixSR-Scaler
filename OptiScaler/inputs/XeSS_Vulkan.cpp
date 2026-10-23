@@ -1,4 +1,5 @@
 #include "pch.h"
+#include <helixsr/HelixSRInputConventions.h>
 #include "XeSS_Vulkan.h"
 
 #include "NVNGX_Parameter.h"
@@ -206,29 +207,16 @@ xess_result_t hk_xessVKExecute(xess_context_handle_t hContext, VkCommandBuffer c
     NVSDK_NGX_Handle* handle = _contexts[hContext];
     xess_vk_init_params_t* initParams = &_vkInitParams[hContext];
 
+    hxin::Scale velocityScale {1.0f, 1.0f};
     if (_motionScales.contains(hContext))
-    {
-        auto scales = &_motionScales[hContext];
-
-        if ((initParams->initFlags & XESS_INIT_FLAG_USE_NDC_VELOCITY))
-        {
-            if (initParams->initFlags & XESS_INIT_FLAG_HIGH_RES_MV)
-            {
-                params->Set(NVSDK_NGX_Parameter_MV_Scale_X, initParams->outputResolution.x * 0.5 * scales->x);
-                params->Set(NVSDK_NGX_Parameter_MV_Scale_Y, initParams->outputResolution.y * -0.5 * scales->y);
-            }
-            else
-            {
-                params->Set(NVSDK_NGX_Parameter_MV_Scale_X, pExecParams->inputWidth * 0.5 * scales->x);
-                params->Set(NVSDK_NGX_Parameter_MV_Scale_Y, pExecParams->inputHeight * -0.5 * scales->y);
-            }
-        }
-        else
-        {
-            params->Set(NVSDK_NGX_Parameter_MV_Scale_X, scales->x);
-            params->Set(NVSDK_NGX_Parameter_MV_Scale_Y, scales->y);
-        }
-    }
+        velocityScale = {_motionScales[hContext].x, _motionScales[hContext].y};
+    const auto convertedScale = hxin::xess_motion_scale(
+        (initParams->initFlags & XESS_INIT_FLAG_USE_NDC_VELOCITY) != 0,
+        (initParams->initFlags & XESS_INIT_FLAG_HIGH_RES_MV) != 0,
+        pExecParams->inputWidth, pExecParams->inputHeight,
+        initParams->outputResolution.x, initParams->outputResolution.y, velocityScale);
+    params->Set(NVSDK_NGX_Parameter_MV_Scale_X, convertedScale.x);
+    params->Set(NVSDK_NGX_Parameter_MV_Scale_Y, convertedScale.y);
 
     float jitterScaleX = 1.0f;
     float jitterScaleY = 1.0f;

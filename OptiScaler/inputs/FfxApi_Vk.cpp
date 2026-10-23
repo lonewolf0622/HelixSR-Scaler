@@ -17,6 +17,7 @@
 static std::unordered_map<ffxContext, ffxCreateContextDescUpscale> _initParams;
 static std::unordered_map<ffxContext, NVSDK_NGX_Parameter*> _nvParams;
 static std::unordered_map<ffxContext, NVSDK_NGX_Handle*> _contexts;
+static std::unordered_map<ffxContext, ffxContext> _reactiveContexts;
 static VkDevice _vkDevice = nullptr;
 static VkPhysicalDevice _vkPhysicalDevice = nullptr;
 static PFN_vkGetDeviceProcAddr _vkDeviceProcAddress = nullptr;
@@ -251,6 +252,7 @@ static bool CreateDLSSContext(ffxContext handle, const ffxDispatchDescUpscale* p
         initFlags |= NVSDK_NGX_DLSS_Feature_Flags_MVLowRes;
 
     params->Set(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, initFlags);
+    params->Set("FSR.createFlags", initParams->flags);
 
     params->Set(NVSDK_NGX_Parameter_Width, pExecParams->renderSize.width);
     params->Set(NVSDK_NGX_Parameter_Height, pExecParams->renderSize.height);
@@ -450,6 +452,11 @@ ffxReturnCode_t ffxDestroyContext_Vk(ffxContext* context, const ffxAllocationCal
     if (_contexts.contains(*context))
         NVSDK_NGX_VULKAN_ReleaseFeature(_contexts[*context]);
 
+    if (auto helper = _reactiveContexts.find(*context); helper != _reactiveContexts.end())
+    {
+        FfxApiProxy::VULKAN_DestroyContext()(&helper->second, nullptr);
+        _reactiveContexts.erase(helper);
+    }
     _contexts.erase(*context);
     _nvParams.erase(*context);
     _initParams.erase(*context);
@@ -673,7 +680,24 @@ ffxReturnCode_t ffxDispatch_Vk(ffxContext* context, ffxDispatchDescHeader* desc)
     else if (!Config::Instance()->EnableHotSwapping.value_or_default() &&
              header->type == FFX_API_DISPATCH_DESC_TYPE_UPSCALE_GENERATEREACTIVEMASK)
     {
-        return FFX_API_RETURN_OK;
+        // A custom upscaler handle is not a provider context. Keep a separate
+        // provider context for the game's opaque/final-colour reactive pass.
+        if (!_initParams.contains(*context)) return FFX_API_RETURN_ERROR_PARAMETER;
+        auto& helper = _reactiveContexts[*context];
+        if (!helper)
+        {
+            ffxCreateBackendVKDesc backend {};
+            backend.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK;
+            backend.vkDevice = _vkDevice; backend.vkPhysicalDevice = _vkPhysicalDevice;
+            backend.vkDeviceProcAddr = _vkDeviceProcAddress;
+            auto createDesc = _initParams.at(*context);
+            createDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE;
+            createDesc.header.pNext = &backend.header;
+            ScopedSkipHeapCapture skipHeapCapture {};
+            auto result = FfxApiProxy::VULKAN_CreateContext()(&helper, &createDesc.header, nullptr);
+            if (result != FFX_API_RETURN_OK) return result;
+        }
+        return FfxApiProxy::VULKAN_Dispatch()(&helper, desc);
     }
 
     if (dispatchDesc == nullptr)
@@ -810,6 +834,7 @@ ffxReturnCode_t ffxDispatch_Vk(ffxContext* context, ffxDispatchDescHeader* desc)
     params->Set("FSR.cameraFovAngleVertical", dispatchDesc->cameraFovAngleVertical);
     params->Set("FSR.frameTimeDelta", dispatchDesc->frameTimeDelta);
     params->Set("FSR.viewSpaceToMetersFactor", dispatchDesc->viewSpaceToMetersFactor);
+    params->Set("FSR.dispatchFlags", dispatchDesc->flags);
     params->Set(NVSDK_NGX_Parameter_Sharpness, dispatchDesc->sharpness);
 
     LOG_DEBUG("handle: {:X}, internalResolution: {}x{}", handle->Id, dispatchDesc->renderSize.width,

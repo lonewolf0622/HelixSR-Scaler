@@ -3,6 +3,7 @@
 #include <Util.h>
 #include <proxies/FfxApi_Proxy.h>
 #include "FFXFeature_Dx12.h"
+#include <helixsr/HelixSRUpscaleInput.h>
 #include <helixsr/HelixSRNames.h> // HelixSR Scaler
 #include <misc/DeferredRelease.h>
 #include "MathUtils.h"
@@ -95,6 +96,7 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
     LOG_FUNC();
 
     auto& cfg = *Config::Instance();
+    const bool helix = _helixInput;
 
     struct ffxDispatchDescUpscale params = { 0 };
     params.header.type = FFX_API_DISPATCH_DESC_TYPE_UPSCALE;
@@ -113,6 +115,13 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
 
     InParameters->Get(NVSDK_NGX_Parameter_Jitter_Offset_X, &params.jitterOffset.x);
     InParameters->Get(NVSDK_NGX_Parameter_Jitter_Offset_Y, &params.jitterOffset.y);
+
+    if (helix && !cfg.FsrNonLinearPQ.value_or_default() && !cfg.FsrNonLinearSRGB.value_or_default())
+    {
+        unsigned inputFlags = 0;
+        InParameters->Get("FSR.dispatchFlags", &inputFlags);
+        params.flags |= inputFlags & (FFX_UPSCALE_FLAG_NON_LINEAR_COLOR_PQ | FFX_UPSCALE_FLAG_NON_LINEAR_COLOR_SRGB);
+    }
 
     params.enableSharpening = _sharpness > 0.0f;
     params.sharpness = _sharpness;
@@ -310,7 +319,7 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
     }
 
     ID3D12Resource* paramExp = nullptr;
-    if (AutoExposure())
+    if (AutoExposure() && !helix)
     {
         LOG_DEBUG("AutoExposure enabled!");
     }
@@ -332,19 +341,22 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
         }
         else
         {
-            LOG_DEBUG("AutoExposure disabled but ExposureTexture is not exist, it may cause problems!!");
-            State::Instance().autoExposure = true;
-            State::Instance().changeBackend[Handle()->Id] = true;
-            return true;
+            LOG_DEBUG("Exposure texture absent; HelixSR can select auto exposure for HDR input");
+            if (!helix)
+            {
+                State::Instance().autoExposure = true;
+                State::Instance().changeBackend[Handle()->Id] = true;
+                return true;
+            }
         }
     }
 
     ID3D12Resource* paramTransparency = nullptr;
-    if (InParameters->Get("FSR.transparencyAndComposition", &paramTransparency) == NVSDK_NGX_Result_Success)
+    if (InParameters->Get("FSR.transparencyAndComposition", &paramTransparency) != NVSDK_NGX_Result_Success)
         InParameters->Get("FSR.transparencyAndComposition", (void**) &paramTransparency);
 
     ID3D12Resource* paramReactiveMask = nullptr;
-    if (InParameters->Get("FSR.reactive", &paramReactiveMask) == NVSDK_NGX_Result_Success)
+    if (InParameters->Get("FSR.reactive", &paramReactiveMask) != NVSDK_NGX_Result_Success)
         InParameters->Get("FSR.reactive", (void**) &paramReactiveMask);
 
     ID3D12Resource* paramReactiveMask2 = nullptr;
@@ -352,8 +364,14 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
         NVSDK_NGX_Result_Success)
         InParameters->Get(NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask, (void**) &paramReactiveMask2);
 
+    if (helix && paramReactiveMask2 == nullptr)
+    {
+        if (InParameters->Get("DLSS.Input.Reduce.Ghost.Mask", &paramReactiveMask2) != NVSDK_NGX_Result_Success)
+            InParameters->Get("DLSS.Input.Reduce.Ghost.Mask", (void**) &paramReactiveMask2);
+    }
+
     if (!Config::Instance()->DisableReactiveMask.value_or(paramReactiveMask == nullptr &&
-                                                          paramReactiveMask2 == nullptr))
+                                                          paramReactiveMask2 == nullptr && paramTransparency == nullptr))
     {
         if (paramTransparency != nullptr)
         {
@@ -383,7 +401,11 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
                     params.transparencyAndComposition =
                         ffxApiGetResourceDX12(paramReactiveMask2, FFX_API_RESOURCE_STATE_COMPUTE_READ);
 
-                if (Config::Instance()->DlssReactiveMaskBias.value_or_default() > 0.0f && Bias->IsInit() &&
+                if (helix)
+                {
+                    params.reactive = ffxApiGetResourceDX12(paramReactiveMask2, FFX_API_RESOURCE_STATE_COMPUTE_READ);
+                }
+                else if (Config::Instance()->DlssReactiveMaskBias.value_or_default() > 0.0f && Bias->IsInit() &&
                     Bias->CreateBufferResource(Device, paramReactiveMask2, D3D12_RESOURCE_STATE_UNORDERED_ACCESS) &&
                     Bias->CanRender())
                 {
@@ -503,9 +525,11 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
 
     if (Version() >= feature_version { 3, 1, 4 })
     {
-        if (_reactiveScale != Config::Instance()->FsrReactiveScale.value_or_default())
+        const float reactiveScale = helix ? cfg.FsrReactiveScale.value_for_config().value_or(1.0f)
+                                          : cfg.FsrReactiveScale.value_or_default();
+        if (_reactiveScale != reactiveScale)
         {
-            _reactiveScale = Config::Instance()->FsrReactiveScale.value_or_default();
+            _reactiveScale = reactiveScale;
             ffxConfigureDescUpscaleKeyValue m_upscalerKeyValueConfig {};
             m_upscalerKeyValueConfig.header.type = FFX_API_CONFIGURE_DESC_TYPE_UPSCALE_KEYVALUE;
             m_upscalerKeyValueConfig.key = FFX_API_CONFIGURE_UPSCALE_KEY_FREACTIVENESSSCALE;
@@ -580,6 +604,23 @@ bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, 
         params.upscaleSize.height = TargetHeight();
     }
 
+    HelixSRUpscaleInput normalized {};
+    HMODULE inputModule = FfxApiProxy::Dx12Module_SR();
+    if (!inputModule) inputModule = FfxApiProxy::Dx12Module();
+    auto inputVersion = reinterpret_cast<unsigned (*)()>(GetProcAddress(inputModule, "HelixSR_UpscaleInputVersion"));
+    if (helix && inputVersion && inputVersion() >= 1)
+    {
+        normalized.header.type = HELIXSR_UPSCALE_INPUT_TYPE;
+        normalized.header.pNext = params.header.pNext;
+        normalized.maskOff = cfg.DisableReactiveMask.value_or(false) ? 1 : 0;
+        const auto api = State::Instance().currentInputApiName;
+        normalized.api = api == ApiUpscalerInput::DLSS_DX11 || api == ApiUpscalerInput::DLSS_DX12 || api == ApiUpscalerInput::DLSS_VK ? 1
+                       : api == ApiUpscalerInput::XeSS_DX11 || api == ApiUpscalerInput::XeSS_DX12 || api == ApiUpscalerInput::XeSS_VK ? 2 : 0;
+        InParameters->Get(NVSDK_NGX_Parameter_DLSS_Exposure_Scale, &normalized.exposureScale);
+        InParameters->Get("MV.Offset.X", &normalized.mvOffsetX);
+        InParameters->Get("MV.Offset.Y", &normalized.mvOffsetY);
+        params.header.pNext = &normalized.header;
+    }
     LOG_DEBUG("Dispatch!!");
     auto result = FfxApiProxy::D3D12_Dispatch(&_context, &params.header);
 
@@ -652,6 +693,9 @@ bool FFXFeatureDx12::InitFFX(const NVSDK_NGX_Parameter* InParameters)
         }
 
         InitFlags();
+        unsigned sourceFlags = 0;
+        if (InParameters->Get("FSR.createFlags", &sourceFlags) == NVSDK_NGX_Result_Success)
+            _contextDesc.flags |= sourceFlags & FFX_UPSCALE_ENABLE_DEPTH_INFINITE;
 
         ffxCreateBackendDX12Desc backendDesc = { 0 };
         backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_DX12;
@@ -688,6 +732,7 @@ bool FFXFeatureDx12::InitFFX(const NVSDK_NGX_Parameter* InParameters)
             State::Instance().ffxUpscalerVersionsDx12.names[Config::Instance()->FfxUpscalerIndex.value_or_default()];
         _name = "FSR";
         parse_version(version);
+        _helixInput = HelixSR::Names::IsHelixSR(version);
 
         // HelixSR Scaler: which FidelityFX upscaler runs (HelixSR's DLL lists HelixSR, then AMD's FSR versions)
         LOG_INFO("FFX upscaler: {} (version name {}, index {})", HelixSR::Names::Label(version), version,

@@ -59,6 +59,7 @@ static bool CreateDLSSContext(ffxContext handle, const ffxDispatchDescUpscale* p
         initFlags |= NVSDK_NGX_DLSS_Feature_Flags_MVLowRes;
 
     params->Set(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags, initFlags);
+    params->Set("FSR.createFlags", initParams->flags);
 
     params->Set(NVSDK_NGX_Parameter_Width, pExecParams->renderSize.width);
     params->Set(NVSDK_NGX_Parameter_Height, pExecParams->renderSize.height);
@@ -378,6 +379,7 @@ static ffxReturnCode_t ffxDispatch_Dx12(ffxContext* context, ffxDispatchDescHead
     params->Set("FSR.viewSpaceToMetersFactor", dispatchDesc->viewSpaceToMetersFactor);
     params->Set("FSR.transparencyAndComposition", dispatchDesc->transparencyAndComposition.resource);
     params->Set("FSR.reactive", dispatchDesc->reactive.resource);
+    params->Set("FSR.dispatchFlags", dispatchDesc->flags);
     params->Set(NVSDK_NGX_Parameter_Sharpness, dispatchDesc->sharpness);
     params->Set("FSR.upscaleSize.width", dispatchDesc->upscaleSize.width);
     params->Set("FSR.upscaleSize.height", dispatchDesc->upscaleSize.height);

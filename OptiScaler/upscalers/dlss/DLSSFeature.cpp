@@ -8,6 +8,12 @@ void DLSSFeature::ProcessEvaluateParams(NVSDK_NGX_Parameter* InParameters)
 {
     LOG_FUNC();
 
+    const auto api = State::Instance().currentInputApiName;
+    const unsigned source = api == ApiUpscalerInput::DLSS_DX11 || api == ApiUpscalerInput::DLSS_DX12 || api == ApiUpscalerInput::DLSS_VK ? 1
+                          : api == ApiUpscalerInput::XeSS_DX11 || api == ApiUpscalerInput::XeSS_DX12 || api == ApiUpscalerInput::XeSS_VK ? 2 : 0;
+    InParameters->Set("HelixSR.Upscale.Input.API", source);
+    InParameters->Set("HelixSR.Upscale.MaskOff", Config::Instance()->DisableReactiveMask.value_or(false) ? 1u : 0u);
+
     // override sharpness
     if (Config::Instance()->OverrideSharpness.value_or_default() && !Config::Instance()->RcasEnabled.value_or_default())
     {
