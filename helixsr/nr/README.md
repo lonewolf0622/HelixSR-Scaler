@@ -37,9 +37,27 @@ resumes, while retaining an already prepared context. Loading runs on one
 background worker; normal upscaling continues
 while loading or when the optional backend is unavailable.
 
+## Keeping the game's colors
+
+`ColorStrength` defaults to **0**: the original scene's RGB proportions are
+retained while NR changes luminance, lighting and detail. This prevents the
+neutral model's desaturated output from turning colored materials gray.
+The menu's **NR color strength** slider independently transfers more of the
+model's color as it approaches 1; 1 restores the previous full-color behavior.
+Blending occurs in linear light, and luminance gain is limited to 4 to avoid
+amplifying near-black colors. Zero intensity still preserves the source exactly.
+
+The composition follows the luminance-only/color-strength step in the pinned
+MIT frame pipeline. DFC's documented color controls provided additional context;
+no DFC binary or proprietary implementation is included. Neural history and the
+prepared model cache are unchanged. Update both Scaler and the optional backend;
+no cache regeneration is needed for this correction.
+
 ## Resource and submission contract
 
 The C ABI is in [runtime/HelixSrNrApi.h](runtime/HelixSrNrApi.h), version 2.
+`RecordColor` is an additive v2 export that snapshots color strength for a
+recording. Existing `Record` callers retain the original strength-1 behavior.
 The caller records with `Record`, calls `PrepareSubmission` immediately before
 the actual `ExecuteCommandLists`, then calls `Submitted` immediately after it.
 This sequence must be serialized per context and repeated for command-list

@@ -42,3 +42,12 @@ established. Use lower intensity when the full effect is too strong.
 Generated caches contain NVIDIA model data. Keep them private; do not upload
 them or include them in a release. Source and retained third-party licenses:
 https://github.com/lonewolf0622/HelixSR-Scaler/tree/helixsr/helixsr/nr
+
+COLOR PRESERVATION
+
+NR color strength defaults to 0, preserving the game's colors while retaining
+NR lighting and detail. Higher values transfer more of the model's color;
+1 is the previous full-color behavior, which can desaturate neutral-style scenes.
+The setting is available in the menu and as [NeuralRendering] ColorStrength.
+Update both OptiScaler and HelixSR-NR/helixsr-nr.dll together. Existing private
+model caches remain usable; this correction does not require preparation again.

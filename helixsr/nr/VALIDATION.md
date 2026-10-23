@@ -5,6 +5,36 @@ vkd3d-proton on an AMD BC250. These results describe this hardware and the
 tested scenes; they do not establish native NVIDIA image parity or broad
 game compatibility.
 
+## Color preservation correction
+
+The original real-game captures lost material color with full neural color
+transfer. Scaler now defaults `ColorStrength` to 0, retaining the source's RGB
+proportions while applying the neural luminance change. The live menu can return
+to full neural color at 1. This uses the pinned MIT frame pipeline's separate
+luminance/color composition; DFC's documented controls provided context, without
+copying its binary or proprietary implementation.
+
+The GPU `color_probe` passes all three encodings (display code, linear SDR and
+linear HDR) and three strengths in accurate, fast and compact/fast modes.
+It checks 806,400 colored pixels across these modes, a linear-light midpoint,
+black preservation, zero-intensity identity, invalid-strength rejection and
+command-list replay. Brightness changes remain active. Full strength matches
+the legacy API exactly, and all nine legacy frame/HDR images per mode remain
+byte-identical to their previous results. Existing format/lifetime tests pass.
+The independent full Scaler state audit observes 1,000 / 904 / 904 transitions
+with zero errors in accurate / fast / compact-fast mode.
+
+In the isolated saved scene, the new production build preserves the red carpet,
+colored notices, yellow sign and character clothing. The live 0 -> 1 -> 0 color
+slider reproduces and corrects the desaturation, and colors persist through
+camera motion. Compact/fast remains around 33.7-33.9 ms / 29.5 FPS at the 30 FPS
+test cap, with released HelixSR and NR both active. This is a single-scene check.
+
+Neural computation and private caches are unchanged. The numerical image metrics
+below describe the original full-color-transfer path (`ColorStrength=1`), which
+remains available; they are not native-image-equivalence claims for the new
+default composition.
+
 ## Functional checks
 
 - Full Scaler NGX path with FSR 2.2 and the released, unmodified HelixSR 2.0
@@ -68,8 +98,9 @@ Fresh optimized accurate and fast caches also reach the same saved scene and
 pass a camera-motion check. At the matching post-motion view, the live Scaler
 overlay shows about 109.3 ms / 9.1 FPS for accurate and 70.3 ms / 14.2 FPS for
 fast. These are scene-specific observations rather than a repeated game
-benchmark. No obvious visual failure was observed in those captures; they
-do not establish quality across other scenes or extended motion.
+benchmark. Those initial captures show desaturated game materials; the color
+preservation correction below addresses that issue. They do not establish
+quality across other scenes or extended motion.
 
 An explicit compact-field experiment at 192x108 input in a 192x128 field
 reaches the same saved scene and passes the camera-motion/lifecycle checks.
