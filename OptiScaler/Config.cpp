@@ -500,6 +500,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             HelixSRNRModelCache.set_from_config(readString("NeuralRendering", "ModelCache"));
             HelixSRNRNetworkSize.set_from_config(readInt("NeuralRendering", "NetworkSize"));
             HelixSRNRIntensity.set_from_config(readFloat("NeuralRendering", "Intensity"));
+            HelixSRNRColorStrength.set_from_config(readFloat("NeuralRendering", "ColorStrength"));
             HelixSRNRLocalTone.set_from_config(readFloat("NeuralRendering", "LocalTone"));
             HelixSRNRLocalStructure.set_from_config(readFloat("NeuralRendering", "LocalStructure"));
             HelixSRNRSkinStructure.set_from_config(readFloat("NeuralRendering", "SkinStructure"));
@@ -1353,6 +1354,8 @@ bool Config::SaveIni()
                      GetIntValue(Instance()->HelixSRNRNetworkSize.value_for_config()).c_str());
         ini.SetValue("NeuralRendering", "Intensity",
                      GetFloatValue(Instance()->HelixSRNRIntensity.value_for_config()).c_str());
+        ini.SetValue("NeuralRendering", "ColorStrength",
+                     GetFloatValue(Instance()->HelixSRNRColorStrength.value_for_config()).c_str());
         ini.SetValue("NeuralRendering", "LocalTone",
                      GetFloatValue(Instance()->HelixSRNRLocalTone.value_for_config()).c_str());
         ini.SetValue("NeuralRendering", "LocalStructure",

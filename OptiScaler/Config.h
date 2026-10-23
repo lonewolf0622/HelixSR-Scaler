@@ -395,6 +395,7 @@ class Config
     CustomOptional<std::string, NoDefault> HelixSRNRModelCache;
     CustomOptional<int> HelixSRNRNetworkSize { 320 };
     CustomOptional<float> HelixSRNRIntensity { 1.0f };
+    CustomOptional<float> HelixSRNRColorStrength { 0.0f };
     CustomOptional<float> HelixSRNRLocalTone { 1.0f };
     CustomOptional<float> HelixSRNRLocalStructure { 1.0f };
     CustomOptional<float> HelixSRNRSkinStructure { -1.0f };
