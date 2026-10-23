@@ -49,7 +49,7 @@ struct Library
 {
     HMODULE module = nullptr;
     decltype(&HelixSR_NR_Create) create = nullptr;
-    decltype(&HelixSR_NR_Record) record = nullptr;
+    decltype(&HelixSR_NR_RecordColor) record = nullptr;
     decltype(&HelixSR_NR_PrepareSubmission) prepare = nullptr;
     decltype(&HelixSR_NR_Submitted) submitted = nullptr;
     decltype(&HelixSR_NR_RetireRecording) retire = nullptr;
@@ -69,7 +69,7 @@ struct Library
     if (!field)                                                                                                        \
     throw std::runtime_error("Neural rendering backend version does not match Scaler")
             NR_LOAD(create, "Create");
-            NR_LOAD(record, "Record");
+            NR_LOAD(record, "RecordColor");
             NR_LOAD(prepare, "PrepareSubmission");
             NR_LOAD(submitted, "Submitted");
             NR_LOAD(retire, "RetireRecording");
@@ -750,7 +750,8 @@ bool Pass::Dispatch(ID3D12GraphicsCommandList* commands, ID3D12Resource* input, 
     frame.colorSpace = hdr ? 1u : 2u;
     frame.historyBlend = 1;
     frame.depthThreshold = .01f;
-    const auto result = impl->owner->library->record(impl->owner->context, &frame, &use->ticket);
+    const auto colorStrength = std::clamp(cfg.HelixSRNRColorStrength.value_or_default(), 0.f, 1.f);
+    const auto result = impl->owner->library->record(impl->owner->context, &frame, colorStrength, &use->ticket);
     if (FAILED(result))
     {
         const std::string error = impl->owner->library->error();
@@ -786,6 +787,13 @@ void RenderSettings()
             cfg.HelixSRNRIntensity = intensity;
             changed = true;
         }
+        float colorStrength = cfg.HelixSRNRColorStrength.value_or_default();
+        if (ImGui::SliderFloat("NR color strength", &colorStrength, 0, 1))
+        {
+            cfg.HelixSRNRColorStrength = colorStrength;
+            changed = true;
+        }
+        ImGui::TextDisabled("0 keeps the game's colors; 1 uses neural colors.");
         int size = cfg.HelixSRNRNetworkSize.value_or_default();
         if (ImGui::InputInt("NR resolution", &size, 32, 64))
         {
