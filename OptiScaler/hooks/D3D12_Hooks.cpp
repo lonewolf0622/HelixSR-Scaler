@@ -15,6 +15,7 @@
 #include <proxies/Streamline_Proxy.h>
 #include <proxies/KernelBase_Proxy.h>
 #include <hooks/Reflex_Hooks.h>
+#include <helixsr/HelixSRNeuralRendering.h>
 
 #include <detours/detours.h>
 
@@ -400,6 +401,7 @@ template <> struct PipelineTraits<Pipeline::Graphics>
 
 static void RecordReset(ID3D12GraphicsCommandList* commandList, ID3D12PipelineState* pInitialState)
 {
+    HelixSR::Nr::ResetRecording(commandList);
     // Not gated by the upscaler flag, a reset always invalidates everything
     if (commandList == nullptr || t_suppressRecording > 0)
         return;
@@ -968,7 +970,7 @@ void D3D12Hooks::HookToCommandListLate(ID3D12GraphicsCommandList* commandList)
     DetourUpdateThread(GetCurrentThread());
 
     // Common
-    AttachIf(c.restoreCompute || c.restoreGraphics, s_Reset.o_lateHook, hkResetLate);
+    AttachIf(true, s_Reset.o_lateHook, hkResetLate);
     AttachIf(c.extended, s_SetPipelineState.o_lateHook, hkSetPipelineStateLate);
     AttachIf(c.hookDescriptorHeaps, s_SetDescriptorHeaps.o_lateHook, hkSetDescriptorHeapsLate);
 
@@ -1025,7 +1027,7 @@ static void HookToCommandList(ID3D12Device* InDevice)
         DetourUpdateThread(GetCurrentThread());
 
         // Common
-        AttachIf(c.restoreCompute || c.restoreGraphics, s_Reset.o_earlyHook, hkReset);
+        AttachIf(true, s_Reset.o_earlyHook, hkReset);
         AttachIf(c.extended, s_SetPipelineState.o_earlyHook, hkSetPipelineState);
         AttachIf(c.hookDescriptorHeaps, s_SetDescriptorHeaps.o_earlyHook, hkSetDescriptorHeaps);
 

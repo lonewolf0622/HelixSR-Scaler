@@ -1,0 +1,53 @@
+Optional DLSS 5 Neural Rendering
+==============================
+
+This D3D12 postpass runs after HelixSR (or another Scaler upscaler). It is off
+by default. It uses ordinary compute shaders and needs shader model 6.2 with
+native 16-bit operations. Linux uses the same DLL through Proton/vkd3d-proton.
+
+Keep this HelixSR-NR folder beside Scaler's DLL in the game installation.
+Prepare your own private model cache with tools/prepare.py, following
+tools/README.md. The tool reads your supported local nvngx_dlssnr.dll without
+executing it. Python, Node.js, Naga and DXC are required for preparation.
+No NVIDIA DLL, weights or prepared cache are included in this download.
+
+Set [NeuralRendering] ModelCache in OptiScaler.ini to your cache directory.
+The default is HelixSR-NR/model-cache beside Scaler's DLL. Open Scaler's menu
+with Insert, then enable Neural rendering under Custom or Upscaling.
+Normal SR continues while the background worker prepares NR, or if the cache
+is unavailable. The status beneath the controls reports preparation/errors.
+
+NR resolution selects the longest network edge, preserving the display aspect
+ratio. Your prepared cache must cover the requested network field. A 320x320
+cache covers the default 320x180 input on a 16:9 display. Native sizes below 320 still
+use a padded 320x320 field and do not meaningfully reduce GPU cost. Changing
+resolution reloads the context; intensity changes apply live. Zero intensity
+bypasses neural work and resets history before NR resumes.
+
+Optional compact preparation (--field compact) can reduce the padded field.
+For example --width 192 --height 108 --math fast --field compact needs NR
+resolution 192 and the matching cache path. It reached about 29 FPS in the
+tested BC250 saved scene. Compact changes model context and image quality;
+native geometry and accurate arithmetic remain the defaults. See tools/README.md.
+
+Measured BC250 network time: about 98.5 ms in default accurate mode. Optional
+--math fast preparation measures 62.9 ms but changes numerical results; see
+tools/README.md. The earlier 110 ms cache ran at roughly 9 FPS with HelixSR
+in the isolated CONTROL Resonant saved-scene test. This feature
+is experimental and expensive. Cold shader preparation may take several
+minutes; warm starts reuse the driver shader cache. Only neutral style is
+supported. Native NVIDIA image parity and broad game compatibility are not
+established. Use lower intensity when the full effect is too strong.
+
+Generated caches contain NVIDIA model data. Keep them private; do not upload
+them or include them in a release. Source and retained third-party licenses:
+https://github.com/lonewolf0622/HelixSR-Scaler/tree/helixsr/helixsr/nr
+
+COLOR PRESERVATION
+
+NR color strength defaults to 0, preserving the game's colors while retaining
+NR lighting and detail. Higher values transfer more of the model's color;
+1 is the previous full-color behavior, which can desaturate neutral-style scenes.
+The setting is available in the menu and as [NeuralRendering] ColorStrength.
+Update both OptiScaler and HelixSR-NR/helixsr-nr.dll together. Existing private
+model caches remain usable; this correction does not require preparation again.

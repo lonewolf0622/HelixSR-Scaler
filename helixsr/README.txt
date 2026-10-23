@@ -1,5 +1,8 @@
 HelixSR Scaler 1.1.0
 
+Optional DirectX 12 Neural Rendering: see HelixSR-NR/INSTALL.txt. It is off by
+default and requires a private model cache prepared from your local NR DLL.
+
 New in 1.1.0: HelixSR Scaler is OptiScaler first and behaves like OptiScaler. With HelixSR
 installed (the HelixSR-fsrfg folder next to the game's .exe), HelixSR is the upscaler in DirectX 12,
 DirectX 11 and Vulkan games, with AMD FSR 3 / FSR 4 and Intel XeSS still in the list. Frame

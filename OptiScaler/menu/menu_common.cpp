@@ -38,6 +38,7 @@
 #include <misc/IdentifyGpu.h>
 #include <proxies/NVNGX_Proxy.h>
 #include <helixsr/HelixSR.h> // HelixSR Scaler
+#include <helixsr/HelixSRNeuralRendering.h>
 #include <hooks/Xell_Hooks.h>
 #include <low_latency/input/input_common.h>
 #include <hooks/Vulkan_Hooks.h>
@@ -6248,6 +6249,17 @@ void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)
     PopulateCombo("Force State", config->FN_ForceReflex, lowlatency_states);
 }
 
+void MenuCommon::RenderNeuralRenderingSettings(RenderMenuContext& ctx)
+{
+    SectionTitle("Neural Rendering");
+    if (!ctx.currentFeature || ctx.currentFeature->Api() != API::DX12)
+    {
+        ImGui::TextDisabled("Neural rendering requires a DirectX 12 upscaler.");
+        return;
+    }
+    HelixSR::Nr::RenderSettings();
+}
+
 void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)
 {
     auto& state = ctx.state;
@@ -8541,6 +8553,8 @@ const MenuCommon::MenuBox* MenuCommon::GetMenuBoxes(size_t& count)
     static const MenuBox boxes[] = {
         { "upscaler", "Upscaling", "Upscalers",
           [](RenderMenuContext& c) { if (IsUpscalerActive(c.currentFeature)) RenderCard(c, RenderActiveUpscalerSettings); } },
+        { "neural_rendering", "Upscaling", "Neural Rendering",
+          [](RenderMenuContext& c) { if (IsUpscalerActive(c.currentFeature)) RenderCard(c, RenderNeuralRenderingSettings); } },
         { "sharpness", "Upscaling", "Sharpness",
           [](RenderMenuContext& c) { if (IsUpscalerActive(c.currentFeature)) RenderCard(c, RenderActiveImageSettings); } },
         { "upscale_ratio", "Upscaling", "Upscale Ratio Override",

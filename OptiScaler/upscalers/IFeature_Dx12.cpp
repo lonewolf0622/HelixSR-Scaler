@@ -24,6 +24,13 @@ void IFeature_Dx12::ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID
     InCommandList->ResourceBarrier(1, &barrier);
 }
 
+void IFeature_Dx12::CompatibilityBarrier(ID3D12GraphicsCommandList* commands, ID3D12Resource* resource,
+                                         D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) const
+{
+    if (!_pipelineStatesManaged)
+        ResourceBarrier(commands, resource, before, after);
+}
+
 bool IFeature_Dx12::Init(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCommandList,
                          NVSDK_NGX_Parameter* InParameters)
 {
@@ -42,6 +49,7 @@ bool IFeature_Dx12::Init(ID3D12Device* InDevice, ID3D12GraphicsCommandList* InCo
         if (GetUpscalerType() != Upscaler::DLSS && GetUpscalerType() != Upscaler::DLSSD)
             Bias = std::make_unique<Bias_Dx12>("Bias", InDevice);
         Magnifier = std::make_unique<Magnifier_Dx12>("Magnifier", InDevice);
+        NeuralRendering = std::make_unique<HelixSR::Nr::Pass>();
 
         UpscalerTime = std::make_unique<GpuTime_Dx12>(InDevice);
     }
@@ -53,6 +61,7 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
 {
     // Frees deferred objects even when presents aren't hooked
     DeferredRelease::Collect();
+    HelixSR::Nr::Collect();
 
     if (!IsInited())
     {
@@ -106,8 +115,17 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     // Keep game textures in compute states through the upscaler and all
     // post-processing passes. Output scaling / sharpening can insert scratch
     // targets, but the final pass still writes the game's original output.
+    const bool manageStates = (upscaler == Upscaler::DLSS && NVNGXProxy::HelixSRDlss()) ||
+                              Config::Instance()->HelixSRNREnabled.value_or_default();
+    struct ManagedScope
+    {
+        bool& flag;
+        bool previous;
+        ManagedScope(bool& value, bool enabled) : flag(value), previous(std::exchange(value, enabled)) {}
+        ~ManagedScope() { flag = previous; }
+    } managedScope(_pipelineStatesManaged, manageStates);
     HelixSR::Dx12::ResourceTransitions transitions(InCommandList);
-    if (upscaler == Upscaler::DLSS && NVNGXProxy::HelixSRDlss())
+    if (manageStates)
     {
         auto& cfg = *Config::Instance();
         const auto state = [](const auto& setting) -> std::optional<D3D12_RESOURCE_STATES>
@@ -116,14 +134,26 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
                 return static_cast<D3D12_RESOURCE_STATES>(setting.value());
             return std::nullopt;
         };
-        const std::array states = { state(cfg.ColorResourceBarrier), state(cfg.DepthResourceBarrier),
-                                    state(cfg.MVResourceBarrier),    state(cfg.ExposureResourceBarrier),
-                                    state(cfg.MaskResourceBarrier),  state(cfg.OutputResourceBarrier) };
+        std::array states = { state(cfg.ColorResourceBarrier), state(cfg.DepthResourceBarrier),
+                              state(cfg.MVResourceBarrier),    state(cfg.ExposureResourceBarrier),
+                              state(cfg.MaskResourceBarrier),  state(cfg.OutputResourceBarrier) };
         const std::array configured = {
             state(cfg.ColorResourceBarrier.value_for_config()), state(cfg.DepthResourceBarrier.value_for_config()),
             state(cfg.MVResourceBarrier.value_for_config()),    state(cfg.ExposureResourceBarrier.value_for_config()),
             state(cfg.MaskResourceBarrier.value_for_config()),  state(cfg.OutputResourceBarrier.value_for_config())
         };
+        const bool legacyBackend = upscaler == Upscaler::FSR21 || upscaler == Upscaler::FSR22 ||
+                                   upscaler == Upscaler::FFX || upscaler == Upscaler::XeSS;
+        const bool unreal = State::Instance().NVNGX_Engine == NVSDK_NGX_ENGINE_TYPE_UNREAL ||
+                            State::Instance().gameEngine == GameEngineType::Unreal ||
+                            (State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine);
+        if (legacyBackend && unreal)
+        {
+            if (!states[0])
+                states[0] = D3D12_RESOURCE_STATE_RENDER_TARGET;
+            if (!states[2])
+                states[2] = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        }
         for (unsigned i = 0; i < states.size(); ++i)
         {
             ID3D12Resource* resource = nullptr;
@@ -176,6 +206,21 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
                   return true;
               } });
     }
+
+    if (NeuralRendering && Config::Instance()->HelixSRNREnabled.value_or_default())
+    {
+        pipeline.push_back({ [&](ID3D12Resource* nextOutput) -> ID3D12Resource*
+                             { return NeuralRendering->Prepare(Device, InCommandList, nextOutput); },
+                             [&](ID3D12Resource* input, ID3D12Resource* output) -> bool
+                             {
+                                 return NeuralRendering->Dispatch(InCommandList, input, output, paramDepth, paramMotion,
+                                                                  InParameters, IsHdr(), DepthInverted(), LowResMV(),
+                                                                  RenderWidth(), RenderHeight());
+                             } });
+    }
+
+    else if (NeuralRendering)
+        NeuralRendering->Suspend();
 
     _actualSharpness = _sharpness;
     if (useRcas)
@@ -285,6 +330,12 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
     }
 
     // Upscaler will write to the first active shader, or just output
+    struct OutputScope
+    {
+        NVSDK_NGX_Parameter* parameters;
+        ID3D12Resource* original;
+        ~OutputScope() { parameters->Set(NVSDK_NGX_Parameter_Output, original); }
+    } outputScope { InParameters, paramOutput };
     InParameters->Set(NVSDK_NGX_Parameter_Output, currentTarget);
 
     UpscalerTime->Start(InCommandList);
@@ -326,8 +377,6 @@ bool IFeature_Dx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX
                 Imgui = std::make_unique<Menu_Dx12>(GetForegroundWindow(), Device);
         }
     }
-
-    InParameters->Set(NVSDK_NGX_Parameter_Output, paramOutput);
 
     return evalResult;
 }
@@ -376,4 +425,5 @@ IFeature_Dx12::~IFeature_Dx12()
     OutputScaler.reset();
     RCAS.reset();
     Bias.reset();
+    NeuralRendering.reset();
 }

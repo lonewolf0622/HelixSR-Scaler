@@ -63,6 +63,17 @@ jobs:
     - name: Build
       run: msbuild /m /p:Configuration=Release . /verbosity:minimal "/flp:errorsonly;logfile=build-errors.log"
 
+    - name: Build optional Neural Rendering backend
+      shell: pwsh
+      run: |
+        $dxc = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\dxc.exe" |
+          Sort-Object FullName -Descending | Select-Object -First 1
+        if (-not $dxc) { throw 'Windows SDK DXC was not found' }
+        cmake -S helixsr/nr/runtime -B build-nr -A x64 "-DDXC_EXECUTABLE=$($dxc.FullName)"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        cmake --build build-nr --config Release
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
     # Compiler errors as annotations, readable on the run's summary page and through the API
     - name: Show build errors
       if: failure()
@@ -85,6 +96,18 @@ jobs:
         Remove-Item -Force "$out\!! EXTRACT ALL FILES TO GAME FOLDER !!" -ErrorAction SilentlyContinue
         Copy-Item LICENSE "$out\Licenses\OptiScaler_LICENSE.txt"
         Copy-Item helixsr\README.txt "$out\README.txt"
+        # Optional NR ships code/tools only. Each user prepares their own private model cache.
+        New-Item -ItemType Directory -Force "$out\HelixSR-NR" | Out-Null
+        Copy-Item build-nr\Release\helixsr-nr.dll "$out\HelixSR-NR\helixsr-nr.dll"
+        Copy-Item helixsr\nr\INSTALL.txt "$out\HelixSR-NR\INSTALL.txt"
+        Copy-Item helixsr\nr\runtime\LICENSE, helixsr\nr\runtime\NOTICE "$out\HelixSR-NR"
+        $toolFiles = git ls-files -- helixsr/nr/tools
+        if ($LASTEXITCODE -ne 0 -or -not $toolFiles) { throw 'NR preparation sources are missing' }
+        foreach ($file in $toolFiles) {
+          $dest = Join-Path "$out\HelixSR-NR" $file.Substring('helixsr/nr/'.Length)
+          New-Item -ItemType Directory -Force (Split-Path -Parent $dest) | Out-Null
+          Copy-Item -LiteralPath $file -Destination $dest
+        }
         # HelixSR Scaler's Linux setup in place of OptiScaler's, and the list of the download's files it uses
         Copy-Item -Force helixsr\setup_linux.sh "$out\setup_linux.sh"
         Push-Location $out
