@@ -1,6 +1,9 @@
 HelixSR Scaler for Linux and Steam Deck
 =======================================
 
+Optional DirectX 12 Neural Rendering: see HelixSR-NR/INSTALL.txt. It is off by
+default and requires a private model cache prepared from your local NR DLL.
+
 HelixSR Scaler lets HelixSR run in games that only have DLSS, XeSS or FSR 2.
 It is OptiScaler with HelixSR built in: HelixSR is one more choice in OptiScaler's upscaler list,
 and everything else OptiScaler does is still there.

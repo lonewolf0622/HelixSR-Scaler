@@ -240,7 +240,7 @@ remove_from() { # remove_from EXE_FOLDER [quiet]
     fi
     rm -f "$dir/$MANIFEST" "$dir/$REMOVER"
     # folders HelixSR Scaler brought, if nothing else is in them now
-    find "$dir/HelixSR" "$dir/$FSRFG" "$dir/OptiScaler" "$dir/D3D12_Optiscaler" "$dir/Licenses" "$dir/DlssOverrides" -depth -type d \
+    find "$dir/HelixSR" "$dir/$FSRFG" "$dir/HelixSR-NR" "$dir/OptiScaler" "$dir/D3D12_Optiscaler" "$dir/Licenses" "$dir/DlssOverrides" -depth -type d \
         -empty -delete 2>/dev/null
     [ -n "$quiet" ] || ok "HelixSR Scaler removed; the game's own files are back"
 }
