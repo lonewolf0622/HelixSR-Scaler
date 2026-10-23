@@ -1,0 +1,7 @@
+/private-cache/
+/model-cache/
+*.dll
+*.bin
+*.cso
+*.rgba16f
+*.log
