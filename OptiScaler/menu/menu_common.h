@@ -236,6 +236,7 @@ class MenuCommon
     static void RenderFakenvapiSettings(RenderMenuContext& ctx);
     static void RenderLowLatencySettings(RenderMenuContext& ctx);
     static void RenderActiveImageSettings(RenderMenuContext& ctx);
+    static void RenderNeuralRenderingSettings(RenderMenuContext& ctx);
     static void RenderUpscaleRatioSettings(RenderMenuContext& ctx);
     static void RenderOutputScalingSettings(RenderMenuContext& ctx);
     static void RenderInitFlagsSettings(RenderMenuContext& ctx);
