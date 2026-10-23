@@ -65,7 +65,7 @@ static D3d12Proxy::PFN_D3D12SerializeRootSignature o_D3D12SerializeRootSignature
 static D3d12Proxy::PFN_D3D12SerializeVersionedRootSignature o_D3D12SerializeVersionedRootSignature = nullptr;
 static PFN_Release o_D3D12DeviceRelease = nullptr;
 
-static bool _creatingD3D12Device = false;
+static thread_local bool _creatingD3D12Device = false;
 static bool _d3d12Captured = false;
 static LUID _lastAdapterLuid = {};
 
@@ -2210,6 +2210,12 @@ static HRESULT hkD3D12GetInterface(REFCLSID rclsid, REFIID riid, void** ppvDebug
 
 static void HookToDevice(ID3D12Device* InDevice)
 {
+    // The background capability probe can create a device while the application
+    // creates its own. Publish trampoline pointers only after the transaction
+    // completes, so another creator cannot attach or clear them concurrently.
+    static std::mutex deviceHookMutex;
+    std::lock_guard<std::mutex> lock(deviceHookMutex);
+
     if (o_CreateSampler != nullptr || InDevice == nullptr)
         return;
 
