@@ -9,6 +9,7 @@ with [HelixSR](https://github.com/lonewolf0622/HelixSR) built in.
 - **Windows, Linux and Steam Deck.** On Linux the same DLL runs through Proton or Wine; the Linux download has a setup
   that finds your Steam games, installs, and gives you the launch options.
 - **Updates** come from this repository's releases.
+- **Optional DLSS 5 Neural Rendering in DirectX 12** runs after upscaling using ordinary compute shaders, including on BC250. It is off by default and requires a locally prepared model cache. See [setup and measured limits](helixsr/nr/README.md).
 
 | | Download | How to install |
 |---|---|---|
