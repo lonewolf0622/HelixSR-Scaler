@@ -1,0 +1,15 @@
+{
+  "name": "dlss5-nr-browser-webgpu",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The NR network on WebGPU: a port of the Vulkan implementation in this repository.",
+  "scripts": {
+    "check": "node tools/check_numerics.mjs",
+    "serve": "node serve.mjs"
+  },
+  "dependencies": {
+    "esbuild": "^0.28.2",
+    "three": "^0.186.0"
+  }
+}
