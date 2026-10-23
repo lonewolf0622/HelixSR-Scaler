@@ -103,8 +103,8 @@ bool RCAS_Dx12::CreateBufferResource(ID3D12Device* InDevice, ID3D12Resource* InS
     auto resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
     bool created = false;
-    auto result = Shader_Dx12::CreateBufferResource(InDevice, InSource, InState, &_buffer, resourceFlags,
-                                                  0, 0, DXGI_FORMAT_UNKNOWN, &created);
+    auto result = Shader_Dx12::CreateBufferResource(InDevice, InSource, InState, &_buffer, resourceFlags, 0, 0,
+                                                    DXGI_FORMAT_UNKNOWN, &created);
 
     if (result)
     {
