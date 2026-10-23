@@ -10,6 +10,7 @@
 #include <shaders/bias/Bias_Dx12.h>
 #include <shaders/magnifier/Magnifier_Dx12.h>
 #include <gpu_time/GpuTime_Dx12.h>
+#include <helixsr/HelixSRNeuralRendering.h>
 
 class IFeature_Dx12 : public virtual IFeature
 {
@@ -28,17 +29,23 @@ class IFeature_Dx12 : public virtual IFeature
     };
 
   protected:
+    bool _pipelineStatesManaged = false;
     ID3D12Device* Device = nullptr;
     static inline std::unique_ptr<Menu_Dx12> Imgui = nullptr;
     std::unique_ptr<OS_Dx12> OutputScaler = nullptr;
     std::unique_ptr<RCAS_Dx12> RCAS = nullptr;
     std::unique_ptr<Bias_Dx12> Bias = nullptr;
     std::unique_ptr<Magnifier_Dx12> Magnifier = nullptr;
+    std::unique_ptr<HelixSR::Nr::Pass> NeuralRendering = nullptr;
 
     std::unique_ptr<GpuTime_Dx12> UpscalerTime = nullptr;
 
     void ResourceBarrier(ID3D12GraphicsCommandList* InCommandList, ID3D12Resource* InResource,
                          D3D12_RESOURCE_STATES InBeforeState, D3D12_RESOURCE_STATES InAfterState) const;
+    // Compatibility settings describe game resources at the pipeline boundary.
+    // Internal copies still use ResourceBarrier and must never be suppressed.
+    void CompatibilityBarrier(ID3D12GraphicsCommandList* commands, ID3D12Resource* resource,
+                              D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after) const;
 
     virtual bool InitInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters) = 0;
     virtual bool EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters) = 0;
