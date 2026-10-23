@@ -391,6 +391,14 @@ class Config
     // Sharpening is OptiScaler's (RCAS, [Sharpness] and [CAS]); HelixSR's own sharpener stays off.
     CustomOptional<std::string, NoDefault> HelixSRInt8; // on, off (auto: HelixSR decides by the GPU)
     CustomOptional<int, NoDefault> HelixSRWaveSize;     // 64, 32
+    CustomOptional<bool> HelixSRNREnabled { false };
+    CustomOptional<std::string, NoDefault> HelixSRNRModelCache;
+    CustomOptional<int> HelixSRNRNetworkSize { 320 };
+    CustomOptional<float> HelixSRNRIntensity { 1.0f };
+    CustomOptional<float> HelixSRNRLocalTone { 1.0f };
+    CustomOptional<float> HelixSRNRLocalStructure { 1.0f };
+    CustomOptional<float> HelixSRNRSkinStructure { -1.0f };
+    CustomOptional<float> HelixSRNRPaperWhite { 1.0f };
     // HelixSR's frame generation quality ([HelixSR] FGPreset = auto | c | full): 0 Light (NVIDIA's preset C), 1 Full;
     // auto = Light. helixsr.ini [DlssFrameGeneration] Preset, read at the game start (helixsr/HelixSRFgQuality.h)
     CustomOptional<int, NoDefault> HelixSRFGPreset;
@@ -404,7 +412,7 @@ class Config
     CustomOptional<bool> MenuBlur { true };
     CustomOptional<float> MenuBlurStrength { 1.0f };
     CustomOptional<bool> CustomTabEnabled { true };
-    CustomOptional<std::string> CustomTabCards { "upscaler,sharpness,fg_selection,fg_fsrfg,fg_xefg,fg_dlssg,fg_"
+    CustomOptional<std::string> CustomTabCards { "upscaler,neural_rendering,sharpness,fg_selection,fg_fsrfg,fg_xefg,fg_dlssg,fg_"
                                                  "reprojection,fg_optifg,fg_nvngx,fg_fsrfg_inputs,fg_sl_"
                                                  "inputs,framerate" }; // Comma separated ids of the boxes
 

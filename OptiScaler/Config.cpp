@@ -496,6 +496,14 @@ bool Config::Reload(std::filesystem::path iniPath)
             // HelixSR Scaler: HelixSR's settings
             HelixSRInt8.set_from_config(readString("HelixSR", "Int8", true));
             HelixSRWaveSize.set_from_config(readInt("HelixSR", "WaveSize"));
+            HelixSRNREnabled.set_from_config(readBool("NeuralRendering", "Enabled"));
+            HelixSRNRModelCache.set_from_config(readString("NeuralRendering", "ModelCache"));
+            HelixSRNRNetworkSize.set_from_config(readInt("NeuralRendering", "NetworkSize"));
+            HelixSRNRIntensity.set_from_config(readFloat("NeuralRendering", "Intensity"));
+            HelixSRNRLocalTone.set_from_config(readFloat("NeuralRendering", "LocalTone"));
+            HelixSRNRLocalStructure.set_from_config(readFloat("NeuralRendering", "LocalStructure"));
+            HelixSRNRSkinStructure.set_from_config(readFloat("NeuralRendering", "SkinStructure"));
+            HelixSRNRPaperWhite.set_from_config(readFloat("NeuralRendering", "PaperWhite"));
             HelixSRVulkanComputeQueue.set_from_config(readBool("HelixSR", "VulkanComputeQueue"));
             if (auto preset = readString("HelixSR", "FGPreset", true); preset.has_value())
             {
@@ -1338,6 +1346,14 @@ bool Config::SaveIni()
         // HelixSR Scaler: HelixSR's settings
         ini.SetValue("HelixSR", "Int8", Instance()->HelixSRInt8.value_for_config_or("auto").c_str());
         ini.SetValue("HelixSR", "WaveSize", GetIntValue(Instance()->HelixSRWaveSize.value_for_config()).c_str());
+        ini.SetValue("NeuralRendering", "Enabled", GetBoolValue(Instance()->HelixSRNREnabled.value_for_config()).c_str());
+        ini.SetValue("NeuralRendering", "ModelCache", Instance()->HelixSRNRModelCache.value_for_config_or("").c_str());
+        ini.SetValue("NeuralRendering", "NetworkSize", GetIntValue(Instance()->HelixSRNRNetworkSize.value_for_config()).c_str());
+        ini.SetValue("NeuralRendering", "Intensity", GetFloatValue(Instance()->HelixSRNRIntensity.value_for_config()).c_str());
+        ini.SetValue("NeuralRendering", "LocalTone", GetFloatValue(Instance()->HelixSRNRLocalTone.value_for_config()).c_str());
+        ini.SetValue("NeuralRendering", "LocalStructure", GetFloatValue(Instance()->HelixSRNRLocalStructure.value_for_config()).c_str());
+        ini.SetValue("NeuralRendering", "SkinStructure", GetFloatValue(Instance()->HelixSRNRSkinStructure.value_for_config()).c_str());
+        ini.SetValue("NeuralRendering", "PaperWhite", GetFloatValue(Instance()->HelixSRNRPaperWhite.value_for_config()).c_str());
         if (auto vcq = Instance()->HelixSRVulkanComputeQueue.value_for_config(); vcq.has_value())
             ini.SetValue("HelixSR", "VulkanComputeQueue", vcq.value() ? "true" : "false");
         else
