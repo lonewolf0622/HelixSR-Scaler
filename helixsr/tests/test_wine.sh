@@ -129,7 +129,9 @@ cp "$G/OptiScaler.ini" "$W/requested.ini"
 (cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
 check "FSR DLL: HelixSR's FidelityFX DLL is the FFX upscaler module" 'grep -q "HelixSR.s FidelityFX DLL .*HelixSR-fsrfg.amd_fidelityfx_dx12.dll is the FFX upscaler module" "$G/OptiScaler.log"'
 check "FSR DLL: DirectX 12 defaults to FSR, DirectX 11 and Vulkan to FSR w/Dx12 (HelixSR, index 0)" 'grep -q "upscalers Dx12=ffx, Dx11=ffx_12, Vulkan=ffx_12 (FFX upscaler index 0)" "$G/OptiScaler.log"'
-check "FSR DLL: AMD's FSR next to HelixSR's DLL for its list" 'cmp -s "$G/OptiScaler/amd_fidelityfx_upscaler_dx12.dll" "$G/HelixSR-fsrfg/amd_fidelityfx_upscaler_dx12.amd.dll"'
+# (AMD's own: OptiScaler/amd_fidelityfx_upscaler_dx12.amd.dll when the package's upscaler DLL is HLX FSR 4)
+amd="$G/OptiScaler/amd_fidelityfx_upscaler_dx12.amd.dll"; [ -f "$amd" ] || amd="$G/OptiScaler/amd_fidelityfx_upscaler_dx12.dll"
+check "FSR DLL: AMD's FSR next to HelixSR's DLL for its list" 'cmp -s "$amd" "$G/HelixSR-fsrfg/amd_fidelityfx_upscaler_dx12.amd.dll"'
 check "FSR DLL: the defaults are not saved into OptiScaler.ini" 'cmp -s "$W/requested.ini" "$G/OptiScaler.ini"'
 check "FSR DLL: no HelixSR DLSS route without helixsr.dll" '! grep -q "helixsr.dll in use" "$G/OptiScaler.log"'
 check "FSR DLL: HelixSR's settings go to helixsr.ini next to its DLL" 'grep -q "^Sharpener = off" "$G/HelixSR-fsrfg/helixsr.ini"'

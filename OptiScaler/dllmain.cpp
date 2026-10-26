@@ -1936,6 +1936,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     case DLL_PROCESS_DETACH:
         State::Instance().isShuttingDown = true;
 
+        // HelixSR Scaler: the process is ending (lpReserved set): its other threads are already gone, and one of them
+        // (getGpuInfo, when the game exits right after starting) can have held the heap or the logger's lock, so
+        // freeing libraries or logging here can wait forever. The system frees everything; only an unload cleans up.
+        if (lpReserved != nullptr)
+            break;
+
         // Unhooking and cleaning stuff causing issues during shutdown.
         // Disabled for now to check if it cause any issues
         // UnhookApis();
