@@ -32,6 +32,9 @@ struct ImGui_ImplVulkanH_Frame* _ImVulkan_Frames = VK_NULL_HANDLE;
 static VkSemaphore* _ImVulkan_Semaphores = VK_NULL_HANDLE;
 static VkRenderPass _vkRenderPass = VK_NULL_HANDLE;
 static uint32_t _scImageCount;
+
+// Swapchain the menu's frames were made for, other swapchains are presented without the menu
+static VkSwapchainKHR _menuSwapchain = VK_NULL_HANDLE;
 static ULONG64 _frameCount;
 
 // menu background blur
@@ -119,6 +122,7 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
     VkResult result;
 
     // Get swapchain image count.
+    _scImageCount = 0;
     result = vkGetSwapchainImagesKHR(device, *pSwapchain, &_scImageCount, NULL);
     if (result != VK_SUCCESS)
     {
@@ -126,9 +130,18 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
         return;
     }
 
-    VkImage images[8];
-    result = vkGetSwapchainImagesKHR(device, *pSwapchain, &_scImageCount, images);
-    if (result != VK_SUCCESS)
+    LOG_DEBUG("Swapchain image count: {}, game minImageCount: {}", _scImageCount, pCreateInfo->minImageCount);
+
+    // ImGui needs at least 2 images, don't crash the game if the swapchain reports less
+    if (_scImageCount < 2)
+    {
+        LOG_ERROR("Swapchain reports only {} images, skipping menu init for this swapchain", _scImageCount);
+        return;
+    }
+
+    std::vector<VkImage> images(_scImageCount);
+    result = vkGetSwapchainImagesKHR(device, *pSwapchain, &_scImageCount, images.data());
+    if (result != VK_SUCCESS && result != VK_INCOMPLETE)
     {
         LOG_ERROR("vkGetSwapchainImagesKHR error: {0:X}", (UINT) result);
         return;
@@ -381,7 +394,7 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
             }
 
 #ifdef VULKAN_DEBUG_LAYER
-            SetVkObjectName(device, instance, VK_OBJECT_TYPE_SEMAPHORE, (UINT64) fsd, "ImGui Backbuffer Semaphore");
+            SetVkObjectName(device, instance, VK_OBJECT_TYPE_SEMAPHORE, (UINT64) *fsd, "ImGui Backbuffer Semaphore");
 #endif
         }
     }
@@ -395,7 +408,7 @@ static void CreateVulkanObjects(VkDevice device, VkPhysicalDevice pd, VkInstance
         _ImVulkan_Info.Queue = queue;
         _ImVulkan_Info.DescriptorPool = pool;
         _ImVulkan_Info.Subpass = 0;
-        _ImVulkan_Info.MinImageCount = pCreateInfo->minImageCount;
+        _ImVulkan_Info.MinImageCount = std::clamp(pCreateInfo->minImageCount, 2u, _scImageCount);
         _ImVulkan_Info.ImageCount = _scImageCount;
         _ImVulkan_Info.Allocator = NULL;
         _ImVulkan_Info.RenderPass = _vkRenderPass;
@@ -567,6 +580,9 @@ bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)
     if (pPresentInfo->swapchainCount == 0)
         return false;
 
+    if (pPresentInfo->pSwapchains[0] != _menuSwapchain)
+        return true;
+
     // std::lock_guard<std::mutex> lock(_vkPresentMutex);
     LOG_DEBUG("rendering menu, swapchain count: {0}", pPresentInfo->swapchainCount);
 
@@ -615,7 +631,13 @@ bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)
             ImGui_ImplVulkanH_Frame* fd = &_ImVulkan_Frames[idx];
             const bool blurMenu = blurReady && MenuCommon::BackgroundBlurUsed();
 
-            vkWaitForFences(_ImVulkan_Info.Device, 1, &fd->Fence, VK_TRUE, UINT64_MAX);
+            if (auto wResult = vkWaitForFences(_ImVulkan_Info.Device, 1, &fd->Fence, VK_TRUE, UINT64_MAX);
+                wResult != VK_SUCCESS)
+            {
+                LOG_ERROR("vkWaitForFences error: {}", (int32_t) wResult);
+                return true;
+            }
+
             vkResetFences(_ImVulkan_Info.Device, 1, &fd->Fence);
 
             {
@@ -690,6 +712,13 @@ void MenuOverlayVk::CreateSwapchain(VkDevice device, VkPhysicalDevice pd, VkInst
 {
     LOG_FUNC();
 
+    if (OnOtherWindow(hwnd))
+    {
+        LOG_DEBUG("Menu is on window {:X}, skipping swapchain of {:X}", (UINT64) MenuOverlayBase::Handle(),
+                  (UINT64) hwnd);
+        return;
+    }
+
     if (MenuOverlayBase::Handle() != hwnd)
     {
         LOG_DEBUG("MenuOverlayBase::Handle() != _hwnd");
@@ -713,8 +742,15 @@ void MenuOverlayVk::CreateSwapchain(VkDevice device, VkPhysicalDevice pd, VkInst
 
     if (_ImVulkan_Info.Device != VK_NULL_HANDLE)
     {
+        _menuSwapchain = *pSwapchain;
         _isInited = true;
         MenuOverlayBase::VulkanReady();
         LOG_DEBUG("Vulkan ready");
     }
+}
+
+bool MenuOverlayVk::OnOtherWindow(HWND hwnd)
+{
+    auto menuHwnd = MenuOverlayBase::Handle();
+    return MenuOverlayBase::IsInited() && menuHwnd != hwnd && IsWindow(menuHwnd);
 }

@@ -16,6 +16,9 @@ namespace HelixSR::Names
 {
 // HelixSR's own entry in a FidelityFX version list
 inline bool IsHelixSR(const char* name) { return name != nullptr && std::strncmp(name, "HelixSR", 7) == 0; }
+// our other upscalers in a FidelityFX version list ("HLX FSR 4"): shown as named, never patched or changed by OptiScaler
+inline bool IsHlx(const char* name) { return name != nullptr && std::strncmp(name, "HLX", 3) == 0; }
+inline bool IsOwnUpscaler(const char* name) { return IsHelixSR(name) || IsHlx(name); }
 
 // Menu name of a FidelityFX upscaler or frame-generation version: "FSR <name>", HelixSR's own entry plain "HelixSR"
 inline std::string Label(const char* name)

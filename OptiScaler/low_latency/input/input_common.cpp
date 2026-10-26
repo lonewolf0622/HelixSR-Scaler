@@ -12,6 +12,7 @@
 #include <low_latency/low_latency_tech/ll_antilag_vk.h>
 #include <low_latency/low_latency_tech/ll_fps_limiter.h>
 #include <hooks/Vulkan_Hooks.h>
+#include <misc/FrameLimit.h>
 #include <inputs/FG/XeFG_Inputs_Dx12.h>
 #include <framegen/IFGFeature_Dx12.h>
 #include <nvapi/fakenvapi.h>
@@ -144,7 +145,7 @@ LowLatencyMode InputCommon::default_output(API api)
         if (vendorId == VendorId::AMD && VulkanHooks::o_vkAntiLagUpdateAMD != nullptr)
             return LowLatencyMode::AntiLagVk;
 
-        if (vendorId == VendorId::Nvidia && VulkanHooks::o_vkSetLatencySleepModeNV != nullptr)
+        if (driver_reflex_available(api))
             return LowLatencyMode::Reflex;
 
         return LowLatencyMode::LatencyFlex;
@@ -157,7 +158,7 @@ LowLatencyMode InputCommon::default_output(API api)
     if (vendorId == VendorId::AMD)
         return LowLatencyMode::AntiLag2;
 
-    if (vendorId == VendorId::Nvidia && !fakenvapi::isUsingAsMainNvapi())
+    if (driver_reflex_available(api))
         return LowLatencyMode::Reflex;
 
     return LowLatencyMode::LatencyFlex;
@@ -165,19 +166,27 @@ LowLatencyMode InputCommon::default_output(API api)
 
 const char* InputCommon::output_unavailable(LowLatencyMode output, API api)
 {
-    auto vendorId = IdentifyGpu::getPrimaryGpu().vendorId;
+    if (output == LowLatencyMode::Reflex && !driver_reflex_available(api))
+        return api == API::Vulkan ? "Needs an Nvidia GPU with VK_NV_low_latency2" : "Needs an Nvidia GPU";
 
-    // On D3D the driver's Reflex is reached through nvapi, fakenvapi's is a translation of its own
-    if (output == LowLatencyMode::Reflex &&
-        (vendorId != VendorId::Nvidia || (api != API::Vulkan && fakenvapi::isUsingAsMainNvapi())))
-    {
-        return "Needs an Nvidia GPU";
-    }
+    if (output == LowLatencyMode::AntiLagVk && VulkanHooks::o_vkAntiLagUpdateAMD == nullptr)
+        return "Needs an AMD GPU with VK_AMD_anti_lag";
 
-    if ((output == LowLatencyMode::AntiLag2 || output == LowLatencyMode::AntiLagVk) && vendorId != VendorId::AMD)
+    if (output == LowLatencyMode::AntiLag2 && IdentifyGpu::getPrimaryGpu().vendorId != VendorId::AMD)
         return "Needs an AMD GPU";
 
     return nullptr;
+}
+
+bool InputCommon::driver_reflex_available(API api)
+{
+    if (IdentifyGpu::getPrimaryGpu().vendorId != VendorId::Nvidia)
+        return false;
+
+    if (api == API::Vulkan)
+        return VulkanHooks::o_vkSetLatencySleepModeNV != nullptr;
+
+    return !fakenvapi::isUsingAsMainNvapi();
 }
 
 LowLatencyMode InputCommon::for_api(LowLatencyMode mode, API api)
@@ -614,9 +623,15 @@ InputResult InputCommon::sleep(const InputContext& inputContext, IUnknown* pDevi
     presents_without_input = 0;
 
     if (auto current_tech = currently_active_tech.load())
+    {
+        const auto start = std::chrono::steady_clock::now();
         current_tech->sleep(frame_id);
+        last_sleep_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    }
     else
+    {
         return InputResult::NoReadyOutput;
+    }
 
     return InputResult::Ok;
 }
@@ -709,8 +724,10 @@ InputResult InputCommon::set_async_marker(const InputContext& inputContext, ID3D
     if (inputContext.caller != activeInput && !inputContext.localContext)
         return InputResult::UsingDifferentInput;
 
-    if (!currently_active_tech.load()) // can't init using ID3D12CommandQueue, can only check if available
-        return InputResult::LowLatencyUpdateFail;
+    // Can't init using ID3D12CommandQueue, can only check if available. Opti's own contexts mark frames whether or not
+    // the game runs a low latency tech, without an output their markers have nowhere to go.
+    if (!currently_active_tech.load())
+        return inputContext.localContext ? InputResult::Ok : InputResult::LowLatencyUpdateFail;
 
     if (!marker_supported(inputContext.markerMode, marker_params.marker_type))
         return InputResult::InputNotSupported;
@@ -1082,12 +1099,15 @@ std::mutex xefg_batch_mutex;
 std::deque<XeFGBatch> xefg_batches; // Marked, not presented yet
 XeFGBatch xefg_batch;               // Presenting
 constexpr size_t xefg_max_batches = 8;
+uint32_t xefg_types_logged = 0; // AntiLag 2 frame types logged since FG started
+constexpr uint32_t xefg_types_log_limit = 16;
 
 void reset_xefg_batches()
 {
     std::scoped_lock lock(xefg_batch_mutex);
     xefg_batches.clear();
     xefg_batch = {};
+    xefg_types_logged = 0;
 }
 } // namespace
 
@@ -1122,6 +1142,10 @@ void InputCommon::fg_output_present(ID3D12CommandQueue* presentQueue, bool prese
             return;
 
         uint64_t frame_id = 0;
+        std::optional<bool> interpolated;
+        uint32_t position = 0;
+        uint32_t frames = 0;
+        bool logType = false;
 
         {
             std::scoped_lock lock(xefg_batch_mutex);
@@ -1138,12 +1162,37 @@ void InputCommon::fg_output_present(ID3D12CommandQueue* presentQueue, bool prese
             }
 
             frame_id = xefg_batch.frame_id;
+
+            // XeFG presents a batch's generated frames first and its real frame last
+            if (!presented && frame_id != 0 && activeOutput == LowLatencyMode::AntiLag2)
+            {
+                position = xefg_batch.presented;
+                frames = xefg_batch.frames;
+
+                if (position < frames)
+                    interpolated = position + 1 < frames;
+
+                if (xefg_types_logged < xefg_types_log_limit)
+                {
+                    xefg_types_logged++;
+                    logType = true;
+                }
+            }
         }
 
         if (frame_id != 0)
         {
-            tech->set_async_marker(presentQueue, { frame_id, presented ? MarkerType::OUT_OF_BAND_PRESENT_END
-                                                                       : MarkerType::OUT_OF_BAND_PRESENT_START });
+            MarkerParams params { frame_id, presented ? MarkerType::OUT_OF_BAND_PRESENT_END
+                                                      : MarkerType::OUT_OF_BAND_PRESENT_START };
+            params.interpolated = interpolated;
+
+            if (logType)
+            {
+                LOG_INFO("XeFG AntiLag 2 frame type: frame id {}, position {} of {} frames, interpolated {}", frame_id,
+                         position, frames, interpolated.has_value() ? (*interpolated ? "true" : "false") : "inferred");
+            }
+
+            tech->set_async_marker(presentQueue, params);
         }
 
         return;
@@ -1181,8 +1230,8 @@ void InputCommon::fg_output_present(ID3D12CommandQueue* presentQueue, bool prese
 }
 
 // AntiLag 2 only knows the generated frames from the frame type set right before each present. DLSSG's out of band
-// present markers don't give a usable one with more than 1 generated frame, like OptiScaler's XeFG (fg_output_present)
-// the presents themselves do: the first of each batch as the real frame.
+// present markers don't give a usable one with more than 1 generated frame, the presents themselves do: the first of
+// each batch as the real frame. OptiScaler's XeFG sets it in fg_output_present, its real frame is the last of a batch.
 bool InputCommon::dlssg_types_presents()
 {
     auto fgOutput = State::Instance().activeFgOutput;
@@ -1311,7 +1360,8 @@ void InputCommon::update()
     bool active = false;
     ++present_count;
 
-    auto fpsLimit = Config::Instance()->FramerateLimit.value_or_default();
+    // The FPS limit, or XeFG's Dynamic MFG target while it runs as a cap
+    auto fpsLimit = FrameLimit::targetFps();
 
     // The game's XeFG with its own XeLL, only OptiScaler's FPS limit goes to it. XeLL knows the generated frames.
     if (InputXeLL::IsNative())
@@ -1371,7 +1421,8 @@ void InputCommon::update()
         auto mode = current_tech->get_mode();
 
         // Their limiters only work with low latency enabled, for XeLL with XeFG it only skips the sleep calls.
-        // Vulkan's Reflex has no hooks to limit through, its sleep mode limits without low latency too.
+        // Vulkan's Reflex has no hooks to limit through, its sleep mode limits without low latency too. It needs the
+        // swapchain though, with FSR-FG's swapchain OptiScaler's own limiter takes over in present.
         // The FPS Limiter is only a limiter, it ignores the game's state but can be force disabled.
         if (mode == LowLatencyMode::AntiLag2 || mode == LowLatencyMode::XeLL || mode == LowLatencyMode::LatencyFlex ||
             mode == LowLatencyMode::AntiLagVk)
@@ -1380,7 +1431,8 @@ void InputCommon::update()
         }
         else if (mode == LowLatencyMode::Reflex && output_api == API::Vulkan)
         {
-            active = true;
+            auto reflex = std::dynamic_pointer_cast<ReflexVk>(current_tech);
+            active = reflex != nullptr && reflex->has_swapchain();
         }
         else if (mode == LowLatencyMode::FpsLimiter)
         {
@@ -1397,12 +1449,18 @@ void InputCommon::update()
         // The limit is for the presented frames, the output limits the game's. XeFG paces through XeLL, which knows
         // about its generated frames. The game's own DLSSG reports its count through the NGX evaluate.
         auto fg = state.CurrentFG();
+        bool fgActive = fg != nullptr && fg->IsActive() && !fg->IsPaused();
 
-        if (xefg_paced())
+        // VK_NV_low_latency2 enforces the interval between all presents to the swapchain, DLSSG's generated ones too
+        auto vkFg = state.currentVkFG;
+        bool driverCountsFg = fgActive && activeOutput == LowLatencyMode::Reflex && output_api == API::Vulkan &&
+                              vkFg != nullptr && vkFg->OwnsSwapchain(VulkanHooks::LowLatencySwapchain());
+
+        if (xefg_paced() || driverCountsFg)
         {
-            // XeLL already counts XeFG's generated frames
+            // XeLL already counts XeFG's generated frames, the driver DLSSG's
         }
-        else if (fg != nullptr && fg->IsActive() && !fg->IsPaused())
+        else if (fgActive)
         {
             interval *= fg->GetInterpolatedFrameCount() + 1;
         }
@@ -1430,8 +1488,16 @@ void InputCommon::update()
 
 InputResult InputCommon::mark_present_start(IUnknown* pDevice)
 {
-    // TODO: could allow AL2 but need to check the InputMarkerMode of the active AL2 input
-    if (activeInput != LowLatencyInput::UeLowLatency)
+    auto fg = State::Instance().CurrentFG();
+    bool fsrfgTypesFrames =
+        State::Instance().activeFgOutput == FGOutput::FSRFG && fg != nullptr && fg->IsActive() && !fg->IsPaused();
+
+    // UE only sends simulation markers
+    bool marksEnds =
+        activeInput == LowLatencyInput::UeLowLatency || (activeInput == LowLatencyInput::AntiLag2 && fsrfgTypesFrames &&
+                                                         !reports_frame_generation(LowLatencyInput::AntiLag2));
+
+    if (!marksEnds)
         return InputResult::InputNotSupported;
 
     // TODO: this is missing the frame id required by other outputs

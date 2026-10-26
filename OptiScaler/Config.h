@@ -154,7 +154,18 @@ enum FpsOverlayPos : uint32_t
     FpsOverlayPos_TopRight,
     FpsOverlayPos_BottomLeft,
     FpsOverlayPos_BottomRight,
+    FpsOverlayPos_TopCenter,
+    FpsOverlayPos_BottomCenter,
+    FpsOverlayPos_Custom, // FpsOverlayPosX/Y
     FpsOverlayPos_COUNT,
+};
+
+enum FpsOverlayShadow : uint32_t
+{
+    FpsOverlayShadow_Off,
+    FpsOverlayShadow_Shadow,
+    FpsOverlayShadow_Outline,
+    FpsOverlayShadow_COUNT,
 };
 
 enum FpsOverlay : uint32_t
@@ -165,8 +176,18 @@ enum FpsOverlay : uint32_t
     FpsOverlay_DetailedGraph,
     FpsOverlay_Full,
     FpsOverlay_FullGraph,
-    FpsOverlay_ReflexTimings,
+    FpsOverlay_LowLatencyTimings,
+    FpsOverlay_Custom, // FpsOverlayRows and FpsOverlayFpsRow
     FpsOverlay_COUNT,
+};
+
+// What the FPS row shows with the FPS
+enum FpsOverlayFpsRow : uint32_t
+{
+    FpsOverlayFpsRow_JustFps,   // Only the number
+    FpsOverlayFpsRow_FrameTime, // The API, frame time, frame generation and upscaler
+    FpsOverlayFpsRow_Average,   // The API, average FPS, frame generation and upscaler
+    FpsOverlayFpsRow_COUNT,
 };
 
 // Output scaling downscaler
@@ -257,6 +278,7 @@ class Config
     CustomOptional<bool, NoDefault> HDR;
     CustomOptional<bool, NoDefault> JitterCancellation;
     CustomOptional<bool, NoDefault> DisplayResolution;
+    CustomOptional<bool, NoDefault> DynamicResolution;
     CustomOptional<bool, NoDefault> DisableReactiveMask;
     CustomOptional<float> DlssReactiveMaskBias { 0.45f };
 
@@ -363,13 +385,44 @@ class Config
     CustomOptional<FpsOverlayPos> FpsOverlayPosition { FpsOverlayPos_TopLeft };
     /// 0 Only FPS, 1 +Avg FPS & Upscaler info 2 +Frame Time,
     /// 3 +Upscaler Time, 4 +Frame Time Graph, 5 +Upscaler Time Graph
-    /// 6 +Reflex timings
-    CustomOptional<FpsOverlay> FpsOverlayType { FpsOverlay_JustFPS };
+    /// 6 +Low latency timings, 7 Custom rows
+    CustomOptional<FpsOverlay> FpsOverlayType { FpsOverlay_FullGraph };
     CustomOptional<int> FpsShortcutKey { VK_PRIOR };
     CustomOptional<int> FpsCycleShortcutKey { VK_NEXT };
     CustomOptional<bool> FpsOverlayHorizontal { false };
-    CustomOptional<float> FpsOverlayAlpha { 0.4f };
+    CustomOptional<bool> FpsOverlayShowRatio { false };
+    CustomOptional<bool> FpsOverlayCompactLabels { false };
+    CustomOptional<bool> FpsOverlayHideAverages { false };
+    // Rows of the Custom overlay type in their order, comma separated keys, hidden ones start with -.
+    // No value means the default overlay type's rows
+    CustomOptional<std::string, NoDefault> FpsOverlayRows;
+    CustomOptional<FpsOverlayFpsRow> FpsOverlayFpsRowType { FpsOverlayFpsRow_Average }; // Of the Custom type
+    CustomOptional<float, NoDefault> FpsOverlayRowSpacing; // No value means the default spacing
+    // Milliseconds the values that change every frame are kept, 0 updates them every frame
+    CustomOptional<float> FpsOverlayUpdateInterval { 0.0f };
+    CustomOptional<float> FpsOverlayAlpha { 0.45f };
     CustomOptional<float, NoDefault> FpsScale; // No value means same as MenuScale
+    CustomOptional<float> FpsOverlayGraphHeight { 1.0f };
+    // Position for FpsOverlayPos_Custom, 0.0 left/top to 1.0 right/bottom
+    CustomOptional<float> FpsOverlayPosX { 0.0f };
+    CustomOptional<float> FpsOverlayPosY { 0.0f };
+    // Font file in the Windows fonts folder or a full path, no value means the menu font
+    CustomOptional<std::string, NoDefault> FpsOverlayFont;
+    CustomOptional<float, NoDefault> FpsOverlayFontSize; // No value means the menu font size
+    CustomOptional<float> FpsOverlayLetterSpacing { 0.0f };
+    // Labels are the names like FPS:, values their numbers
+    CustomOptional<float> FpsOverlayLabelScale { 1.0f };
+    CustomOptional<float> FpsOverlayValueScale { 1.0f };
+    // 0xRRGGBB, used when the overlays don't use the theme colors
+    CustomOptional<uint32_t> FpsOverlayLabelColor { 0xEAEAEA };
+    CustomOptional<uint32_t> FpsOverlayValueColor { 0xFFFFFF };
+    CustomOptional<uint32_t> FpsOverlayGraphColor { 0x00FF00 };
+    CustomOptional<uint32_t> FpsOverlayBGColor { 0x000000 };
+    CustomOptional<FpsOverlayShadow> FpsOverlayShadowType { FpsOverlayShadow_Shadow };
+    CustomOptional<float> FpsOverlayShadowStrength { 0.4f };
+    CustomOptional<uint32_t> FpsOverlayShadowColor { 0x000000 };
+    CustomOptional<float> FpsOverlayRounding { 2.0f };
+    CustomOptional<float> MenuRounding { 2.0f };
     CustomOptional<bool> UseHQFont { true };
     CustomOptional<bool> DisableSplash { false };
     CustomOptional<float> FontSize { 14.0f };
@@ -508,8 +561,10 @@ class Config
     CustomOptional<float> FsrMinDisOccAcc { -0.333f };
 
     // FSR4
-    CustomOptional<FSR4Support> Fsr4ForceModel { FSR4Support::None };
+    // Overrides the FSR 4 support detected for the GPU
+    CustomOptional<FSR4Support> Fsr4GpuSupport { FSR4Support::None };
     CustomOptional<uint32_t, NoDefault> Fsr4Preset;
+    CustomOptional<FSR4Model, NoDefault> Fsr4Model;
     CustomOptional<bool> Fsr4EnableWatermark { false };
     CustomOptional<bool, SoftDefault> Fsr4DoNotLoadAmdxc64 { false };
 
@@ -531,7 +586,6 @@ class Config
     // NVAPI Override
     CustomOptional<bool> DisableFlipMetering { false };
     CustomOptional<bool> DisableOTA { false };
-    CustomOptional<bool> ImASillyGooseThatIsAboutToMisuseReflex { false };
 
     // Spoofing
     CustomOptional<bool, SoftDefault> DxgiSpoofing { true };
@@ -641,6 +695,7 @@ class Config
     CustomOptional<bool> FGFPTAllowHybridSpin { false };
     CustomOptional<int> FGFPTHybridSpinTime { 2 };
     CustomOptional<bool> FGFPTAllowWaitForSingleObjectOnFence { false };
+    CustomOptional<bool> FSRFGDisableFlipMetering { false };
 
     CustomOptional<bool> FSRFGSkipConfigForHudless { false };
     CustomOptional<bool> FSRFGSkipDispatchForHudless { false };
@@ -649,6 +704,11 @@ class Config
     // XeFG
     CustomOptional<bool> FGXeFGIgnoreInitChecks { false };
     CustomOptional<int> FGXeFGInterpolationCount { 1 };
+    CustomOptional<bool> FGXeFGDynamicMFG { false };          // Count picked up to FGXeFGInterpolationCount
+    CustomOptional<float> FGXeFGFramerateTargetDMFG { 0.0f }; // 0 = the FPS limit, else just under the refresh rate
+    CustomOptional<int> FGXeFGRoundingDMFG { 1 };             // 0 at most, 1 around, 2 at least the target
+    CustomOptional<bool> FGXeFGDynamicAllow1X { true };       // Dynamic MFG may turn frame generation off (1X)
+    CustomOptional<bool> FGXeFGTargetAsCapDMFG { false };     // The Dynamic MFG target is also the FPS limit
     CustomOptional<int, NoDefault> FGXeFGOverrideInterpolationCount; // Game's own XeFG (XeFG input), 0 = off
     CustomOptional<bool> FGXeFGUIComposition { false };
     CustomOptional<bool> FGXeFGDepthInverted { true };
@@ -738,6 +798,15 @@ class Config
 
     std::vector<std::string> GetConfigLog();
 
+    // The FPS overlay's settings that differ from the defaults as a code, to keep them outside the ini and share
+    // them without a file
+    std::string ExportOverlaySettings();
+    bool ImportOverlaySettings(std::string_view code);
+
+    // A code's settings as text, also a preset: Key=Value separated by ';', keys without the FpsOverlay prefix.
+    // What it doesn't list goes back to the default.
+    bool ApplyOverlaySettings(std::string_view text);
+
     static Config* Instance();
 
   private:
@@ -748,6 +817,10 @@ class Config
     std::wstring fileName = L"OptiScaler.ini";
 
     bool Reload(std::filesystem::path iniPath);
+
+    // The FPS overlay's keys of the Menu section: read when loading the ini, or assigned for a pasted code
+    void ReadOverlaySettings(bool assign);
+    void WriteOverlaySettings();
 
     std::optional<std::string> readString(std::string section, std::string key, bool lowercase = false);
     std::optional<std::wstring> readWString(std::string section, std::string key, bool lowercase = false);

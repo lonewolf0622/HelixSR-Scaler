@@ -1214,6 +1214,8 @@ bool FSRFG_Dx12::ReleaseSwapchain(HWND hwnd)
 
     if (!State::Instance().isShuttingDown)
     {
+        State::Instance().currentFGSwapchain = nullptr;
+
         if (_swapChainContext != nullptr)
         {
             auto result = FfxApiProxy::D3D12_DestroyContext(&_swapChainContext, nullptr);
@@ -1221,7 +1223,6 @@ bool FSRFG_Dx12::ReleaseSwapchain(HWND hwnd)
         }
 
         _swapChainContext = nullptr;
-        State::Instance().currentFGSwapchain = nullptr;
     }
 
     if (Config::Instance()->FGUseMutexForSwapchain.value_or_default())
@@ -1551,6 +1552,10 @@ void FSRFG_Dx12::EvaluateState(ID3D12Device* device, FG_Constants& fgConstants)
             Hudfix_Dx12::ResetCounters();
             Hudfix_Dx11::ResetCounters();
         }
+
+        // The change flags are cleared below, so a pending recreation (e.g. FFX FG version) must happen now
+        if (State::Instance().scChanged)
+            DestroyFGContext();
 
         ReleaseResourceCopies();
     }

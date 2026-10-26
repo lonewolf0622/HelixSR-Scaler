@@ -8,6 +8,7 @@
 #include <inputs/FG/Streamline_Inputs.h>
 #include <inputs/FG/Streamline_Inputs_Sl1_Dx12.h>
 
+#include <chrono>
 #include <set>
 #include <deque>
 #include <mutex>
@@ -173,6 +174,8 @@ class State
 
     std::string gameExe;
     std::string gameName;
+    // Counts from when the dll is attached to the process
+    std::chrono::steady_clock::time_point startTime { std::chrono::steady_clock::now() };
     std::string gameVersion;
     GameEngineType gameEngine = GameEngineType::Other;
     bool isWindows10 = false;
@@ -186,6 +189,9 @@ class State
 
     // Reseting on creation of new feature
     std::optional<bool> autoExposure;
+
+    // Passed through from the game's FFX create flags
+    bool dynamicResolution = false;
 
     // FG
     uint64_t fgLastFrame = 0;
@@ -213,7 +219,6 @@ class State
     Sl1_Inputs_Dx12 s_sl1FGInputs {};
 
     // OptiFG
-    bool fgPresentIsCalled = false;
     bool fgOnlyGenerated = false;
     bool fgHudlessCompare = false;
     bool fgChanged = false;
@@ -278,10 +283,13 @@ class State
     bool reflexLimitsFps = false;
     bool reflexShowWarning = false;
     bool rtssReflexInjection = false;
-    bool fakenvapiReloadLowLatency = false;
     UINT64 reflexFrameId = 0;
     UINT64 frameCount = 0;
     bool vkAntiLagSupported = false;
+
+    // AMD driver flip metering
+    bool amdFlipMeterCreated = false;
+    uint32_t amdFlipMeterMode = 0;
 
     // for realtime changes
     ankerl::unordered_dense::map<unsigned int, bool> changeBackend;
@@ -294,6 +302,9 @@ class State
     float lastMipBiasMax = -100.0f;
 
     bool WAR_xefgRequestFGToggle = false;
+
+    // XeFG Dynamic MFG with "Use target as cap": its target while it runs (0 = no cap), the FPS limit when lower
+    float xefgDynamicCapFps = 0.0f;
 
     bool dlssgGameDMFGSupported = false;
     sl::DLSSGMode dlssgLastSetMode = sl::DLSSGMode::eOff;
@@ -338,7 +349,7 @@ class State
     struct LoadedAsiPlugin
     {
         std::string name;
-        bool isOptiPatcher;
+        std::string version;
     };
     std::vector<LoadedAsiPlugin> loadedAsiPlugins {};
     std::mutex loadedAsiPluginsMutex;
@@ -376,6 +387,8 @@ class State
     std::vector<DetailedGpuTime> detailedGpuTimes;
     double lastFGFrameTime = 0.0;
     double presentFrameTime = 0.0;
+    // Time the game's last present to the FG swapchain took, with the FPS limiter's sleep (V-Sync, a full queue)
+    double lastFGPresentMs = 0.0;
     std::mutex frameTimeMutex;
 
     // Opti checking if everything is setup correctly on game launch
@@ -411,6 +424,7 @@ class State
 
     bool isShuttingDown = false;
     std::set<PVOID> modulesToFree;
+    std::mutex modulesToFreeMutex;
 
     // menu warnings
     bool fgSettingsChanged = false;

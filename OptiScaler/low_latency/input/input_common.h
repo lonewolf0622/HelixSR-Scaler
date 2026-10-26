@@ -82,6 +82,8 @@ class InputCommon
     // it last marked
     inline static std::atomic<ID3D12CommandQueue*> xefg_present_queue = nullptr;
     inline static std::atomic_uint64_t xefg_frame_id = 0;
+    // Time the output's last sleep took, for XeFG's Dynamic MFG (the frame time it doesn't need)
+    inline static std::atomic<double> last_sleep_ms = 0.0;
 
     static void mark_frame_generation(LowLatencyInput input)
     {
@@ -124,6 +126,9 @@ class InputCommon
 
   public:
     static InputResult set_low_latency_tech(IUnknown* pDevice, LowLatencyMode mode);
+
+    // The time the output slept since the last call, 0 if it didn't
+    static double take_sleep_ms() { return last_sleep_ms.exchange(0.0); }
 
     static InputResult sleep(const InputContext& inputContext, IUnknown* pDevice,
                              std::optional<uint32_t> frame_id = std::nullopt);
@@ -188,9 +193,13 @@ class InputCommon
     // The GPU vendor's own low latency output
     static LowLatencyMode default_output(API api);
 
-    // Why the GPU can't run the output, nullptr when it can: Reflex needs an Nvidia GPU (and its nvapi on D3D),
-    // AntiLag 2 an AMD GPU
+    // Why the GPU can't run the output, nullptr when it can: Reflex needs the driver's Reflex, AntiLag an AMD GPU
+    // (and VK_AMD_anti_lag on Vulkan)
     static const char* output_unavailable(LowLatencyMode output, API api);
+
+    // The driver's Reflex: an Nvidia GPU with its nvapi on D3D (fakenvapi's isn't Reflex), with VK_NV_low_latency2
+    // on Vulkan
+    static bool driver_reflex_available(API api);
 
     // Why the input can't drive the output, nullptr when it can
     static const char* incompatibility(LowLatencyInput input, LowLatencyMode output);
