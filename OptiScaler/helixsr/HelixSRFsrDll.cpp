@@ -33,7 +33,7 @@ bool SameFile(const fs::path& a, const fs::path& b)
     return fs::equivalent(a, b, ec) && !ec;
 }
 
-// AMD's FSR for HelixSR's list: OptiScaler's amd_fidelityfx_upscaler_dx12.dll linked (else copied) next to HelixSR's
+// AMD's FSR for HelixSR's list: OptiScaler's amd_fidelityfx_upscaler_dx12.amd.dll (else .dll) linked (else copied) next to HelixSR's
 // DLL as amd_fidelityfx_upscaler_dx12.amd.dll, unless that file or a my-fsr folder (the user's own FSR DLLs) is there
 void ProvideAmdUpscaler(const fs::path& folder)
 {
@@ -46,7 +46,11 @@ void ProvideAmdUpscaler(const fs::path& folder)
         return;
     }
 
-    const auto source = fs::path(Config::Instance()->MainDllPath.value_or(L"")) / kAmdUpscaler;
+    // the package's amd_fidelityfx_upscaler_dx12.dll is HLX FSR 4, with AMD's own next to it as .amd.dll
+    const auto main = fs::path(Config::Instance()->MainDllPath.value_or(L""));
+    auto source = main / kAmdUpscalerForHelixSR;
+    if (!fs::is_regular_file(source, ec))
+        source = main / kAmdUpscaler;
     const bool haveSource = fs::is_regular_file(source, ec);
 
     if (fs::exists(target, ec))
