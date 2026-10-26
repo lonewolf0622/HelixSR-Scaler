@@ -391,11 +391,11 @@ class Config
     // Sharpening is OptiScaler's (RCAS, [Sharpness] and [CAS]); HelixSR's own sharpener stays off.
     CustomOptional<std::string, NoDefault> HelixSRInt8; // on, off (auto: HelixSR decides by the GPU)
     CustomOptional<int, NoDefault> HelixSRWaveSize;     // 64, 32
-    // HelixSR's frame generation quality ([HelixSR] FGPreset = auto | c | full): 0 Light (NVIDIA's preset C), 1 Full;
-    // auto = Light. helixsr.ini [DlssFrameGeneration] Preset, read at the game start (helixsr/HelixSRFgQuality.h)
+    // [HelixSR] FGPreset from older settings (auto | c | full); preset C is removed, frame generation always runs Full;
+    // helixsr.ini [DlssFrameGeneration] Preset = full is written at the game start (helixsr/HelixSRFgQuality.h)
     CustomOptional<int, NoDefault> HelixSRFGPreset;
-    // QuickFlow with Full ([HelixSR] QuickFlow = auto | off | fast | fastest): 0 off, 1 fast, 2 fastest (QuickFlow at
-    // half size); auto = off, always off with Light. helixsr.ini [DlssFrameGeneration] QuickFlow = off | on | fastest
+    // Frame generation quality ([HelixSR] QuickFlow = auto | off | fast | fastest): 0 off (best), 1 fast, 2 fastest
+    // (QuickFlow at half size); auto = off. helixsr.ini [DlssFrameGeneration] QuickFlow = off | on | fastest
     CustomOptional<int, NoDefault> HelixSRQuickFlow;
     // Vulkan games through OptiScaler's Dx12 bridge: create the bridge's DirectX 12 queue as a compute queue (true), so
     // it has a Vulkan queue to itself. Off by default: it only helps with a vkd3d-proton that waits for shared fences

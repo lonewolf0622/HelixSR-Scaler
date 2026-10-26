@@ -140,12 +140,13 @@ check "FSR DLL with helixsr-fg, OptiScaler.ini on auto: OptiScaler's defaults, f
 sed -i 's/^FGInput=.*/FGInput=nvngxfg/; s/^FGNvngxReplacement=.*/FGNvngxReplacement=HelixSR/; s/^QuickFlow=.*/QuickFlow=on/' "$G/OptiScaler.ini"
 (cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)
 check "FSR DLL with helixsr-fg, FGInput=nvngxfg + FGNvngxReplacement=HelixSR: HelixSR as the provider" 'grep -q "frame generation settings: input=NvngxFG, output=NoFG, provider=HelixSR" "$G/OptiScaler.log" && [ -f "$G/HelixSR-fsrfg/helixsr-fg/hxfg64.dll" ]'
-check "FSR DLL: Light by default: QuickFlow off in [DlssFrameGeneration] (an old on is not used)" 'dfg QuickFlow off'
-check "FSR DLL: Light by default: Preset = c in [DlssFrameGeneration]" 'dfg Preset c'
+check "FSR DLL: QuickFlow=on (fast) reaches [DlssFrameGeneration] (preset C removed: QuickFlow always applies)" 'dfg QuickFlow on'
+check "FSR DLL: Preset = full in [DlssFrameGeneration] (preset C removed)" 'dfg Preset full'
 check "OptiScaler.ini stays as written (QuickFlow=on is not rewritten)" 'opt QuickFlow on'
 grep -q '^FGPreset=' "$G/OptiScaler.ini" || sed -i 's/^QuickFlow=/FGPreset=auto\nQuickFlow=/' "$G/OptiScaler.ini"
-# Frame generation quality: FGPreset / QuickFlow in OptiScaler.ini, Preset / QuickFlow in helixsr.ini
-for t in "full fast full on" "full fastest full fastest" "full off full off" "c fastest c off" "c fast c off"; do
+# Frame generation quality: QuickFlow in OptiScaler.ini (an older FGPreset is kept there but runs as full), Preset /
+# QuickFlow in helixsr.ini
+for t in "full fast full on" "full fastest full fastest" "full off full off" "c fastest full fastest" "c fast full on"; do
     set -- $t
     sed -i "s/^FGPreset=.*/FGPreset=$1/; s/^QuickFlow=.*/QuickFlow=$2/" "$G/OptiScaler.ini"
     (cd "$G" && timeout 180 wine TestGame.exe >/dev/null 2>&1)

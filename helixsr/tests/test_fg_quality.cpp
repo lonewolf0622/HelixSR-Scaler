@@ -1,5 +1,5 @@
 // HelixSR frame generation's quality (OptiScaler/helixsr/HelixSRFgQuality.h): OptiScaler.ini's FGPreset / QuickFlow
-// read and written back unchanged, and what goes to helixsr.ini [DlssFrameGeneration] (QuickFlow off with Light).
+// read and written back unchanged, and what goes to helixsr.ini [DlssFrameGeneration] (always Preset = full).
 #include "../../OptiScaler/helixsr/HelixSRFgQuality.h"
 
 #include <cstdio>
@@ -43,21 +43,22 @@ int main()
     check("QuickFlow=0 is off", ParseQuickFlow("0") == QuickFlow::Off);
     check("QuickFlow=Fastest is fastest", ParseQuickFlow("Fastest") == QuickFlow::Fastest);
 
-    // helixsr.ini: the defaults are Light and QuickFlow off
-    check("default: Preset = c", Eq(HelixPreset(std::nullopt), "c"));
+    // helixsr.ini: preset C is removed, so Preset = full always; QuickFlow off (best) by default
+    check("default: Preset = full", Eq(HelixPreset(std::nullopt), "full"));
+    check("older FGPreset=c: Preset = full", Eq(HelixPreset(Preset::Light), "full"));
     check("default: QuickFlow = off", Eq(HelixQuickFlow(std::nullopt, std::nullopt), "off"));
     check("Full: Preset = full", Eq(HelixPreset(Preset::Full), "full"));
 
-    // QuickFlow only with Full; the DLL reads on / fastest
+    // QuickFlow with any (older) FGPreset; the DLL reads on / fastest
     check("Full + off: QuickFlow = off", Eq(HelixQuickFlow(Preset::Full, QuickFlow::Off), "off"));
     check("Full + fast: QuickFlow = on", Eq(HelixQuickFlow(Preset::Full, QuickFlow::Fast), "on"));
     check("Full + fastest: QuickFlow = fastest", Eq(HelixQuickFlow(Preset::Full, QuickFlow::Fastest), "fastest"));
     check("Full + auto: QuickFlow = off", Eq(HelixQuickFlow(Preset::Full, std::nullopt), "off"));
     for (auto q : { QuickFlow::Off, QuickFlow::Fast, QuickFlow::Fastest })
     {
-        check("Light: QuickFlow forced off", Eq(HelixQuickFlow(Preset::Light, q), "off"));
-        check("auto (Light): QuickFlow forced off", Eq(HelixQuickFlow(std::nullopt, q), "off"));
-        check("Light: effective QuickFlow off", EffectiveQuickFlow(Preset::Light, q) == QuickFlow::Off);
+        check("older FGPreset=c: QuickFlow kept", HelixQuickFlow(Preset::Light, q) == HelixQuickFlow(Preset::Full, q));
+        check("auto: QuickFlow kept", EffectiveQuickFlow(std::nullopt, q) == q);
+        check("older FGPreset=c: effective QuickFlow kept", EffectiveQuickFlow(Preset::Light, q) == q);
     }
 
     std::printf("%s\n", fails ? "FAILED" : "all passed");
