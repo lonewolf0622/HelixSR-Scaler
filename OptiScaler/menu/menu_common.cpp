@@ -594,10 +594,10 @@ inline std::string StrFmt(const char* fmt, ...)
 
 static std::string NameWithVersion(IFeature* feature)
 {
-    // HelixSR Scaler: HelixSR is named HelixSR (as OptiScaler's DLSS or as its FidelityFX entry), without the
-    // FidelityFX API version its DLL reports
-    if (feature == State::Instance().currentFeature && HelixSR::IsActive())
-        return "HelixSR";
+    // HelixSR Scaler: our upscalers by their names ("HLX DLSS", "HLX FSR 4"), without the FidelityFX API version
+    if (feature == State::Instance().currentFeature)
+        if (auto own = HelixSR::ActiveUpscalerName(); !own.empty())
+            return own;
 
     const auto version = feature->Version();
     return StrFmt("%s %u.%u.%u", feature->ShortName().c_str(), version.major, version.minor, version.patch);
@@ -1033,9 +1033,9 @@ static bool IsHelixSR(Upscaler upscaler, API api)
 // Name without the w/Dx12 suffix, that one is shown as a tag in the list instead
 static std::string ShortUpscalerName(Upscaler upscaler, API api, int ffxIndex)
 {
-    // HelixSR Scaler: DLSS is HelixSR's DLSS DLL on GPUs without DLSS
+    // HelixSR Scaler: DLSS is HelixSR's DLSS DLL on GPUs without DLSS, named HLX DLSS
     if (IsHelixSR(upscaler, api))
-        return "HelixSR";
+        return HelixSR::Names::kHelixUpscalerName;
 
     if (auto versions = GetFfxVersionList(upscaler, api);
         versions != nullptr && ffxIndex >= 0 && ffxIndex < versions->names.size())
@@ -3544,7 +3544,8 @@ void MenuCommon::RenderUpscalerStateMessage(RenderMenuContext& ctx)
 
         ImGui::PushTextWrapPos(0.0f);
         ImGui::Text("%s active, but currently not used by the game\nPlease load into the game",
-                    HelixSR::IsActive() ? "HelixSR" : currentFeature->Name().c_str()); // HelixSR Scaler
+                    HelixSR::ActiveUpscalerName().empty() ? currentFeature->Name().c_str()
+                                                          : HelixSR::ActiveUpscalerName().c_str()); // HelixSR Scaler
         ImGui::PopTextWrapPos();
 
         if (config->UseHQFont.value_or_default())
@@ -9714,7 +9715,8 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
             const float upscaleRatio = renderWidth > 0.0f ? (float) currentFeature->TargetWidth() / renderWidth : 0.0f;
 
             ImGui::TextColored(StatusOk(), "%s (%.2f)",
-                               HelixSR::IsActive() ? "HelixSR" : currentFeature->ShortName().c_str(), // HelixSR Scaler
+                               HelixSR::ActiveUpscalerName().empty() ? currentFeature->ShortName().c_str()
+                                                                     : HelixSR::ActiveUpscalerName().c_str(), // HelixSR Scaler
                                upscaleRatio);
         }
 

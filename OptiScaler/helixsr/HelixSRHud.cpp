@@ -169,7 +169,7 @@ std::vector<UpscalerEntry> Upscalers(API api)
     std::vector<UpscalerEntry> list;
     const bool helixDlss = found && NVNGXProxy::HelixSRDlss() && !vulkan;
     if (helixDlss)
-        list.push_back({ "HelixSR", HelixSRUpscaler(), true });
+        list.push_back({ HelixSR::Names::kHelixUpscalerName, HelixSRUpscaler(), true });
 
     // every FSR the FFX SDK reports (HelixSR's FidelityFX entry first, then FSR 4, FSR 3.1, ...), as OptiScaler's
     // own upscaler list names them

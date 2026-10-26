@@ -89,6 +89,31 @@ bool FsrDllFound() { return fsrDllFound; }
 
 const fs::path& FsrDllPath() { return fsrDll; }
 
+const char* ActiveFfxName()
+{
+    auto& state = State::Instance();
+    auto feature = state.currentFeature;
+    if (feature == nullptr || !feature->IsInited())
+        return nullptr;
+
+    const auto type = feature->GetUpscalerType();
+    if (!(type == ::Upscaler::FFX_on12 || (type == ::Upscaler::FFX && state.api == DX12)))
+        return nullptr;
+
+    const auto& names = state.ffxUpscalerVersionsDx12.names;
+    const int index = Config::Instance()->FfxUpscalerIndex.value_or_default();
+    return index >= 0 && index < (int) names.size() ? names[index] : nullptr;
+}
+
+std::string ActiveUpscalerName()
+{
+    if (IsActive())
+        return Names::kHelixUpscalerName;
+    if (const char* name = ActiveFfxName(); Names::IsHlx(name))
+        return Names::Label(name);
+    return {};
+}
+
 bool IsActiveFfx()
 {
     if (!fsrDllFound)

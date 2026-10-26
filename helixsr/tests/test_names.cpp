@@ -21,8 +21,14 @@ static bool same(const std::vector<int>& a, const std::vector<int>& b) { return 
 int main()
 {
     // names shown
-    check("HelixSR entry is named HelixSR", Label("HelixSR") == "HelixSR");
-    check("HelixSR (3.1.5) entry is named HelixSR", Label("HelixSR (3.1.5)") == "HelixSR");
+    check("HelixSR entry is named HLX DLSS", Label("HelixSR") == "HLX DLSS");
+    check("HelixSR (3.1.5) entry is named HLX DLSS", Label("HelixSR (3.1.5)") == "HLX DLSS");
+    check("HLX FSR 4 (4.1.2) is named HLX FSR 4", Label("HLX FSR 4 (4.1.2)") == "HLX FSR 4");
+    check("an HLX name without a version stays as it is", Label("HLX FSR 4") == "HLX FSR 4");
+    check("HLX FSR 4 (4.1.2) keeps version 4.1.2 for OptiScaler", Parse("HLX FSR 4 (4.1.2)").major == 4 &&
+          Parse("HLX FSR 4 (4.1.2)").minor == 1 && Parse("HLX FSR 4 (4.1.2)").patch == 2);
+    check("HLX and HelixSR are our own upscalers, AMD's are not", IsOwnUpscaler("HLX FSR 4 (4.1.2)") &&
+          IsOwnUpscaler("HelixSR") && !IsOwnUpscaler("4.1.2") && !IsOwnUpscaler(nullptr));
     check("AMD entries keep the FSR prefix", Label("4.1.1") == "FSR 4.1.1" && Label("3.1.5") == "FSR 3.1.5");
     check("no name", Label(nullptr) == "FSR ");
 

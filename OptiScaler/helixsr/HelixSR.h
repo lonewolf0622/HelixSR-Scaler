@@ -41,8 +41,8 @@ bool LoadsAsIs(const std::filesystem::path& path);
 // "1.0.0"
 const char* Version();
 
-// Menu name of a FidelityFX upscaler or frame-generation version: "FSR <name>", except HelixSR's own entry, which is
-// shown as plain "HelixSR" (its version name, e.g. "HelixSR (3.1.5)", keeps the version OptiScaler reads from it)
+// Menu name of a FidelityFX upscaler or frame-generation version: "FSR <name>", except our own: HelixSR's entry is
+// "HLX DLSS", an HLX entry ("HLX FSR 4 (4.1.2)") its name without the version OptiScaler reads from it
 inline std::string FfxVersionLabel(const char* name) { return Names::Label(name); }
 
 // HelixSR's FidelityFX DLL (HelixSR-fsrfg\amd_fidelityfx_dx12.dll next to the game's .exe or this DLL, or the
@@ -59,6 +59,13 @@ bool IsActiveFfx();
 
 // HelixSR is the upscaler running right now (as OptiScaler's DLSS upscaler or as its FidelityFX entry)
 bool IsActive();
+
+// The FidelityFX version name of the FFX upscaler running now (nullptr when it is not an FFX upscaler)
+const char* ActiveFfxName();
+
+// The menu name of our upscaler running right now: "HLX DLSS" (HelixSR) or an HLX FidelityFX entry ("HLX FSR 4");
+// empty when another upscaler runs
+std::string ActiveUpscalerName();
 
 // Selects HelixSR (OptiScaler's DLSS upscaler with HelixSR's DLL; DLSS w/Dx12 in DirectX 11 games) as the upscaler
 void Choose();

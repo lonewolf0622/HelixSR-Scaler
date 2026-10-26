@@ -20,11 +20,19 @@ inline bool IsHelixSR(const char* name) { return name != nullptr && std::strncmp
 inline bool IsHlx(const char* name) { return name != nullptr && std::strncmp(name, "HLX", 3) == 0; }
 inline bool IsOwnUpscaler(const char* name) { return IsHelixSR(name) || IsHlx(name); }
 
-// Menu name of a FidelityFX upscaler or frame-generation version: "FSR <name>", HelixSR's own entry plain "HelixSR"
+// The menu names of our upscalers: HelixSR is "HLX DLSS"; HLX entries are shown as named
+constexpr const char* kHelixUpscalerName = "HLX DLSS";
+
+// Menu name of a FidelityFX upscaler or frame-generation version: "FSR <name>"; HelixSR's own entry "HLX DLSS"; an HLX
+// entry its name without the version OptiScaler reads from it ("HLX FSR 4 (4.1.2)" -> "HLX FSR 4")
 inline std::string Label(const char* name)
 {
     const std::string n = name ? name : "";
-    return IsHelixSR(name) ? std::string("HelixSR") : "FSR " + n;
+    if (IsHelixSR(name))
+        return kHelixUpscalerName;
+    if (IsHlx(name))
+        return n.substr(0, n.find(" ("));
+    return "FSR " + n;
 }
 
 struct Version
