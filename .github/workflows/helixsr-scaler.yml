@@ -85,16 +85,13 @@ jobs:
         Remove-Item -Force "$out\!! EXTRACT ALL FILES TO GAME FOLDER !!" -ErrorAction SilentlyContinue
         Copy-Item LICENSE "$out\Licenses\OptiScaler_LICENSE.txt"
         Copy-Item helixsr\README.txt "$out\README.txt"
-        # HelixSR Scaler's Linux setup in place of OptiScaler's, and the list of the download's files it uses
-        Copy-Item -Force helixsr\setup_linux.sh "$out\setup_linux.sh"
+        # no setup scripts of its own from 2.0.0 on: HelixSR's setup (or the HelixSR app) installs it; the list of the
+        # download's files they use
+        Remove-Item -Force "$out\setup_windows.bat", "$out\setup_linux.sh" -ErrorAction SilentlyContinue
         Push-Location $out
         Get-ChildItem -Recurse -File | ForEach-Object { (Resolve-Path -Relative $_.FullName).Substring(2).Replace('\', '/') } |
           Sort-Object | Set-Content -Encoding ascii HelixSR-Scaler-package.txt
         Pop-Location
-
-    - name: Test setup_windows.bat's HelixSR step
-      shell: pwsh
-      run: helixsr\tests\test_setup_windows.ps1
 
     - uses: actions/upload-artifact@v4
       with:
@@ -120,9 +117,7 @@ jobs:
         out="linux/$name"
         mkdir -p linux
         cp -r "win/${{ needs.build.outputs.name }}" "$out"
-        rm -f "$out/setup_windows.bat" "$out/HelixSR-Scaler-package.txt"
-        cp helixsr/setup_linux.sh "$out/setup_linux.sh"
-        chmod +x "$out/setup_linux.sh"
+        rm -f "$out/HelixSR-Scaler-package.txt"
         cp helixsr/README-Linux.txt "$out/README.txt"
         (cd "$out" && find . -type f | sed 's|^\./||' | LC_ALL=C sort >HelixSR-Scaler-package.txt)
         tar -C linux -czf "$name.tar.gz" "$name"
@@ -135,16 +130,10 @@ jobs:
         sudo apt-get install -y -qq --no-install-recommends shellcheck wine wine64 mingw-w64 >/dev/null
 
     - name: Check scripts
-      run: shellcheck -S warning helixsr/setup_linux.sh helixsr/tests/*.sh
-
-    - name: Test setup_linux.sh
-      run: helixsr/tests/test_setup_linux.sh "linux/$name"
+      run: shellcheck -S warning helixsr/tests/test_names.sh helixsr/tests/test_resource_states.sh
 
     - name: Test HelixSR's upscaler list names and frame-generation quality settings
       run: helixsr/tests/test_names.sh
-
-    - name: Test under Wine
-      run: helixsr/tests/test_wine.sh "linux/$name"
 
     - name: Test HelixSR resource states without a GPU
       run: bash helixsr/tests/test_resource_states.sh
@@ -187,4 +176,6 @@ jobs:
           HelixSR Scaler ${{ needs.build.outputs.version }}, based on OptiScaler. Source code: this repository (GPL-3.0).
 
           - Windows: ${{ needs.build.outputs.name }}.zip
-          - Linux and Steam Deck: ${{ needs.build.outputs.name }}-linux.tar.gz (run ./setup_linux.sh)
+          - Linux and Steam Deck: ${{ needs.build.outputs.name }}-linux.tar.gz
+
+          Install it with HelixSR's setup (HelixSR 3.0 or newer) or the HelixSR app.
