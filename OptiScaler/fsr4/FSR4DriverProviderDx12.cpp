@@ -8,6 +8,8 @@
 
 #include <ffx_upscale.h>
 
+#include <atomic>
+
 namespace
 {
 // Struct version 1 requests need a signed amd_fidelityfx_dx12.dll, newer ones the upscaler or frame generation dll of
@@ -18,6 +20,10 @@ FSR4DriverDll amdxcffx64 { L"amdxcffx64.dll", { L"amd_fidelityfx_dx12.dll" } };
 DriverProvider upscaler {};
 bool upscalerAvailable = false;
 std::once_flag initOnce;
+
+// An FFX module of Opti lists the driver upscaler's version id itself (e.g. HLX FSR 4 reports FSR 4.1.2's id): that id
+// then belongs to the module, not to the driver
+std::atomic<bool> sdkHasDriverId = false;
 
 std::unordered_set<ffxContext> contexts;
 std::mutex contextsMutex;
@@ -99,7 +105,7 @@ bool FSR4DriverProviderDx12::Init()
     return upscalerAvailable;
 }
 
-uint64_t FSR4DriverProviderDx12::VersionId() { return Init() ? upscaler.functions.versionId : 0; }
+uint64_t FSR4DriverProviderDx12::VersionId() { return Init() && !sdkHasDriverId ? upscaler.functions.versionId : 0; }
 
 void FSR4DriverProviderDx12::AddToVersionList(std::vector<uint64_t>& ids, std::vector<const char*>& names,
                                               Listing listing)
@@ -109,7 +115,12 @@ void FSR4DriverProviderDx12::AddToVersionList(std::vector<uint64_t>& ids, std::v
 
     // FFX modules that Opti doesn't own still get the driver upscaler from IAmdExtFfxApi
     if (std::ranges::find(ids, upscaler.functions.versionId) != ids.end())
+    {
+        if (!sdkHasDriverId.exchange(true))
+            LOG_INFO("Driver upscaler {} not used, the FFX SDK provides the same version id", upscaler.versionName);
+
         return;
+    }
 
     auto driverVersion = ProviderVersion(upscaler.functions.versionId);
     auto isOlder = [driverVersion](uint64_t id) { return ProviderVersion(id) < driverVersion; };
