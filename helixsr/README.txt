@@ -1,37 +1,31 @@
-HelixSR Scaler 1.1.0
+HelixSR Scaler 2.0.0
 
-New in 1.1.0: HelixSR Scaler is OptiScaler first and behaves like OptiScaler. With HelixSR
-installed (the HelixSR-fsrfg folder next to the game's .exe), HelixSR is the upscaler in DirectX 12,
-DirectX 11 and Vulkan games, with AMD FSR 3 / FSR 4 and Intel XeSS still in the list. Frame
-generation is OptiScaler's, set in OptiScaler.ini or its menu like in OptiScaler; HelixSR's frame
-generation is one more DLSS frame-generation provider (like Nukem's) for DirectX 12 games with DLSS
-Frame Generation. It is off until you turn it on: the HelixSR app or the setup asks, or pick HelixSR
-under Frame Generation in the menu (Insert key) and restart the game.
+HelixSR Scaler is OptiScaler with HelixSR's upscalers in its list:
+- HLX DLSS: HelixSR's DLSS upscaler (the HelixSR folder next to the game's .exe, helixsr.dll).
+  It is the DLSS upscaler on GPUs without DLSS, in DirectX 12, DirectX 11 and Vulkan games.
+- HLX FSR 4: AMD's FSR 4 network on HelixSR's own pipeline
+  (OptiScaler\amd_fidelityfx_upscaler_dx12.dll; AMD's own FSR is next to it as
+  amd_fidelityfx_upscaler_dx12.amd.dll and stays in the list).
+AMD FSR 3 / FSR 4 and Intel XeSS stay in the list, and frame generation is OptiScaler's (AMD FSR or
+XeSS frame generation), set in its menu or OptiScaler.ini like in OptiScaler.
 
-OptiScaler.ini lines for HelixSR (the app and the setup write them for you):
-- Upscaling (found by itself when HelixSR-fsrfg is next to the game's .exe):
-    [Upscalers] Dx12Upscaler=ffx, Dx11Upscaler=ffx_12, VulkanUpscaler=ffx_12
-    [Libraries] FfxDx12SRPath=<the game folder>\HelixSR-fsrfg\amd_fidelityfx_dx12.dll
-- HelixSR frame generation (DirectX 12 games with DLSS Frame Generation; turn that on in the game):
-    [FrameGen] FGInput=nvngxfg, FGNvngxReplacement=HelixSR
-- No frame generation: [FrameGen] FGInput=auto (or nofg)
+Install it with HelixSR's setup (helixsr-setup.bat / helixsr-setup.sh in the HelixSR 3.0 download):
+it builds HelixSR on your PC, then installs HelixSR Scaler into the games you pick (answer s) and
+updates or removes it. HelixSR 3.0 needs HelixSR Scaler 2.0.0 or newer.
 
-What goes into the game (the HelixSR app does this for you):
-- OptiScaler.dll, renamed to dxgi.dll, with OptiScaler.ini and the OptiScaler folder, next to the
-  game's .exe
-- HelixSR-fsrfg next to the game's .exe: HelixSR's amd_fidelityfx_dx12.dll, and its helixsr-fg
-  folder for frame generation
+What goes into the game: OptiScaler.dll as dxgi.dll (or another proxy name the setup tells you),
+OptiScaler.ini and the OptiScaler folder next to the game's .exe, and the HelixSR folder with
+HelixSR's built helixsr.dll.
 
-Select DLSS (or FSR / XeSS if DLSS is unavailable) in the game's graphics settings.
-Press Insert to open the menu. Edit OptiScaler.ini to change the other settings ([HelixSR] has
-HelixSR's own: Int8, WaveSize, and FGPreset / QuickFlow for its frame generation).
+Select DLSS (or FSR / XeSS if DLSS is unavailable) in the game's graphics settings. Press Insert
+to open the menu and pick the upscaler there. HelixSR's own settings (Int8, WaveSize) are under
+[HelixSR] in OptiScaler.ini; HelixSR Scaler copies them to HelixSR\helixsr.ini when the game starts.
 
-For installation by hand, back up matching files, copy this folder next to the game's
-executable and rename OptiScaler.dll to dxgi.dll. Make a folder HelixSR-fsrfg there and copy
-HelixSR's built amd_fidelityfx_dx12.dll and its helixsr-fg folder into it. setup_windows.bat
-does these steps. Games which do not load dxgi.dll may need another supported proxy name and
-the corresponding Proton DLL override.
+Problems: https://github.com/lonewolf0622/HelixSR-Scaler/issues (attach OptiScaler.log and
+HelixSR\helixsr.log from the game's folder).
 
-HelixSR Scaler is based on OptiScaler and is licensed under GPL-3.0.
-Source: https://github.com/lonewolf0622/HelixSR-Scaler
-See Licenses for third-party notices. The separate HelixSR DLL has its own license.
+HelixSR Scaler is based on OptiScaler (https://github.com/optiscaler/OptiScaler) and, like it,
+is free software under the GPL-3.0 license (Licenses/OptiScaler_LICENSE.txt). Source code:
+https://github.com/lonewolf0622/HelixSR-Scaler
+OptiScaler/plugins/OptiPatcher.asi is OptiPatcher (MIT, Licenses/OptiPatcher_LICENSE.txt).
+The separate HelixSR DLLs (HelixSR\helixsr.dll, HLX FSR 4) have their own license.
