@@ -249,6 +249,15 @@ const Managed kRetired[] = { { "Sharpening", "Sharpness" },
 
 fs::path HelixIniPath() { return folder / kIni; }
 
+// helixsr.ini's section for DLSS frame generation's QuickFlow: [DlssFrameGeneration] for HelixSR's FidelityFX DLL and for
+// HelixSR 3.0 on (HelixSR/helixsr.dll with its frame-generation DLL helixsr_fg.dll next to it); [FrameGeneration] only
+// for the helixsr.dll of versions before HelixSR Scaler 1.1.0
+const char* QuickFlowSection()
+{
+    std::error_code ec;
+    return !found || fs::exists(folder / L"helixsr_fg.dll", ec) ? "DlssFrameGeneration" : "FrameGeneration";
+}
+
 // Auto wave size, as HelixSR Scaler gives it to HelixSR: 32-lane network kernels on every GPU, as HelixSR 1.8.1 ran
 // them. HelixSR 1.9.0's own auto runs them at 64 lanes on RDNA 3 and newer (RX 7000 / 9000, Ryzen with RDNA 3 / 3.5
 // graphics), which was much slower on a Legion Go 2 (Z2 Extreme). NVIDIA, Intel and RDNA 1 / 2 get 32 from HelixSR's
@@ -321,10 +330,13 @@ bool WriteHelixIni()
         if (!value.has_value() && std::string(m.key) == "WaveSize")
             value = kAutoWaveSize;
 
-        // HelixSR's FidelityFX DLL reads its DLSS frame generation's settings from [DlssFrameGeneration]
-        // ([FrameGeneration] is its FidelityFX frame generation's there)
-        const char* section = !found && std::string(m.key) == "QuickFlow" ? "DlssFrameGeneration" : m.section;
+        // HelixSR's FidelityFX DLL and HelixSR 3.0's frame-generation DLL read DLSS frame generation's settings from
+        // [DlssFrameGeneration] ([FrameGeneration] is the FidelityFX DLL's FidelityFX frame generation)
+        const char* section = std::string(m.key) == "QuickFlow" ? QuickFlowSection() : m.section;
         ini.Set(section, m.key, value);
+        // HelixSR 3.0: an earlier version's QuickFlow in [FrameGeneration] goes
+        if (found && std::string(m.key) == "QuickFlow" && std::string(section) == "DlssFrameGeneration")
+            ini.Set("FrameGeneration", "QuickFlow", std::nullopt);
     }
 
     return ini.Save(HelixIniPath());
@@ -374,7 +386,7 @@ void ImportHelixIni()
             cfg->HelixSRInt8 = Lower(v.value());
         if (auto v = old.Get("Compatibility", "WaveSize"); v.has_value() && (v.value() == "64" || v.value() == "32"))
             cfg->HelixSRWaveSize = std::stoi(v.value());
-        if (auto v = old.Get(found ? "FrameGeneration" : "DlssFrameGeneration", "QuickFlow"); v.has_value())
+        if (auto v = old.Get(QuickFlowSection(), "QuickFlow"); v.has_value())
         {
             if (auto q = FgQuality::ParseQuickFlow(v.value()); q.has_value())
                 cfg->HelixSRQuickFlow = (int) q.value();
