@@ -873,8 +873,10 @@ void ApplyDefaults()
         if (!cfg->Dx11Upscaler.has_value())
             cfg->Dx11Upscaler.set_volatile_value(::Upscaler::DLSS);
 
-        if (!cfg->VulkanUpscaler.has_value() && NVNGXProxy::HelixSRDlss())
-            cfg->VulkanUpscaler.set_volatile_value(::Upscaler::DLSS_on12);
+        // (DLSS: FeatureProvider_Vk makes it HelixSR's DLSS w/Dx12, as FeatureProvider_Dx11 does; not decided here,
+        // HelixSRDlss() identifies the GPU, too early while the DLL loads)
+        if (!cfg->VulkanUpscaler.has_value())
+            cfg->VulkanUpscaler.set_volatile_value(::Upscaler::DLSS);
     }
 }
 
