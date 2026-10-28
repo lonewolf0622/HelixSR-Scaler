@@ -29,20 +29,28 @@ else
         Licenses/OptiScaler_LICENSE.txt OptiScaler/D3D12_OptiScaler/D3D12Core.dll; do
         echo "package $f" >"$P/$f"
     done
+    printf '[Upscalers]\nDx12Upscaler=auto\n[DLSS]\nHelixSR=auto\n[Plugins]\nLoadAsiPlugins=auto\n[FrameGen]\nFGInput=auto\nFGNvngxReplacement=auto\n' >"$P/OptiScaler.ini"
 fi
+AMDFSR=$(cat "$P/OptiScaler/amd_fidelityfx_upscaler_dx12.dll")
 cp "$REPO/helixsr/setup_linux.sh" "$P/setup_linux.sh"
 chmod +x "$P/setup_linux.sh"
 (cd "$P" && find . -type f | sed 's|^\./||' | sort >HelixSR-Scaler-package.txt)
 
 # --- a home with HelixSR and two Steam libraries ---
 H="$W/home"
-mkdir -p "$H/Downloads/HelixSR-1.9.0"
-{ head -c 4096 /dev/urandom; printf 'HXSRNET1'; head -c 24 /dev/zero; } >"$H/Downloads/HelixSR-1.9.0/amd_fidelityfx_dx12.dll"
+# a HelixSR 3.x download after its setup: HelixSR/helixsr.dll with the network, HLX-FSR4/ with HLX FSR 4's shaders
+HS="$H/Downloads/HelixSR-3.1.0"
+mkdir -p "$HS/HelixSR" "$HS/HLX-FSR4"
+{ head -c 4096 /dev/urandom; printf 'HXSRNET1'; head -c 24 /dev/zero; } >"$HS/HelixSR/helixsr.dll"
+{ printf 'HLX FSR 4 code'; head -c 4096 /dev/urandom; printf 'HLXFSR4D'; head -c 16 /dev/zero; } >"$HS/HLX-FSR4/amd_fidelityfx_upscaler_dx12.dll"
 # frame generation as HelixSR's setup leaves it next to the DLL
-mkdir -p "$H/Downloads/HelixSR-1.9.0/helixsr-fg"
-for f in nvexec64.dll _nvngx.dll nvngx_dlssg.dll hxfg.cfg; do echo "fg $f" >"$H/Downloads/HelixSR-1.9.0/helixsr-fg/$f"; done
-mkdir -p "$H/Downloads/HelixSR-1.9.0/helixsr-fg/310.9.16" && echo "fg data" >"$H/Downloads/HelixSR-1.9.0/helixsr-fg/310.9.16/data.bin"
-echo "a log" >"$H/Downloads/HelixSR-1.9.0/helixsr-fg/nvexec.log"
+mkdir -p "$HS/HelixSR/helixsr-fg"
+echo "fg provider" >"$HS/HelixSR/helixsr_fg.dll"
+for f in nvexec64.dll _nvngx.dll nvngx_dlssg.dll hxfg.cfg; do echo "fg $f" >"$HS/HelixSR/helixsr-fg/$f"; done
+mkdir -p "$HS/HelixSR/helixsr-fg/310.9.16" && echo "fg data" >"$HS/HelixSR/helixsr-fg/310.9.16/data.bin"
+echo "a log" >"$HS/HelixSR/helixsr-fg/nvexec.log"
+# an older, unbuilt download: not picked
+mkdir -p "$H/Downloads/HelixSR-3.0.0/HelixSR" && echo "code only" >"$H/Downloads/HelixSR-3.0.0/HelixSR/helixsr.dll"
 L1="$H/.local/share/Steam/steamapps" L2="$W/sd"
 mkdir -p "$L1" "$L2/steamapps"
 printf '"libraryfolders"\n{\n\t"0"\n\t{\n\t\t"path"\t\t"%s"\n\t}\n\t"1"\n\t{\n\t\t"path"\t\t"%s"\n\t}\n}\n' \
@@ -83,14 +91,17 @@ B="$U/Proj/Binaries/Win64"
 check "install succeeds" 'grep -q "installed as" "$W/out.txt"'
 check "goes next to the -Shipping.exe" '[ -f "$B/dxgi.dll" ] && [ ! -e "$U/dxgi.dll" ]'
 check "OptiScaler.dll becomes dxgi.dll" 'cmp -s "$B/dxgi.dll" "$P/OptiScaler.dll" && [ ! -e "$B/OptiScaler.dll" ]'
-check "HelixSR copied in as HelixSR-fsrfg/amd_fidelityfx_dx12.dll" 'cmp -s "$B/HelixSR-fsrfg/amd_fidelityfx_dx12.dll" "$H/Downloads/HelixSR-1.9.0/amd_fidelityfx_dx12.dll" && [ ! -e "$B/HelixSR" ]'
+check "HLX DLSS copied in as HelixSR/helixsr.dll" 'cmp -s "$B/HelixSR/helixsr.dll" "$HS/HelixSR/helixsr.dll" && [ ! -e "$B/HelixSR-fsrfg" ]'
+check "HLX FSR 4 (built) in OptiScaler/, AMD's FSR next to it as .amd.dll" 'cmp -s "$B/OptiScaler/amd_fidelityfx_upscaler_dx12.dll" "$HS/HLX-FSR4/amd_fidelityfx_upscaler_dx12.dll" && [ "$(cat "$B/OptiScaler/amd_fidelityfx_upscaler_dx12.amd.dll")" = "$AMDFSR" ]'
+check "OptiScaler.ini: HLX DLSS as the DLSS upscaler, OptiPatcher loaded" 'grep -q "^Dx12Upscaler=dlss" "$B/OptiScaler.ini" && grep -q "^HelixSR=true" "$B/OptiScaler.ini" && grep -q "^LoadAsiPlugins=true" "$B/OptiScaler.ini"'
+check "install record: the app's layout line" 'grep -qx "# layout=ngx" "$B/HelixSR-Scaler.files" && grep -qx "name=dxgi.dll" "$B/HelixSR-Scaler.files"'
 # the game's own FSR file: kept in the backup when the download has one of that name, else left where it is
 if [ -f "$P/amd_fidelityfx_dx12.dll" ]; then GAMEFILE="$B/HelixSR-Scaler-backup/amd_fidelityfx_dx12.dll"; else GAMEFILE="$B/amd_fidelityfx_dx12.dll"; fi
 check "game's file kept" 'grep -q "the game'"'"'s own" "$GAMEFILE"'
 check "setup files stay out of the game" '[ ! -e "$B/setup_linux.sh" ] && [ ! -e "$B/setup_windows.bat" ] && [ ! -e "$B/README.txt" ]'
 check "no launch options for dxgi.dll" 'grep -q "No launch options needed" "$W/out.txt" && ! grep -q "WINEDLLOVERRIDES=" "$W/out.txt"'
-check "frame generation copied in" 'cmp -s "$B/HelixSR-fsrfg/helixsr-fg/nvexec64.dll" "$H/Downloads/HelixSR-1.9.0/helixsr-fg/nvexec64.dll" && [ -f "$B/HelixSR-fsrfg/helixsr-fg/_nvngx.dll" ]'
-check "frame generation's data files and subfolders too, not its logs" '[ -f "$B/HelixSR-fsrfg/helixsr-fg/hxfg.cfg" ] && [ -f "$B/HelixSR-fsrfg/helixsr-fg/310.9.16/data.bin" ] && [ ! -e "$B/HelixSR-fsrfg/helixsr-fg/nvexec.log" ]'
+check "frame generation copied in" 'cmp -s "$B/HelixSR/helixsr-fg/nvexec64.dll" "$HS/HelixSR/helixsr-fg/nvexec64.dll" && [ -f "$B/HelixSR/helixsr-fg/_nvngx.dll" ] && [ -f "$B/HelixSR/helixsr_fg.dll" ]'
+check "frame generation's data files and subfolders too, not its logs" '[ -f "$B/HelixSR/helixsr-fg/hxfg.cfg" ] && [ -f "$B/HelixSR/helixsr-fg/310.9.16/data.bin" ] && [ ! -e "$B/HelixSR/helixsr-fg/nvexec.log" ]'
 if grep -q "^FGInput=" "$B/OptiScaler.ini" 2>/dev/null; then
     check "--yes switches HelixSR frame generation on (FGInput=nvngxfg, FGNvngxReplacement=HelixSR)" 'grep -q "^FGInput=nvngxfg" "$B/OptiScaler.ini" && grep -q "^FGNvngxReplacement=HelixSR" "$B/OptiScaler.ini" && grep -q "Frame generation included and on" "$W/out.txt"'
     check "no [HelixSR] FrameGeneration / FGPresent lines" '! grep -q "^FrameGeneration=\|^FGPresent=" "$B/OptiScaler.ini"'
@@ -116,26 +127,22 @@ check "update keeps the game's file" 'grep -q "the game'"'"'s own" "$GAMEFILE"'
 check "update says so" 'grep -q "updating" "$W/out.txt"'
 
 # --- remove with the copy left in the game: everything as before ---
-F="$B/HelixSR-fsrfg"
-touch "$B/OptiScaler.log" "$F/helixsr.log" "$F/helixsr.ini" "$F/helixsr-fg/nvexec.log"
-mkdir -p "$F/helixsr-fg.off" && touch "$F/helixsr-fg.off/nvexec64.dll" # parked by an earlier version
-cp "$F/amd_fidelityfx_dx12.dll" "$F/amd_fidelityfx_upscaler_dx12.amd.dll" # AMD's FSR, put there by HelixSR Scaler
+F="$B/HelixSR"
+touch "$B/OptiScaler.log" "$F/helixsr.log" "$F/helixsr.ini" "$F/helixsr-fg/nvexec.log" "$B/OptiScaler/HLX_FSR.log"
 "$B/HelixSR-Scaler-remove.sh" --yes </dev/null >"$W/out.txt" 2>&1
 check "remove restores the game exactly" '[ "$before" = "$(snap "$U")" ]'
 check "remove leaves no empty folders" '[ -z "$(find "$B" -mindepth 1 -type d -empty)" ]'
 run --yes --remove --game "$U"
 check "remove when not installed says so" 'grep -q "isn'"'"'t installed" "$W/out.txt"'
 
-# --- an install from before 1.1.0 (HelixSR/helixsr.dll): updated to HelixSR-fsrfg, the old folder taken out ---
-mkdir -p "$B/HelixSR/helixsr-fg"
-cp "$H/Downloads/HelixSR-1.9.0/amd_fidelityfx_dx12.dll" "$B/HelixSR/helixsr.dll"
-cp "$H/Downloads/HelixSR-1.9.0/helixsr-fg/"*.dll "$B/HelixSR/helixsr-fg/"
-printf 'name=dxgi.dll\ndxgi.dll\nHelixSR/helixsr.dll\nHelixSR/helixsr-fg/nvexec64.dll\nHelixSR/helixsr-fg/_nvngx.dll\nHelixSR/helixsr-fg/nvngx_dlssg.dll\n' >"$B/HelixSR-Scaler.files"
+# --- an install of HelixSR 2.0 (HelixSR Scaler 1.1.0: HelixSR-fsrfg/): updated to HelixSR 3.x, the old folder taken out ---
+mkdir -p "$B/HelixSR-fsrfg/helixsr-fg"
+echo "HelixSR 2.0" >"$B/HelixSR-fsrfg/amd_fidelityfx_dx12.dll"
+cp "$HS/HelixSR/helixsr-fg/"*.dll "$B/HelixSR-fsrfg/helixsr-fg/"
+printf 'name=dxgi.dll\ndxgi.dll\nHelixSR-fsrfg/amd_fidelityfx_dx12.dll\nHelixSR-fsrfg/helixsr-fg/nvexec64.dll\nHelixSR-fsrfg/helixsr-fg/_nvngx.dll\nHelixSR-fsrfg/helixsr-fg/nvngx_dlssg.dll\n' >"$B/HelixSR-Scaler.files"
 cp "$P/OptiScaler.dll" "$B/dxgi.dll"
-mv "$H/Downloads/HelixSR-1.9.0" "$W/hidden"
 run --yes --game "$U"
-mv "$W/hidden" "$H/Downloads/HelixSR-1.9.0"
-check "older install: HelixSR moves to HelixSR-fsrfg" 'cmp -s "$B/HelixSR-fsrfg/amd_fidelityfx_dx12.dll" "$H/Downloads/HelixSR-1.9.0/amd_fidelityfx_dx12.dll" && [ -f "$B/HelixSR-fsrfg/helixsr-fg/nvexec64.dll" ] && [ ! -e "$B/HelixSR" ]'
+check "HelixSR 2.0 install: updated to HelixSR/, HelixSR-fsrfg taken out" 'cmp -s "$B/HelixSR/helixsr.dll" "$HS/HelixSR/helixsr.dll" && [ -f "$B/HelixSR/helixsr-fg/nvexec64.dll" ] && [ ! -e "$B/HelixSR-fsrfg" ]'
 "$B/HelixSR-Scaler-remove.sh" --yes </dev/null >/dev/null 2>&1
 check "older install updated and removed: the game as before" '[ "$before" = "$(snap "$U")" ]'
 
@@ -147,18 +154,33 @@ check "empty answer changes nothing" 'grep -q "Nothing changed" "$W/out.txt"'
 "$L1/common/Plain/HelixSR-Scaler-remove.sh" --yes </dev/null >/dev/null 2>&1
 
 # --- no HelixSR anywhere ---
-mv "$H/Downloads/HelixSR-1.9.0" "$W/hidden"
+mv "$HS" "$W/hidden"
 printf '%s\n' "$W/out.txt" | "$P/setup_linux.sh" --game "$L1/common/Plain" >"$W/out.txt" 2>&1
 check "asks for HelixSR and refuses a wrong file" 'grep -q "HelixSR wasn'"'"'t found" "$W/out.txt" && grep -q "network built in" "$W/out.txt"'
 check "nothing installed without HelixSR" '[ ! -e "$L1/common/Plain/dxgi.dll" ]'
-mv "$W/hidden" "$H/Downloads/HelixSR-1.9.0"
+mv "$W/hidden" "$HS"
+
+# --- HLX FSR 4 not built (HelixSR's setup stopped before it): AMD's FSR stays under its own name ---
+mv "$HS/HLX-FSR4" "$W/hidden-hlx"
+run --yes --game "$L1/common/Plain"
+check "HLX FSR 4 not built: AMD's FSR stays, no .amd.dll" '[ "$(cat "$L1/common/Plain/OptiScaler/amd_fidelityfx_upscaler_dx12.dll")" = "$AMDFSR" ] && [ ! -e "$L1/common/Plain/OptiScaler/amd_fidelityfx_upscaler_dx12.amd.dll" ] && grep -q "HLX FSR 4 isn'"'"'t built" "$W/out.txt"'
+"$L1/common/Plain/HelixSR-Scaler-remove.sh" --yes </dev/null >/dev/null 2>&1
+mv "$W/hidden-hlx" "$HS/HLX-FSR4"
+
+# --- an unbuilt HLX FSR 4 put over AMD's in the HelixSR Scaler folder by hand: never installed as AMD's ---
+cp "$P/OptiScaler/amd_fidelityfx_upscaler_dx12.dll" "$W/amd-keep"
+printf 'HLX FSR 4 code only' >"$P/OptiScaler/amd_fidelityfx_upscaler_dx12.dll"
+run --yes --game "$L1/common/Plain"
+check "unbuilt HLX FSR 4 in the download: the built one goes in, no fake AMD file" 'cmp -s "$L1/common/Plain/OptiScaler/amd_fidelityfx_upscaler_dx12.dll" "$HS/HLX-FSR4/amd_fidelityfx_upscaler_dx12.dll" && [ ! -e "$L1/common/Plain/OptiScaler/amd_fidelityfx_upscaler_dx12.amd.dll" ]'
+"$L1/common/Plain/HelixSR-Scaler-remove.sh" --yes </dev/null >/dev/null 2>&1
+cp "$W/amd-keep" "$P/OptiScaler/amd_fidelityfx_upscaler_dx12.dll"
 
 # --- download extracted into the game, as with OptiScaler ---
 G="$L1/common/Plain"
 orig=$(cd "$G" && ls -A | sort)
 cp -r "$P/." "$G/"
 (cd "$G" && ./setup_linux.sh --yes </dev/null >"$W/out.txt" 2>&1)
-check "in-game install works" '[ -f "$G/dxgi.dll" ] && [ ! -e "$G/OptiScaler.dll" ] && [ -f "$G/HelixSR-fsrfg/amd_fidelityfx_dx12.dll" ]'
+check "in-game install works" '[ -f "$G/dxgi.dll" ] && [ ! -e "$G/OptiScaler.dll" ] && [ -f "$G/HelixSR/helixsr.dll" ]'
 check "in-game install cleans up the download" '[ ! -e "$G/setup_linux.sh" ] && [ ! -e "$G/HelixSR-Scaler-package.txt" ]'
 check "in-game install backs nothing up" '[ ! -e "$G/HelixSR-Scaler-backup" ]'
 (cd "$G" && ./HelixSR-Scaler-remove.sh --yes </dev/null >/dev/null 2>&1)
