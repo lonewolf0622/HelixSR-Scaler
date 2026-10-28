@@ -130,18 +130,6 @@ try {
         Check 'old FrameGeneration=on: FGInput=nvngxfg, FGNvngxReplacement=HelixSR' ($r.code -eq 0 -and $t -match '(?m)^FGInput=nvngxfg\r?$' -and $t -match '(?m)^FGNvngxReplacement=HelixSR\r?$' -and $r.out -match 'included and on')
         Check 'old FrameGeneration / FGPresent lines removed, the rest kept' ($t -notmatch 'FrameGeneration=' -and $t -notmatch 'FGPresent=' -and $t -match '(?m)^WaveSize=auto\r?$')
     }
-GNvngxReplacement=HelixSR
-    # (Windows only: the \ to / rewrite above breaks the script's ini patterns elsewhere)
-    if ($IsWindows -or $null -eq $IsWindows) {
-        $g6 = Join-Path $w 'g6'
-        Built (Join-Path $g6 'HelixSR-fsrfg/amd_fidelityfx_dx12.dll'); Fg (Join-Path $g6 'HelixSR-fsrfg/helixsr-fg')
-        $ini6 = Join-Path $g6 'OptiScaler.ini'
-        [IO.File]::WriteAllText($ini6, "[HelixSR]`r`nFrameGeneration=on`r`nFGPresent=auto`r`nWaveSize=auto`r`n[FrameGen]`r`nFGInput=auto`r`nFGNvngxReplacement=auto`r`n")
-        $r = Run $g6
-        $t = [IO.File]::ReadAllText($ini6)
-        Check 'old FrameGeneration=on: FGInput=nvngxfg, FGNvngxReplacement=HelixSR' ($r.code -eq 0 -and $t -match '(?m)^FGInput=nvngxfg\r?$' -and $t -match '(?m)^FGNvngxReplacement=HelixSR\r?$' -and $r.out -match 'included and on')
-        Check 'old FrameGeneration / FGPresent lines removed, the rest kept' ($t -notmatch 'FrameGeneration=' -and $t -notmatch 'FGPresent=' -and $t -match '(?m)^WaveSize=auto\r?$')
-    }
 } finally {
     Remove-Item -Recurse -Force $w -ErrorAction SilentlyContinue
 }
