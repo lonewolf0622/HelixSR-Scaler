@@ -11,18 +11,25 @@ are the same files as on Windows.
 
 INSTALLING
 
-Run ./helixsr-setup.sh from the HelixSR 3.1 download (on Steam Deck: Desktop Mode, open the folder
-in Dolphin, right-click an empty spot > Open Terminal Here). It builds HelixSR on your PC, lists
-your games and installs HelixSR Scaler into the ones you answer s for. Installed as dxgi.dll (the
-usual case) it needs no launch options; otherwise the setup shows the Steam launch options to use.
-(Heroic or Lutris: add the environment variable WINEDLLOVERRIDES with the value the setup shows.)
+First set HelixSR up: run ./helixsr-setup.sh from the HelixSR 3.1 download (or use the HelixSR
+app). It builds HelixSR on your PC. On Steam Deck: Desktop Mode, open the folder in Dolphin,
+right-click an empty spot > Open Terminal Here.
+
+Then run ./setup_linux.sh from this download. It lists your Steam games with DLSS, FSR or XeSS:
+type a game's number (or drag a game's folder into the window for Heroic, Lutris and other stores).
+It finds your HelixSR by itself and puts HelixSR Scaler, HLX DLSS and HLX FSR 4 into the game.
+HelixSR's setup and the HelixSR app can install it too, and each can update or remove what the
+other installed. Installed as dxgi.dll (the usual case) it needs no launch options; otherwise it
+shows the Steam launch options to use. (Heroic or Lutris: add the environment variable
+WINEDLLOVERRIDES with the value it shows.)
 
 Start the game. In its graphics settings, turn on DLSS (or FSR or XeSS if there is no DLSS).
 Press Insert for the menu. The Steam Deck has no Insert key: in the game's controller settings,
 set a back button to the keyboard key Insert.
 
-Run the setup of a newer HelixSR to update a game, or helixsr-uninstall.sh to remove it (the
-game's own files are put back).
+To update a game, run setup_linux.sh (or the setup of a newer HelixSR) again. To remove it, run
+HelixSR-Scaler-remove.sh in the game's folder (or helixsr-uninstall.sh): the game's own files are
+put back.
 
 
 IN THE MENU (Insert key)

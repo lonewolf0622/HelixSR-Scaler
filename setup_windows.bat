@@ -376,7 +376,7 @@ echo.
 goto completeSetup
 
 :completeSetup
-REM HelixSR Scaler: HelixSR's DLL into HelixSR-fsrfg\amd_fidelityfx_dx12.dll, its frame generation into HelixSR-fsrfg\helixsr-fg
+REM HelixSR Scaler: HLX DLSS into HelixSR\helixsr.dll (frame generation into HelixSR\helixsr-fg), HLX FSR 4 into OptiScaler\
 call :helixsr
 if errorlevel 1 goto end
 
@@ -519,60 +519,59 @@ echo.
 
 goto create_uninstaller_return
 
-REM HelixSR Scaler: finds HelixSR's DLL with the network built in (the HelixSR download, the HelixSR app, or a path
-REM typed in) and copies it to HelixSR-fsrfg\amd_fidelityfx_dx12.dll, with frame generation (helixsr-fg) when HelixSR's
-REM setup made it.
-REM The PowerShell part is at the end of this file, after #HSR-PS-START.
-:helixsr
-where powershell >nul 2>&1
-if errorlevel 1 (
-    echo.
-    echo PowerShell isn't available ^(Wine?^): copy HelixSR by hand. Make a folder called HelixSR-fsrfg here, copy
-    echo HelixSR's amd_fidelityfx_dx12.dll into it, and copy HelixSR's helixsr-fg folder into it too.
-    echo On Linux, use setup_linux.sh instead.
-    echo.
-    exit /b 0
-)
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = [IO.File]::ReadAllText($env:HSR_BAT); Invoke-Expression $s.Substring($s.LastIndexOf('#HSR' + '-PS-START'))"
-exit /b %errorlevel%
-
-#HSR-PS-START
+REM HelixSR Scaler: finds HelixSR 3.x after its setup built it (the HelixSR download, the HelixSR app, or a path typed
+REM in) and copies HLX DLSS to HelixSR\helixsr.dll (with frame generation when HelixSR's setup made it) and HLX FSR 4 to
+REM OptiScaler\amd_fidelityfx_upscaler_dx12.dll, AMD's FSR next to it as amd_fidelityfx_upscaler_dx12.amd.dll.
+REM The PowerShell part is at the end of this file, after #HSR-PS-START
 $ErrorActionPreference = 'Stop'
 $game = (Get-Location).Path
 $fgFiles = 'nvexec64.dll', '_nvngx.dll', 'nvngx_dlssg.dll'
+$ffx = Join-Path $game 'OptiScaler\amd_fidelityfx_upscaler_dx12.dll'
+$ffxAmd = Join-Path $game 'OptiScaler\amd_fidelityfx_upscaler_dx12.amd.dll'
 
-# HelixSR's DLL with the network built into it ends with a 32-byte trailer that starts with HXSRNET1
-function Test-Built([string]$f) {
-    if (-not $f -or -not (Test-Path -LiteralPath $f -PathType Leaf)) { return $false }
+# the last bytes of a file as text
+function Get-Tail([string]$f, [int]$from, [int]$n) {
+    if (-not $f -or -not (Test-Path -LiteralPath $f -PathType Leaf)) { return '' }
     $fs = $null
     try {
         $fs = [IO.File]::OpenRead($f)
-        if ($fs.Length -lt 32) { return $false }
-        [void]$fs.Seek(-32, [IO.SeekOrigin]::End)
-        $b = New-Object byte[] 8
-        [void]$fs.Read($b, 0, 8)
-        return [Text.Encoding]::ASCII.GetString($b) -eq 'HXSRNET1'
-    } catch { return $false } finally { if ($fs) { $fs.Dispose() } }
+        if ($fs.Length -lt $from) { return '' }
+        [void]$fs.Seek(-$from, [IO.SeekOrigin]::End)
+        $b = New-Object byte[] $n
+        [void]$fs.Read($b, 0, $n)
+        return [Text.Encoding]::ASCII.GetString($b)
+    } catch { return '' } finally { if ($fs) { $fs.Dispose() } }
+}
+# HelixSR's DLL with the network built into it ends with a 32-byte trailer that starts with HXSRNET1 (HXSRFG01 when
+# frame generation's data came after it)
+function Test-Built([string]$f) { (Get-Tail $f 32 8) -in 'HXSRNET1', 'HXSRFG01' }
+# HLX FSR 4 with its shaders built in (by HelixSR's setup) ends with a 24-byte trailer that starts with HLXFSR4D
+function Test-Hlx([string]$f) { (Get-Tail $f 24 8) -eq 'HLXFSR4D' }
+# an HLX FSR 4 DLL, built or not (its DLLs carry its name)
+function Test-HlxAny([string]$f) {
+    if (-not (Test-Path -LiteralPath $f -PathType Leaf)) { return $false }
+    return [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($f)).Contains('HLX FSR 4')
 }
 
+# HelixSR's built HelixSR\helixsr.dll: the newest in the usual places
 function Find-HelixSR {
     $home_ = $env:USERPROFILE
     $places = @(
-        (Join-Path $env:LOCALAPPDATA 'HelixSR-Desktop\releases\*\HelixSR*\amd_fidelityfx_dx12.dll'),   # the HelixSR app
-        (Join-Path $env:LOCALAPPDATA 'HelixSR-Desktop\releases\*\amd_fidelityfx_dx12.dll'),
-        (Join-Path $home_ 'Downloads\HelixSR*\amd_fidelityfx_dx12.dll'),
-        (Join-Path $home_ 'Downloads\*\HelixSR*\amd_fidelityfx_dx12.dll'),
-        (Join-Path $home_ 'Desktop\HelixSR*\amd_fidelityfx_dx12.dll'),
-        (Join-Path $home_ 'Documents\HelixSR*\amd_fidelityfx_dx12.dll'),
-        (Join-Path $home_ 'HelixSR*\amd_fidelityfx_dx12.dll'),
-        (Join-Path $game 'HelixSR-fsrfg\amd_fidelityfx_dx12.dll'),   # a reinstall: the HelixSR already in the game
-        (Join-Path $game 'HelixSR\helixsr.dll')   # an install from before HelixSR Scaler 1.1.0
+        (Join-Path $env:LOCALAPPDATA 'HelixSR-Desktop\releases\*\HelixSR\helixsr.dll'),   # the HelixSR app
+        (Join-Path $env:LOCALAPPDATA 'HelixSR-Desktop\releases\*\HelixSR*\HelixSR\helixsr.dll'),
+        (Join-Path $home_ 'Downloads\HelixSR*\HelixSR\helixsr.dll'),
+        (Join-Path $home_ 'Downloads\*\HelixSR*\HelixSR\helixsr.dll'),
+        (Join-Path $home_ 'Desktop\HelixSR*\HelixSR\helixsr.dll'),
+        (Join-Path $home_ 'Documents\HelixSR*\HelixSR\helixsr.dll'),
+        (Join-Path $home_ 'HelixSR*\HelixSR\helixsr.dll'),
+        'C:\HelixSR*\HelixSR\helixsr.dll'
     )
-    foreach ($p in $places) {
-        $hit = Get-ChildItem -Path $p -File -ErrorAction SilentlyContinue | Where-Object { Test-Built $_.FullName } |
-            Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        if ($hit) { return $hit.FullName }
-    }
+    $hit = $places | ForEach-Object { Get-ChildItem -Path $_ -File -ErrorAction SilentlyContinue } |
+        Where-Object { Test-Built $_.FullName } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($hit) { return $hit.FullName }
+    # a reinstall: the HelixSR already in the game
+    $own = Join-Path $game 'HelixSR\helixsr.dll'
+    if (Test-Built $own) { return $own }
     return $null
 }
 
@@ -581,31 +580,43 @@ Write-Host 'HelixSR Scaler: looking for HelixSR...'
 $helix = Find-HelixSR
 while (-not $helix) {
     Write-Host ''
-    Write-Host "HelixSR wasn't found. Run helixsr-setup from the HelixSR download first (it builds the network),"
-    Write-Host "or set it up with the HelixSR app. Then drag HelixSR's amd_fidelityfx_dx12.dll (or its folder) in here."
+    Write-Host "HelixSR wasn't found. Download HelixSR 3.0 or newer and run its helixsr-setup first (it builds HelixSR on"
+    Write-Host 'your PC), or set it up with the HelixSR app. Then drag the HelixSR download folder (or its HelixSR\helixsr.dll) in here.'
     Write-Host 'Press Enter on its own to stop.'
-    $in = (Read-Host 'HelixSR DLL').Trim().Trim('"').Trim("'")
+    $in = (Read-Host 'HelixSR').Trim().Trim('"').Trim("'")
     if (-not $in) { Write-Host 'Nothing installed.'; [Environment]::Exit(1) }
-    if (Test-Path -LiteralPath $in -PathType Container) { $in = Join-Path $in 'amd_fidelityfx_dx12.dll' }
-    if (Test-Built $in) { $helix = (Resolve-Path -LiteralPath $in).Path }
-    else { Write-Host "That isn't HelixSR's DLL with the network built in." }
+    if (Test-Path -LiteralPath $in -PathType Container) {
+        $in = @((Join-Path $in 'HelixSR\helixsr.dll'), (Join-Path $in 'helixsr.dll')) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    }
+    if ($in -and (Test-Built $in)) { $helix = (Resolve-Path -LiteralPath $in).Path }
+    else { Write-Host "That isn't HelixSR's HelixSR\helixsr.dll after its setup (run helixsr-setup first)." }
 }
-Write-Host "HelixSR: $helix"
+Write-Host "HLX DLSS: $helix"
 $src = Split-Path -Parent $helix
+$root = Split-Path -Parent $src
+
+# HLX FSR 4: the one in this folder when it is built, else the one HelixSR's setup built in that HelixSR download
+$hlx = $null
+foreach ($c in $ffx, (Join-Path $root 'HLX-FSR4\amd_fidelityfx_upscaler_dx12.dll'), (Join-Path $root 'helixsr-scaler\OptiScaler\amd_fidelityfx_upscaler_dx12.dll')) {
+    if (Test-Hlx $c) { $hlx = $c; break }
+}
 
 # Frame generation: the helixsr-fg folder HelixSR's setup made next to its DLL (a reinstall: the game's own copy)
 $fg = $null
-foreach ($d in (Join-Path $src 'helixsr-fg'), (Join-Path $src 'helixsr-fg.off'), (Join-Path $src 'dlss-loader\helixsr-fg')) {
+foreach ($d in (Join-Path $src 'helixsr-fg'), (Join-Path $src 'helixsr-fg.off')) {
     if (@($fgFiles | Where-Object { -not (Test-Path -LiteralPath (Join-Path $d $_) -PathType Leaf) }).Count -eq 0) { $fg = $d; break }
 }
 
 try {
-    $dst = Join-Path $game 'HelixSR-fsrfg'
-    New-Item -ItemType Directory -Force -Path $dst | Out-Null
+    $dst = Join-Path $game 'HelixSR'
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ('helixsr-' + [Guid]::NewGuid())
     New-Item -ItemType Directory -Force -Path (Join-Path $tmp 'fg') | Out-Null
     # copied out first: a reinstall's source is the game's own HelixSR folder
-    Copy-Item -LiteralPath $helix -Destination (Join-Path $tmp 'amd_fidelityfx_dx12.dll') -Force
+    Copy-Item -LiteralPath $helix -Destination (Join-Path $tmp 'helixsr.dll') -Force
+    $fgDll = Join-Path $src 'helixsr_fg.dll'
+    $hasFgDll = Test-Path -LiteralPath $fgDll -PathType Leaf
+    if ($hasFgDll) { Copy-Item -LiteralPath $fgDll -Destination (Join-Path $tmp 'helixsr_fg.dll') -Force }
+    if ($hlx) { Copy-Item -LiteralPath $hlx -Destination (Join-Path $tmp 'hlx.dll') -Force }
     # frame generation: all of its files (data files and subfolders too), not its logs
     if ($fg) {
         Get-ChildItem -LiteralPath $fg -Recurse -File | Where-Object { $_.Name -notlike '*.log' -and $_.Name -notlike '*.log.*' } |
@@ -616,7 +627,9 @@ try {
                 Copy-Item -LiteralPath $_.FullName -Destination $to -Force
             }
     }
-    Copy-Item -LiteralPath (Join-Path $tmp 'amd_fidelityfx_dx12.dll') -Destination (Join-Path $dst 'amd_fidelityfx_dx12.dll') -Force
+    New-Item -ItemType Directory -Force -Path $dst | Out-Null
+    Copy-Item -LiteralPath (Join-Path $tmp 'helixsr.dll') -Destination (Join-Path $dst 'helixsr.dll') -Force
+    if ($hasFgDll) { Copy-Item -LiteralPath (Join-Path $tmp 'helixsr_fg.dll') -Destination (Join-Path $dst 'helixsr_fg.dll') -Force }
     if ($fg) {
         foreach ($old in 'helixsr-fg', 'helixsr-fg.off') {
             $o = Join-Path $dst $old
@@ -624,11 +637,27 @@ try {
         }
         Copy-Item -LiteralPath (Join-Path $tmp 'fg') -Destination (Join-Path $dst 'helixsr-fg') -Recurse -Force
     }
-    # an install from before 1.1.0 (HelixSR\helixsr.dll): HelixSR Scaler would still use it, so that folder goes
-    $legacy = Join-Path $game 'HelixSR'
-    if (Test-Path -LiteralPath (Join-Path $legacy 'helixsr.dll') -PathType Leaf) {
+    # HLX FSR 4 under the FidelityFX name, AMD's FSR next to it as .amd.dll (HLX FSR 4 hands AMD's versions to it)
+    if ($hlx) {
+        if (-not (Test-Path -LiteralPath $ffxAmd) -and (Test-Path -LiteralPath $ffx) -and -not (Test-HlxAny $ffx)) {
+            Move-Item -LiteralPath $ffx -Destination $ffxAmd -Force
+        }
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ffx) | Out-Null
+        Copy-Item -LiteralPath (Join-Path $tmp 'hlx.dll') -Destination $ffx -Force
+        Write-Host "HLX FSR 4: $hlx"
+    } else {
+        # not built: an HLX FSR 4 without its shaders has nothing to run, AMD's FSR goes back under its own name
+        if (Test-HlxAny $ffx) {
+            if (Test-Path -LiteralPath $ffxAmd) { Move-Item -LiteralPath $ffxAmd -Destination $ffx -Force }
+            else { Remove-Item -LiteralPath $ffx -Force }
+        }
+        Write-Host "HLX FSR 4 isn't built (run HelixSR's setup): AMD's FSR stays."
+    }
+    # HelixSR 2.0's folder (HelixSR Scaler 1.1.0): HelixSR Scaler would still use it, so it goes
+    $legacy = Join-Path $game 'HelixSR-fsrfg'
+    if (Test-Path -LiteralPath $legacy) {
         Remove-Item -LiteralPath $legacy -Recurse -Force
-        Write-Host 'The HelixSR folder of an older install was taken out (HelixSR is in HelixSR-fsrfg now)'
+        Write-Host 'The HelixSR-fsrfg folder of an older install was taken out (HelixSR is in HelixSR\ now)'
     }
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
 } catch {
@@ -636,11 +665,32 @@ try {
     Write-Host 'Most likely a folder permissions issue: try running this setup as admin.'
     [Environment]::Exit(1)
 }
-Write-Host 'HelixSR copied to HelixSR-fsrfg\amd_fidelityfx_dx12.dll'
+Write-Host 'HLX DLSS copied to HelixSR\helixsr.dll'
+
+# OptiScaler.ini: what HelixSR needs where it's left on auto (as HelixSR's setup and the HelixSR app write it):
+# [Upscalers] Dx12Upscaler=dlss (HLX DLSS is OptiScaler's DLSS upscaler), [DLSS] HelixSR=true, [Plugins]
+# LoadAsiPlugins=true (OptiPatcher)
+$ini = Join-Path $game 'OptiScaler.ini'
+if (Test-Path -LiteralPath $ini -PathType Leaf) {
+    $lines = [IO.File]::ReadAllText($ini) -split '\n'
+    $want = @{ 'Upscalers|Dx12Upscaler' = @('dlss', 'auto', 'ffx'); 'DLSS|HelixSR' = @('true', 'auto'); 'Plugins|LoadAsiPlugins' = @('true', 'auto') }
+    $sec = ''
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $l = $lines[$i].TrimEnd("`r")
+        if ($l -match '^\[(.+)\]') { $sec = $Matches[1]; continue }
+        if ($l -match '^([A-Za-z0-9]+)[ \t]*=[ \t]*(.*)$') {
+            $w = $want["$sec|$($Matches[1])"]
+            if ($w -and ($w[1..($w.Count - 1)] -contains $Matches[2].Trim().ToLower())) {
+                $lines[$i] = "$($Matches[1])=$($w[0])" + $(if ($lines[$i].EndsWith("`r")) { "`r" } else { '' })
+            }
+        }
+    }
+    [IO.File]::WriteAllText($ini, ($lines -join "`n"))
+}
+
 if ($fg) {
     # Frame generation: HelixSR is OptiScaler's DLSS frame-generation provider, on with [FrameGen] FGInput=nvngxfg and
     # FGNvngxReplacement=HelixSR in OptiScaler.ini (asked when OptiScaler.ini leaves frame generation on auto)
-    $ini = Join-Path $game 'OptiScaler.ini'
     $on = $false
     if (Test-Path -LiteralPath $ini -PathType Leaf) {
         $text = [IO.File]::ReadAllText($ini)
@@ -666,8 +716,9 @@ if ($fg) {
         }
         [IO.File]::WriteAllText($ini, $text)
     }
-    if ($on) { Write-Host 'Frame generation included and on (HelixSR-fsrfg\helixsr-fg). In the game, turn on its frame generation.' }
+    if ($on) { Write-Host 'Frame generation included and on (HelixSR\helixsr-fg). In the game, turn on its frame generation.' }
     else { Write-Host 'Frame generation included, off: turn it on in the menu (Insert, Frame Generation: HelixSR) or with FGInput=nvngxfg and FGNvngxReplacement=HelixSR in OptiScaler.ini.' }
 }
-else { Write-Host "Frame generation isn't set up (no helixsr-fg folder next to HelixSR's DLL): upscaling only." }
+else { Write-Host "Frame generation isn't set up: upscaling only." }
+Write-Host 'In the game, pick DLSS: that runs HLX DLSS. Insert opens the menu; its upscaler list also has HLX FSR 4.'
 [Environment]::Exit(0)
