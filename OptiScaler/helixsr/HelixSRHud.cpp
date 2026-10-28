@@ -161,13 +161,12 @@ struct UpscalerEntry
 };
 
 // The upscalers of a DirectX 12 game, or of a DirectX 11 game (HelixSR, FSR from the FFX SDK and XeSS through
-// OptiScaler's Dx12 interop there), or of a Vulkan game with HelixSR's FidelityFX DLL (HelixSR and FSR from the FFX SDK
-// through the Dx12 interop)
+// OptiScaler's Dx12 interop there), or of a Vulkan game (HelixSR and FSR from the FFX SDK through the Dx12 interop)
 std::vector<UpscalerEntry> Upscalers(API api)
 {
     const bool dx11 = api == DX11, vulkan = api == Vulkan;
     std::vector<UpscalerEntry> list;
-    const bool helixDlss = found && NVNGXProxy::HelixSRDlss() && !vulkan;
+    const bool helixDlss = found && NVNGXProxy::HelixSRDlss();
     if (helixDlss)
         list.push_back({ HelixSR::Names::kHelixUpscalerName, HelixSRUpscaler(), true });
 
@@ -355,7 +354,8 @@ void RenderHud(float scale, ImVec4 (*color)(const ImVec4&))
             Text(dl, ImVec2(lx + 6 * k, ly), ts, Col(kText, 0.85f), "DLSS RAY RECONSTRUCTION IS ON");
             Text(dl, ImVec2(lx + 6 * k, ly + 24 * k), ts, Col(kMuted), "THE UPSCALER CAN'T BE CHANGED.");
         }
-        else if (state.api != DX12 && state.api != DX11 && !FsrDllFound())
+        else if (state.api != DX12 && state.api != DX11 && !FsrDllFound() &&
+                 !(state.api == Vulkan && NVNGXProxy::HelixSRDlss()))
         {
             Text(dl, ImVec2(lx + 6 * k, ly), ts, Col(kText, 0.85f), "HELIXSR RUNS IN DIRECTX 11 AND 12 GAMES");
             Text(dl, ImVec2(lx + 6 * k, ly + 24 * k), ts, Col(kMuted), "PICK AN UPSCALER IN THE LIST BELOW.");

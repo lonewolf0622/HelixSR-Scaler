@@ -1022,11 +1022,12 @@ static bool IsOn12(Upscaler upscaler)
     }
 }
 
-// HelixSR Scaler: OptiScaler's DLSS upscaler with HelixSR's DLSS DLL (DirectX 12; DirectX 11 through the Dx12 interop)
+// HelixSR Scaler: OptiScaler's DLSS upscaler with HelixSR's DLSS DLL (DirectX 12; DirectX 11 and Vulkan through the
+// Dx12 interop)
 static bool IsHelixSR(Upscaler upscaler, API api)
 {
     return ((upscaler == Upscaler::DLSS && api == API::DX12) ||
-            (upscaler == Upscaler::DLSS_on12 && api == API::DX11)) &&
+            (upscaler == Upscaler::DLSS_on12 && (api == API::DX11 || api == API::Vulkan))) &&
            NVNGXProxy::HelixSRDlss();
 }
 

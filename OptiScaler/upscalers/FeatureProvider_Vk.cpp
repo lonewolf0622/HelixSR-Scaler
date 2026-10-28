@@ -51,6 +51,14 @@ bool FeatureProvider_Vk::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NGX_
         break;
 
     case Upscaler::DLSS:
+        // HelixSR Scaler: HelixSR's DLSS DLL is DirectX 12 only, Vulkan games run it through the Dx12 interop
+        if (NVNGXProxy::HelixSRDlss())
+        {
+            *feature = std::make_unique<DLSSFeatureVkOnDx12>(handleId, parameters);
+            upscaler = Upscaler::DLSS_on12;
+            break;
+        }
+
         if (primaryGpu.dlssCapable && state.NVNGX_DLSS_Path.has_value())
         {
             *feature = std::make_unique<DLSSFeatureVk>(handleId, parameters);
@@ -64,7 +72,7 @@ bool FeatureProvider_Vk::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NGX_
         }
 
     case Upscaler::DLSS_on12:
-        if (primaryGpu.dlssCapable && state.NVNGX_DLSS_Path.has_value())
+        if ((primaryGpu.dlssCapable && state.NVNGX_DLSS_Path.has_value()) || NVNGXProxy::HelixSRDlss())
         {
             *feature = std::make_unique<DLSSFeatureVkOnDx12>(handleId, parameters);
             break;
@@ -123,7 +131,7 @@ bool FeatureProvider_Vk::ChangeFeature(Upscaler upscaler, VkInstance instance, V
     State& state = State::Instance();
     Config& cfg = *Config::Instance();
 
-    const bool dlssOnNonCapable = !IdentifyGpu::getPrimaryGpu().dlssCapable &&
+    const bool dlssOnNonCapable = !IdentifyGpu::getPrimaryGpu().dlssCapable && !NVNGXProxy::HelixSRDlss() &&
                                   (state.newBackend == Upscaler::DLSS || state.newBackend == Upscaler::DLSS_on12);
     if (state.newBackend == Upscaler::Reset || dlssOnNonCapable)
         state.newBackend = cfg.VulkanUpscaler.value_or_default();

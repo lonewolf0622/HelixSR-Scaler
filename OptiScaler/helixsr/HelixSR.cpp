@@ -540,7 +540,11 @@ LogStatus ReadLog()
 
 // HelixSR is OptiScaler's DLSS upscaler on GPUs without DLSS (HelixSR's DLSS DLL as the NVNGX module); DirectX 11
 // games run it through OptiScaler's Dx12 interop (DLSS w/Dx12, HelixSR's DLL is DirectX 12 only)
-::Upscaler HelixSRUpscaler() { return State::Instance().api == DX11 ? ::Upscaler::DLSS_on12 : ::Upscaler::DLSS; }
+::Upscaler HelixSRUpscaler()
+{
+    const auto api = State::Instance().api;
+    return api == DX11 || api == Vulkan ? ::Upscaler::DLSS_on12 : ::Upscaler::DLSS;
+}
 
 void ChooseHelixSR() { ChooseBackend(HelixSRUpscaler()); }
 
@@ -861,13 +865,16 @@ void ApplyDefaults()
 
     if (found)
     {
-        // HelixSR is the DLSS upscaler (on GPUs without DLSS, see NVNGXProxy::HelixSRDlss); DirectX 11 games run it
-        // through the Dx12 interop (FeatureProvider_Dx11: DLSS w/Dx12)
+        // HelixSR is the DLSS upscaler (on GPUs without DLSS, see NVNGXProxy::HelixSRDlss); DirectX 11 and Vulkan
+        // games run it through the Dx12 interop (FeatureProvider_Dx11 / FeatureProvider_Vk: DLSS w/Dx12)
         if (!cfg->Dx12Upscaler.has_value())
             cfg->Dx12Upscaler.set_volatile_value(::Upscaler::DLSS);
 
         if (!cfg->Dx11Upscaler.has_value())
             cfg->Dx11Upscaler.set_volatile_value(::Upscaler::DLSS);
+
+        if (!cfg->VulkanUpscaler.has_value() && NVNGXProxy::HelixSRDlss())
+            cfg->VulkanUpscaler.set_volatile_value(::Upscaler::DLSS_on12);
     }
 }
 
