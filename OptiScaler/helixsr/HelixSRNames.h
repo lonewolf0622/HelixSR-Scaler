@@ -68,8 +68,8 @@ inline Version Parse(const char* name)
     return v;
 }
 
-// Indices into a version list: HelixSR's entry first (the default, index 0 in HelixSR's own list), then newest first.
-// Without a HelixSR entry this is OptiScaler's order (newest first, ties in list order).
+// Indices into a version list: our own entry first (HelixSR's, or HLX FSR 4: the default, index 0 in our DLLs' lists),
+// then newest first. Without one this is OptiScaler's order (newest first, ties in list order).
 inline std::vector<int> Order(const std::vector<const char*>& names)
 {
     std::vector<int> order(names.size());
@@ -78,7 +78,7 @@ inline std::vector<int> Order(const std::vector<const char*>& names)
     std::stable_sort(order.begin(), order.end(),
                      [&names](int a, int b)
                      {
-                         const bool ha = IsHelixSR(names[a]), hb = IsHelixSR(names[b]);
+                         const bool ha = IsOwnUpscaler(names[a]), hb = IsOwnUpscaler(names[b]);
                          if (ha != hb)
                              return ha;
                          return Parse(names[b]) < Parse(names[a]);
@@ -87,8 +87,9 @@ inline std::vector<int> Order(const std::vector<const char*>& names)
     return order;
 }
 
-// The entries the upscaler list shows for one FidelityFX backend: the newest AMD FSR, and HelixSR's entry next to it
-// when the list has one (so picking "FSR" never switches HelixSR off, and picking HelixSR never needs the FFX list)
+// The entries the upscaler list shows for one FidelityFX backend: the newest AMD FSR, and our own entry (HelixSR's, or
+// HLX FSR 4: an upscaler of its own, not an FSR version) next to it when the list has one (so picking "FSR" is AMD's
+// FSR, and picking ours never needs the FFX list)
 inline std::vector<int> ListEntries(const std::vector<const char*>& names)
 {
     std::vector<int> entries;
@@ -96,7 +97,7 @@ inline std::vector<int> ListEntries(const std::vector<const char*>& names)
 
     for (int n : Order(names))
     {
-        if (IsHelixSR(names[n]))
+        if (IsOwnUpscaler(names[n]))
         {
             if (helix < 0)
                 helix = n;

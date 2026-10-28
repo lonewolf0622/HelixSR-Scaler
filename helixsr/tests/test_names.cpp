@@ -65,6 +65,16 @@ int main()
     check("ties keep the list order", same(Order({ "3.1.5", "3.1.5" }), { 0, 1 }));
     check("empty list", ListEntries({}).empty());
 
+    // HLX FSR 4: an upscaler of its own next to AMD's FSR (its own version id, AMD's FSR 4.1.2 listed after it)
+    const std::vector<const char*> hlxRdna4 = { "HLX FSR 4 (4.1.2)", "4.1.2", "3.1.5", "2.3.4" };
+    check("HLX FSR 4 first, then AMD's newest first", same(Order(hlxRdna4), { 0, 1, 2, 3 }));
+    check("upscaler list: HLX FSR 4 and AMD's FSR 4.1.2", same(ListEntries(hlxRdna4), { 0, 1 }));
+    const std::vector<const char*> hlxOther = { "HLX FSR 4 (4.1.2)", "3.1.5", "2.3.4" };
+    check("upscaler list without AMD's FSR 4: HLX FSR 4 and FSR 3.1.5", same(ListEntries(hlxOther), { 0, 1 }));
+    const std::vector<const char*> hlxTie = { "4.1.2", "HLX FSR 4 (4.1.2)" };
+    check("HLX FSR 4 first over AMD's FSR of the same version", same(Order(hlxTie), { 1, 0 }));
+    check("HLX FSR 4 alone: one entry", same(ListEntries({ "HLX FSR 4 (4.1.2)" }), { 0 }));
+
     std::printf("\n%s\n", fails == 0 ? "all passed" : "FAILED");
     return fails == 0 ? 0 : 1;
 }

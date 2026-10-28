@@ -1183,17 +1183,17 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
         if (i > 0 && group(entry.upscaler) != group(entries[i - 1].upscaler))
             ImGui::Separator();
 
-        // HelixSR Scaler: an FFX backend can have two lines (HelixSR's entry and the newest FSR): told apart by index
+        // HelixSR Scaler: an FFX backend can have two lines (our own entry and the newest FSR): told apart by index
         auto label = StrFmt("%s##%d_%d", upscalerName(entry.upscaler, entry.ffxIndex).c_str(), (int) entry.upscaler,
                             entry.ffxIndex);
-        // HelixSR's line is the selected one while FFX runs HelixSR's entry, the FSR line while it runs any other
+        // Our line is the selected one while FFX runs our entry, the FSR line while it runs any other
         const auto* ffxList = entry.ffxIndex >= 0 ? GetFfxVersionList(entry.upscaler, api) : nullptr;
         const bool helixsrLines = ffxList != nullptr && HelixSR::Names::ListEntries(ffxList->names).size() > 1;
         const bool runsHelixSR = helixsrLines && ffxIndex >= 0 && ffxIndex < (int) ffxList->names.size() &&
-                                 HelixSR::Names::IsHelixSR(ffxList->names[ffxIndex]);
+                                 HelixSR::Names::IsOwnUpscaler(ffxList->names[ffxIndex]);
         const bool selected =
             currentUpscaler == entry.upscaler &&
-            (!helixsrLines || runsHelixSR == HelixSR::Names::IsHelixSR(ffxList->names[entry.ffxIndex]));
+            (!helixsrLines || runsHelixSR == HelixSR::Names::IsOwnUpscaler(ffxList->names[entry.ffxIndex]));
 
         if (ImGui::Selectable(label.c_str(), selected))
         {
@@ -3732,8 +3732,15 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
     // FFX -----------------
     if (!usesDlssd && (currentBackend == Upscaler::FFX || currentBackend == Upscaler::FFX_on12))
     {
+        // HelixSR Scaler: our own entry (HelixSR's, HLX FSR 4) is an upscaler of its own, not an FSR version: no FSR
+        // version list and no AMD FSR 4 choices while it runs
+        const auto* ownList = GetFfxVersionList(currentBackend, state.api);
+        const int ownIndex = config->FfxUpscalerIndex.value_or_default();
+        const bool runsOwn = ownList != nullptr && ownIndex >= 0 && ownIndex < (int) ownList->names.size() &&
+                             HelixSR::Names::IsOwnUpscaler(ownList->names[ownIndex]);
+
         if (auto versions = GetFfxVersionList(currentBackend, state.api);
-            versions != nullptr && !versions->names.empty())
+            !runsOwn && versions != nullptr && !versions->names.empty())
         {
             ImGui::Spacing();
 
@@ -3749,6 +3756,9 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
             {
                 for (auto n : FfxVersionsNewestFirst(*versions))
                 {
+                    if (HelixSR::Names::IsOwnUpscaler(versions->names[n]))   // HelixSR Scaler: AMD's versions only
+                        continue;
+
                     auto label = HelixSR::FfxVersionLabel(versions->names[n]) + "##" + std::to_string(n);
                     if (ImGui::Selectable(label.c_str(), ffxIndex == n) && ffxIndex != n)
                     {
@@ -3811,101 +3821,105 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                         "Non-Linear / sRGB: Might improve FSR4 upscaling quality, might increase ghosting.\n"
                         "PQ: Rarest, might increase ghosting and break lights.");
 
-            // FSR 4 Presets
-            const char* presets[] = {
-                "Default", "Preset 0", "Preset 1", "Preset 2", "Preset 3", "Preset 4", "Preset 5"
-            };
-            int currentPresetIdx = config->Fsr4Preset.has_value() ? config->Fsr4Preset.value() + 1 : 0;
-
-            if (currentPresetIdx < 0 || currentPresetIdx >= IM_ARRAYSIZE(presets))
-                currentPresetIdx = 0;
-
-            ImGui::SetNextItemWidth(150.0f * menuResScale);
-            if (ImGui::Combo("FSR4 Preset", &currentPresetIdx, presets, IM_ARRAYSIZE(presets)))
+            // HelixSR Scaler: AMD's FSR 4 presets and models, not HLX FSR 4's
+            if (!runsOwn)
             {
-                if (currentPresetIdx == 0)
-                    config->Fsr4Preset.reset();
-                else
-                    config->Fsr4Preset = currentPresetIdx - 1;
+                // FSR 4 Presets
+                const char* presets[] = {
+                    "Default", "Preset 0", "Preset 1", "Preset 2", "Preset 3", "Preset 4", "Preset 5"
+                };
+                int currentPresetIdx = config->Fsr4Preset.has_value() ? config->Fsr4Preset.value() + 1 : 0;
 
-                state.newBackend = currentBackend;
-                MARK_ALL_BACKENDS_CHANGED();
-            }
-            ShowTooltip("Each internal FSR4 preset is tuned for a specific resolution.\n"
-                        "Selecting an FSR4 preset won't change the in-game\nupscaler preset!!!\n\n"
-                        "Preset 0 is meant for FSR Native AA\n"
-                        "Preset 1 is meant for Quality/Ultra Quality\n"
-                        "Preset 2 is meant for Balanced\n"
-                        "Preset 3 is meant for Performance\n"
-                        "Preset 4 is meant for DRS\n"
-                        "Preset 5 is meant for Ultra Performance");
-
-            // Display the active preset right next to the combo box instead of using a table
-            ImGui::SameLine();
-            if (state.currentFsr4Preset.has_value())
-                ImGui::TextDisabled("(Active: %d)", state.currentFsr4Preset.value());
-            else if (FSR4Presets::IsAnyModuleHooked())
-                ImGui::TextColored(StatusWarn(), "(Potential FSR3 fallback)");
-            else
-                ImGui::TextDisabled("(Failed to hook)");
-
-            // FSR 4 Models of the module running the selected upscaler, only listed when the GPU can run more than one
-            HMODULE upscalerModule = nullptr;
-            if (auto versions = GetFfxVersionList(currentBackend, state.api);
-                versions != nullptr && config->FfxUpscalerIndex.value_or_default() >= 0 &&
-                config->FfxUpscalerIndex.value_or_default() < versions->ids.size())
-            {
-                auto versionId = versions->ids[config->FfxUpscalerIndex.value_or_default()];
-
-                if (versions == &state.ffxUpscalerVersionsDx12)
-                    upscalerModule = FfxApiProxy::UpscalerModule(versionId);
-                else if (versions == &state.ffxUpscalerVersionsVk && FSR4DriverProviderVk::IsAvailable() &&
-                         versionId == FSR4DriverProviderVk::VersionId())
-                    upscalerModule = FSR4DriverProviderVk::Module()->dll;
-            }
-
-            if (auto models = FSR4Models::SelectableModels(upscalerModule); !models.empty())
-            {
-                auto& selectedModel = config->Fsr4Model;
-                auto selectedName = selectedModel.has_value() ? FSR4Models::Name(selectedModel.value()) : "Auto";
-                bool modelChanged = false;
+                if (currentPresetIdx < 0 || currentPresetIdx >= IM_ARRAYSIZE(presets))
+                    currentPresetIdx = 0;
 
                 ImGui::SetNextItemWidth(150.0f * menuResScale);
-                if (ImGui::BeginCombo("FSR4 Model", selectedName))
+                if (ImGui::Combo("FSR4 Preset", &currentPresetIdx, presets, IM_ARRAYSIZE(presets)))
                 {
-                    if (ImGui::Selectable("Auto", !selectedModel.has_value()) && selectedModel.has_value())
-                    {
-                        selectedModel.reset();
-                        modelChanged = true;
-                    }
+                    if (currentPresetIdx == 0)
+                        config->Fsr4Preset.reset();
+                    else
+                        config->Fsr4Preset = currentPresetIdx - 1;
 
-                    for (auto model : models)
-                    {
-                        if (ImGui::Selectable(FSR4Models::Name(model), selectedModel == model) &&
-                            selectedModel != model)
-                        {
-                            selectedModel = model;
-                            modelChanged = true;
-                        }
-                    }
-
-                    ImGui::EndCombo();
-                }
-
-                if (modelChanged)
-                {
                     state.newBackend = currentBackend;
                     MARK_ALL_BACKENDS_CHANGED();
                 }
+                ShowTooltip("Each internal FSR4 preset is tuned for a specific resolution.\n"
+                            "Selecting an FSR4 preset won't change the in-game\nupscaler preset!!!\n\n"
+                            "Preset 0 is meant for FSR Native AA\n"
+                            "Preset 1 is meant for Quality/Ultra Quality\n"
+                            "Preset 2 is meant for Balanced\n"
+                            "Preset 3 is meant for Performance\n"
+                            "Preset 4 is meant for DRS\n"
+                            "Preset 5 is meant for Ultra Performance");
 
-                ShowTooltip("FSR 4 network to run.\n"
-                            "Auto lets FFX pick the best one the GPU supports.");
-
+                // Display the active preset right next to the combo box instead of using a table
                 ImGui::SameLine();
-                if (auto activeModel = FSR4Models::ActiveModel(upscalerModule))
-                    ImGui::TextDisabled("(Active: %s)", FSR4Models::Name(*activeModel));
-                else
+                if (state.currentFsr4Preset.has_value())
+                    ImGui::TextDisabled("(Active: %d)", state.currentFsr4Preset.value());
+                else if (FSR4Presets::IsAnyModuleHooked())
                     ImGui::TextColored(StatusWarn(), "(Potential FSR3 fallback)");
+                else
+                    ImGui::TextDisabled("(Failed to hook)");
+
+                // FSR 4 Models of the module running the selected upscaler, only listed when the GPU can run more than one
+                HMODULE upscalerModule = nullptr;
+                if (auto versions = GetFfxVersionList(currentBackend, state.api);
+                    versions != nullptr && config->FfxUpscalerIndex.value_or_default() >= 0 &&
+                    config->FfxUpscalerIndex.value_or_default() < versions->ids.size())
+                {
+                    auto versionId = versions->ids[config->FfxUpscalerIndex.value_or_default()];
+
+                    if (versions == &state.ffxUpscalerVersionsDx12)
+                        upscalerModule = FfxApiProxy::UpscalerModule(versionId);
+                    else if (versions == &state.ffxUpscalerVersionsVk && FSR4DriverProviderVk::IsAvailable() &&
+                             versionId == FSR4DriverProviderVk::VersionId())
+                        upscalerModule = FSR4DriverProviderVk::Module()->dll;
+                }
+
+                if (auto models = FSR4Models::SelectableModels(upscalerModule); !models.empty())
+                {
+                    auto& selectedModel = config->Fsr4Model;
+                    auto selectedName = selectedModel.has_value() ? FSR4Models::Name(selectedModel.value()) : "Auto";
+                    bool modelChanged = false;
+
+                    ImGui::SetNextItemWidth(150.0f * menuResScale);
+                    if (ImGui::BeginCombo("FSR4 Model", selectedName))
+                    {
+                        if (ImGui::Selectable("Auto", !selectedModel.has_value()) && selectedModel.has_value())
+                        {
+                            selectedModel.reset();
+                            modelChanged = true;
+                        }
+
+                        for (auto model : models)
+                        {
+                            if (ImGui::Selectable(FSR4Models::Name(model), selectedModel == model) &&
+                                selectedModel != model)
+                            {
+                                selectedModel = model;
+                                modelChanged = true;
+                            }
+                        }
+
+                        ImGui::EndCombo();
+                    }
+
+                    if (modelChanged)
+                    {
+                        state.newBackend = currentBackend;
+                        MARK_ALL_BACKENDS_CHANGED();
+                    }
+
+                    ShowTooltip("FSR 4 network to run.\n"
+                                "Auto lets FFX pick the best one the GPU supports.");
+
+                    ImGui::SameLine();
+                    if (auto activeModel = FSR4Models::ActiveModel(upscalerModule))
+                        ImGui::TextDisabled("(Active: %s)", FSR4Models::Name(*activeModel));
+                    else
+                        ImGui::TextColored(StatusWarn(), "(Potential FSR3 fallback)");
+                }
             }
         }
 
@@ -3942,7 +3956,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                             "Bottom right: Detail Protection Takedown");
             }
 
-            if (majorFsrVersion > 3)
+            if (majorFsrVersion > 3 && !runsOwn)   // HelixSR Scaler: AMD's FSR 4 watermark
             {
                 ImGui::SameLine(0.0f, 20.0f * menuResScale);
                 bool fsr4wm = config->Fsr4EnableWatermark.value_or_default();
