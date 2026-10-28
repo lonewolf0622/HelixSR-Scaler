@@ -58,7 +58,7 @@
 
 // HelixSR Scaler: own version (update check against its GitHub releases), OptiScaler's version in brackets
 #define HELIXSR_SCALER_VERSION_MAJOR 2
-#define HELIXSR_SCALER_VERSION_MINOR 0
+#define HELIXSR_SCALER_VERSION_MINOR 1
 #define HELIXSR_SCALER_VERSION_PATCH 0
 #define HELIXSR_SCALER_VERSION_STR                                                                                     \
     STRINGIZE(HELIXSR_SCALER_VERSION_MAJOR) "." STRINGIZE(HELIXSR_SCALER_VERSION_MINOR) "." STRINGIZE(HELIXSR_SCALER_VERSION_PATCH)
