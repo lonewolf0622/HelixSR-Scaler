@@ -39,7 +39,27 @@ function Hlx($f, [bool]$built = $true) {
 function Game($g) {
     New-Item -ItemType Directory -Force -Path (Join-Path $g 'OptiScaler') | Out-Null
     Set-Content -LiteralPath (Join-Path $g 'OptiScaler/amd_fidelityfx_upscaler_dx12.dll') "AMD's FSR"
-    [IO.File]::WriteAllText((Join-Path $g 'OptiScaler.ini'), "[Upscalers]`r`nDx12Upscaler=auto`r`n[DLSS]`r`nHelixSR=auto`r`n[Plugins]`r`nLoadAsiPlugins=auto`r`n[FrameGen]`r`nFGtry {
+    [IO.File]::WriteAllText((Join-Path $g 'OptiScaler.ini'), "[Upscalers]`r`nDx12Upscaler=auto`r`n[DLSS]`r`nHelixSR=auto`r`n[Plugins]`r`nLoadAsiPlugins=auto`r`n[FrameGen]`r`nFGInput=auto`r`nFGNvngxReplacement=auto`r`n")
+}
+function Fg($d) {
+    New-Item -ItemType Directory -Force -Path $d | Out-Null
+    foreach ($n in 'nvexec64.dll', '_nvngx.dll', 'nvngx_dlssg.dll', 'libxell.dll') { Set-Content -LiteralPath (Join-Path $d $n) "fg $n" }
+    New-Item -ItemType Directory -Force -Path (Join-Path $d '310.9.16') | Out-Null
+    Set-Content -LiteralPath (Join-Path $d '310.9.16/data.bin') 'fg data'
+    Set-Content -LiteralPath (Join-Path $d 'nvexec.log') 'a log'
+}
+$pwsh = (Get-Process -Id $PID).Path
+function Run($game, [string]$typed = '') {
+    New-Item -ItemType Directory -Force -Path $game | Out-Null
+    $env:USERPROFILE = Join-Path $w 'home'
+    $env:LOCALAPPDATA = Join-Path $w 'local'
+    Push-Location $game
+    try { $out = $typed | & $pwsh -NoProfile -File $script 2>&1 | Out-String; $code = $LASTEXITCODE } finally { Pop-Location }
+    return @{ out = $out; code = $code }
+}
+function Same($a, $b) { (Get-FileHash -LiteralPath $a).Hash -eq (Get-FileHash -LiteralPath $b).Hash }
+
+try {
     # a HelixSR 3.x download in Downloads after its setup: HelixSR\helixsr.dll with frame generation, HLX-FSR4\ built
     $dl = Join-Path $w 'home/Downloads/HelixSR-3.1.0'
     Built (Join-Path $dl 'HelixSR/helixsr.dll'); Fg (Join-Path $dl 'HelixSR/helixsr-fg')

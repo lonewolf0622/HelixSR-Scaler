@@ -522,7 +522,20 @@ goto create_uninstaller_return
 REM HelixSR Scaler: finds HelixSR 3.x after its setup built it (the HelixSR download, the HelixSR app, or a path typed
 REM in) and copies HLX DLSS to HelixSR\helixsr.dll (with frame generation when HelixSR's setup made it) and HLX FSR 4 to
 REM OptiScaler\amd_fidelityfx_upscaler_dx12.dll, AMD's FSR next to it as amd_fidelityfx_upscaler_dx12.amd.dll.
-REM The PowerShell part is at the end of this file, after #HSR-PS-START
+REM The PowerShell part is at the end of this file, after #HSR-PS-START.
+:helixsr
+where powershell >nul 2>&1
+if errorlevel 1 (
+    echo.
+    echo PowerShell isn't available ^(Wine?^): copy HelixSR by hand, see "Install by hand" in HelixSR's README.
+    echo On Linux, use setup_linux.sh instead.
+    echo.
+    exit /b 0
+)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = [IO.File]::ReadAllText($env:HSR_BAT); Invoke-Expression $s.Substring($s.LastIndexOf('#HSR' + '-PS-START'))"
+exit /b %errorlevel%
+
+#HSR-PS-START
 $ErrorActionPreference = 'Stop'
 $game = (Get-Location).Path
 $fgFiles = 'nvexec64.dll', '_nvngx.dll', 'nvngx_dlssg.dll'
