@@ -1,17 +1,17 @@
-HelixSR Scaler 2.0.0
+HelixSR Scaler 2.1.0
 
 HelixSR Scaler is OptiScaler with HelixSR's upscalers in its list:
 - HLX DLSS: HelixSR's DLSS upscaler (the HelixSR folder next to the game's .exe, helixsr.dll).
   It is the DLSS upscaler on GPUs without DLSS, in DirectX 12, DirectX 11 and Vulkan games.
-- HLX FSR 4: AMD's FSR 4 network on HelixSR's own pipeline
+- HLX FSR 4: HelixSR's own FSR 4-class upscaler, AMD's FSR 4 network on HelixSR's own pipeline
   (OptiScaler\amd_fidelityfx_upscaler_dx12.dll; AMD's own FSR is next to it as
-  amd_fidelityfx_upscaler_dx12.amd.dll and stays in the list).
-AMD FSR 3 / FSR 4 and Intel XeSS stay in the list, and frame generation is OptiScaler's (AMD FSR or
+  amd_fidelityfx_upscaler_dx12.amd.dll). It is an upscaler of its own in the list, next to AMD's FSR.
+AMD FSR 3 / FSR 4 (with the FSR 4 presets and models on GPUs that have FSR 4) and Intel XeSS stay in the list, and frame generation is OptiScaler's (AMD FSR or
 XeSS frame generation), set in its menu or OptiScaler.ini like in OptiScaler.
 
-Install it with HelixSR's setup (helixsr-setup.bat / helixsr-setup.sh in the HelixSR 3.0 download):
+Install it with HelixSR's setup (helixsr-setup.bat / helixsr-setup.sh in the HelixSR 3.1 download):
 it builds HelixSR on your PC, then installs HelixSR Scaler into the games you pick (answer s) and
-updates or removes it. HelixSR 3.0 needs HelixSR Scaler 2.0.0 or newer.
+updates or removes it. HelixSR 3.0 and 3.1 need HelixSR Scaler 2.0.0 or newer.
 
 What goes into the game: OptiScaler.dll as dxgi.dll (or another proxy name the setup tells you),
 OptiScaler.ini and the OptiScaler folder next to the game's .exe, and the HelixSR folder with
