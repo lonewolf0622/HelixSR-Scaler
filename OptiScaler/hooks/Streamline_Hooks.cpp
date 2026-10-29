@@ -421,6 +421,10 @@ static void FillDlssgInputState(sl::DLSSGState& state)
 static sl::Result dummy_slDLSSGGetState(const sl::ViewportHandle& viewport, sl::DLSSGState& state,
                                         const sl::DLSSGOptions* options)
 {
+    static uint32_t calls = 0;
+    if (++calls <= 3 || calls % 1000 == 0)
+        LOG_DEBUG("Game's slDLSSGGetState call {}: struct version {}", calls, state.structVersion);
+
     FillDlssgInputState(state);
     state.estimatedVRAMUsageInBytes = 300 * 1024 * 1024;
 
@@ -437,6 +441,11 @@ static sl::Result dummy_slDLSSGSetOptions(const sl::ViewportHandle& viewport, co
     // Only reading v1 fields, safe for any struct version
     const bool enabled = options.mode != sl::DLSSGMode::eOff;
     const int count = std::max(static_cast<int>(options.numFramesToGenerate), 1);
+
+    static uint32_t calls = 0;
+    if (++calls <= 5 || calls % 1000 == 0)
+        LOG_DEBUG("Game's slDLSSGSetOptions call {}: mode {}, numFramesToGenerate {}, struct version {}", calls,
+                  magic_enum::enum_name(options.mode), options.numFramesToGenerate, options.structVersion);
 
     if (enabled != state.dlssgInputGameEnabled || count != state.dlssgInputGameInterpolationCount)
     {

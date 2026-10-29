@@ -80,6 +80,25 @@ bool Sl_Inputs::setConstants(const sl::Constants& values, uint32_t frameId)
 
         dataFound = true;
     }
+    // A newer Streamline than our headers (CONTROL Resonant: SL 2.12): its fields only extend ours, read ours
+    else if (values.structVersion > data.structVersion)
+    {
+        auto* pNext = data.next;
+        const auto ours = data.structVersion;
+        memcpy(&data, &values, sizeof(data));
+        data.structVersion = ours;
+        data.next = pNext;
+
+        dataFound = true;
+    }
+
+    static bool versionLogged = false;
+    if (!versionLogged)
+    {
+        versionLogged = true;
+        LOG_INFO("Game's sl::Constants struct version {} (ours {}): {}", values.structVersion,
+                 sl::Constants {}.structVersion, dataFound ? "read" : "NOT read, frame generation gets no camera data");
+    }
 
     if (dataFound)
     {
