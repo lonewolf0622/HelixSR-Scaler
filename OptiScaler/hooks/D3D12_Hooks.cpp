@@ -2208,16 +2208,11 @@ static HRESULT hkD3D12GetInterface(REFCLSID rclsid, REFIID riid, void** ppvDebug
     return result;
 }
 
-static void HookToDevice(ID3D12Device* InDevice)
+// Returns true when this call hooked the device (false: already hooked or no device)
+static bool HookDeviceMethods(ID3D12Device* InDevice)
 {
-    // The background capability probe can create a device while the application
-    // creates its own. Publish trampoline pointers only after the transaction
-    // completes, so another creator cannot attach or clear them concurrently.
-    static std::mutex deviceHookMutex;
-    std::lock_guard<std::mutex> lock(deviceHookMutex);
-
     if (o_CreateSampler != nullptr || InDevice == nullptr)
-        return;
+        return false;
 
     LOG_DEBUG("Dx12");
 
@@ -2310,11 +2305,36 @@ static void HookToDevice(ID3D12Device* InDevice)
         ResTrack_Dx12::HookDevice(InDevice);
     }
 
-    if (State::Instance().activeFgOutput == FGOutput::DLSSG && !State::Instance().creatingD3DDevice &&
-        StreamlineProxy::LoadStreamline())
+    return true;
+}
+
+static void HookToDevice(ID3D12Device* InDevice)
+{
+    // The background capability probe can create a device while the application
+    // creates its own. Publish trampoline pointers only after the transaction
+    // completes, so another creator cannot attach or clear them concurrently.
+    static std::mutex deviceHookMutex;
+    static bool streamlineStarted = false;
+    bool startStreamline = false;
+
     {
-        StreamlineProxy::InitWithD3D12(InDevice);
+        std::lock_guard<std::mutex> lock(deviceHookMutex);
+
+        if (!HookDeviceMethods(InDevice))
+            return;
+
+        if (State::Instance().activeFgOutput == FGOutput::DLSSG && !State::Instance().creatingD3DDevice &&
+            !streamlineStarted)
+        {
+            streamlineStarted = true;
+            startStreamline = true;
+        }
     }
+
+    // Outside the lock: Streamline's NGX start calls NVSDK_NGX_D3D12_Init_Ext, which hooks the device again on
+    // this thread (a second lock of the mutex threw resource_deadlock_would_occur and DLSSG never started)
+    if (startStreamline && StreamlineProxy::LoadStreamline())
+        StreamlineProxy::InitWithD3D12(InDevice);
 }
 
 static void UnhookDevice()
