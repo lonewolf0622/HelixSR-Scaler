@@ -334,7 +334,31 @@ sl::Result StreamlineHooks::hkslIsFeatureLoaded(sl::Feature feature, bool& loade
 sl::Result StreamlineHooks::hkslGetFeatureRequirements(sl::Feature feature, sl::FeatureRequirements& requirements)
 {
     if (feature == sl::kFeatureDLSS_G)
+    {
+        // The plugin isn't loaded, so Streamline can't fill this; a game that checks the flags (CONTROL Resonant)
+        // would see an empty struct (no D3D12, no Vulkan) and hide DLSS-G. Report what our DLSS-G inputs support.
+        static const sl::BufferType requiredTags[] = { sl::kBufferTypeDepth, sl::kBufferTypeMotionVectors };
+
+        o_slGetFeatureRequirements(feature, requirements); // fills the detected OS and driver versions when it can
+
+        requirements.flags =
+            sl::FeatureRequirementFlags::eD3D12Supported | sl::FeatureRequirementFlags::eVulkanSupported;
+        requirements.maxNumCPUThreads = 1;
+        requirements.maxNumViewports = 1;
+        requirements.numRequiredTags = (uint32_t) std::size(requiredTags);
+        requirements.requiredTags = requiredTags;
+
+        if (requirements.osVersionDetected.major == 0)
+            requirements.osVersionDetected = { 10, 0, 19045 };
+        requirements.osVersionRequired = { 10, 0, 19041 };
+
+        if (requirements.driverVersionDetected.major == 0)
+            requirements.driverVersionDetected = { 581, 15, 0 };
+        requirements.driverVersionRequired = { 512, 15, 0 };
+
+        LOG_DEBUG("DLSS-G requirements reported: D3D12 and Vulkan, 1 viewport");
         return sl::Result::eOk;
+    }
 
     return o_slGetFeatureRequirements(feature, requirements);
 }
@@ -433,6 +457,8 @@ sl::Result StreamlineHooks::hkslGetFeatureFunction(sl::Feature feature, const ch
 {
     if (feature == sl::kFeatureDLSS_G)
     {
+        LOG_DEBUG("Game asks for DLSS-G function {}", functionName);
+
         if (strcmp(functionName, "slDLSSGSetOptions") == 0)
         {
             function = &dummy_slDLSSGSetOptions;
