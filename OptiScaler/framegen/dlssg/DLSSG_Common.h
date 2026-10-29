@@ -7,6 +7,10 @@
 // The Streamline side of the DLSSG output, shared by the D3D12 and Vulkan ones
 class DLSSG_Common : public virtual IFGFeature
 {
+  private:
+    sl::Constants _gameConstants[BUFFER_COUNT] {};
+    bool _haveGameConstants[BUFFER_COUNT] {};
+
   protected:
     sl::ViewportHandle _viewport { 0 };
     sl::FrameToken* _frameToken = nullptr;
@@ -29,4 +33,5 @@ class DLSSG_Common : public virtual IFGFeature
     void Activate() override final;
     void Deactivate() override final;
     bool SetInterpolatedFrameCount(UINT interpolatedFrameCount) override final { return true; }
+    void SetGameSlConstants(const void* constants) override final;
 };

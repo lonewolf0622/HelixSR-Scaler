@@ -104,6 +104,9 @@ bool Sl_Inputs::setConstants(const sl::Constants& values, uint32_t frameId)
     {
         auto config = Config::Instance();
 
+        // before the camera values below are recalculated in data
+        fgOutput->SetGameSlConstants(&data);
+
         // FG Evaluate part
         FG_Constants fgConstants {};
 

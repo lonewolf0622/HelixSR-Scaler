@@ -124,6 +124,14 @@ void DLSSG_Common::SetOptions(bool gameMarkersReachStreamline)
         LOG_ERROR("Couldn't set Reflex options, error: {}", magic_enum::enum_name(reflexSetOptionsResult));
 }
 
+void DLSSG_Common::SetGameSlConstants(const void* constants)
+{
+    const auto index = GetIndex();
+    _gameConstants[index] = *static_cast<const sl::Constants*>(constants);
+    _gameConstants[index].next = nullptr;
+    _haveGameConstants[index] = true;
+}
+
 bool DLSSG_Common::SetConstants(int fIndex, uint32_t frameId, uint32_t mvWidth, uint32_t mvHeight)
 {
     sl::Constants constData = {};
@@ -227,6 +235,29 @@ bool DLSSG_Common::SetConstants(int fIndex, uint32_t frameId, uint32_t mvWidth, 
     constData.orthographicProjection = sl::Boolean::eFalse;
     constData.motionVectorsDilated = IsLowResMV() ? sl::Boolean::eFalse : sl::Boolean::eTrue;
     constData.motionVectorsJittered = IsJitteredMVs() ? sl::Boolean::eTrue : sl::Boolean::eFalse;
+
+    // DLSSG inputs into the DLSSG output: the game's own constants, matrices included (the rebuilt projection and the
+    // unset clipToPrevClip ghosted badly in CONTROL Resonant); the same resources are tagged, so they match
+    if (_haveGameConstants[fIndex])
+    {
+        const auto reset = constData.reset;
+        constData = _gameConstants[fIndex];
+        if (Config::Instance()->FGSkipReset.value_or_default())
+            constData.reset = sl::Boolean::eFalse;
+        else if (reset == sl::Boolean::eTrue)
+            constData.reset = sl::Boolean::eTrue;
+        _haveGameConstants[fIndex] = false;
+
+        static bool logged = false;
+        if (!logged)
+        {
+            logged = true;
+            LOG_INFO("DLSSG output: the game's own Streamline constants (mvecScale {} x {}, jittered {}, dilated {}, "
+                     "depth inverted {})",
+                     constData.mvecScale.x, constData.mvecScale.y, (int) constData.motionVectorsJittered,
+                     (int) constData.motionVectorsDilated, (int) constData.depthInverted);
+        }
+    }
 
     auto tokenResult = StreamlineProxy::GetNewFrameToken()(_frameToken, &frameId);
     if (tokenResult != sl::Result::eOk)

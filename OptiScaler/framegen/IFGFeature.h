@@ -155,6 +155,8 @@ class IFGFeature
                        int index = -1);
     void SetFrameTimeDelta(double delta, int index = -1);
     void SetReset(UINT reset, int index = -1);
+    // DLSSG inputs: the game's own sl::Constants for this frame; a DLSSG output sends them as they are (others ignore them)
+    virtual void SetGameSlConstants(const void* constants) {}
     void SetInterpolationRect(UINT64 width, UINT height, int index = -1);
     void GetInterpolationRect(UINT64& width, UINT& height, int index = -1);
     void SetInterpolationPos(UINT left, UINT top, int index = -1);
