@@ -1,4 +1,4 @@
-HelixSR Scaler 2.1.0
+HelixSR Scaler 2.1.1
 
 HelixSR Scaler is OptiScaler with HelixSR's upscalers in its list:
 - HLX DLSS: HelixSR's DLSS upscaler (the HelixSR folder next to the game's .exe, helixsr.dll).
