@@ -7,6 +7,11 @@
 class DLSSFeatureDx12 : public DLSSFeature, public IFeature_Dx12
 {
   private:
+    // HelixSR Scaler: Preset K's DLL for this upscaler (the DLSS Upscaler list), picked when it is created
+    PFN_D3D12_CreateFeature _create = nullptr;
+    PFN_D3D12_EvaluateFeature _evaluate = nullptr;
+    PFN_D3D12_ReleaseFeature _release = nullptr;
+
   protected:
     bool InitDLSS(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters);
 

@@ -4104,6 +4104,29 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
         }
     }
 
+    // HelixSR Scaler: HLX DLSS's versions (as the FFX Upscaler list for FSR): Model E or Preset K, when K is installed
+    if ((currentBackend == Upscaler::DLSS || currentBackend == Upscaler::DLSS_on12) && NVNGXProxy::HelixKAvailable())
+    {
+        ImGui::Spacing();
+        const bool k = NVNGXProxy::HelixKSelected();
+        const char* names[] = { "HLX DLSS Model E", "HLX DLSS Preset K" };
+        ImGui::PushItemWidth(150.0f * menuResScale);
+        if (ImGui::BeginCombo("DLSS Upscaler", names[k ? 1 : 0]))
+        {
+            for (int n = 0; n < 2; n++)
+                if (ImGui::Selectable(names[n], (k ? 1 : 0) == n) && (k ? 1 : 0) != n)
+                {
+                    config->HelixSRDlssModel = std::string(n == 1 ? "k" : "e");
+                    state.newBackend = currentBackend;
+                    MARK_ALL_BACKENDS_CHANGED();
+                }
+            ImGui::EndCombo();
+        }
+        ImGui::PopItemWidth();
+        ShowTooltip("Model E: HLX DLSS's network (every mode).\nPreset K: NVIDIA's DLSS 4 Preset K network, sharper,\n"
+                    "a little slower; its Ultra Performance is weaker.\nSave settings to keep the choice.");
+    }
+
     // DLSS -----------------
     if ((config->DLSSEnabled.value_or_default() &&
          (currentBackend == Upscaler::DLSS || currentBackend == Upscaler::DLSS_on12) &&

@@ -37,9 +37,24 @@ bool DLSSFeatureDx12::InitDLSS(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 
+    // HelixSR Scaler: Preset K or HLX DLSS's main DLL (Model E)
+    _create = NVNGXProxy::D3D12_CreateFeature();
+    _evaluate = NVNGXProxy::D3D12_EvaluateFeature();
+    _release = NVNGXProxy::D3D12_ReleaseFeature();
+    if (NVNGXProxy::HelixKSelected())
+    {
+        if (auto k = NVNGXProxy::HelixK(Device); k != nullptr)
+        {
+            _create = k->create, _evaluate = k->evaluate, _release = k->release;
+            LOG_INFO("HelixSR DLSS upscaler: Preset K");
+        }
+        else
+            LOG_INFO("HelixSR DLSS upscaler: Preset K is not available, Model E");
+    }
+
     LOG_INFO("Creating DLSS feature");
 
-    if (NVNGXProxy::D3D12_CreateFeature() != nullptr)
+    if (_create != nullptr)
     {
         ProcessInitParams(InParameters);
 
@@ -49,8 +64,7 @@ bool DLSSFeatureDx12::InitDLSS(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
         {
             ScopedSkipHeapCapture skipHeapCapture {};
 
-            nvResult = NVNGXProxy::D3D12_CreateFeature()(InCommandList, NVSDK_NGX_Feature_SuperSampling, InParameters,
-                                                         &_p_dlssHandle);
+            nvResult = _create(InCommandList, NVSDK_NGX_Feature_SuperSampling, InParameters, &_p_dlssHandle);
         }
 
         if (nvResult != NVSDK_NGX_Result_Success)
@@ -85,11 +99,11 @@ bool DLSSFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList,
 
     NVSDK_NGX_Result nvResult;
 
-    if (NVNGXProxy::D3D12_EvaluateFeature() != nullptr)
+    if (_evaluate != nullptr)
     {
         ProcessEvaluateParams(InParameters);
 
-        nvResult = NVNGXProxy::D3D12_EvaluateFeature()(InCommandList, _p_dlssHandle, InParameters, NULL);
+        nvResult = _evaluate(InCommandList, _p_dlssHandle, InParameters, NULL);
 
         if (nvResult != NVSDK_NGX_Result_Success)
         {
@@ -138,6 +152,6 @@ DLSSFeatureDx12::~DLSSFeatureDx12()
     if (State::Instance().isShuttingDown)
         return;
 
-    if (NVNGXProxy::D3D12_ReleaseFeature() != nullptr && _p_dlssHandle != nullptr)
-        NVNGXProxy::D3D12_ReleaseFeature()(_p_dlssHandle);
+    if (_release != nullptr && _p_dlssHandle != nullptr)
+        _release(_p_dlssHandle);
 }

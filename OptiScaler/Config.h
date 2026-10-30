@@ -443,6 +443,9 @@ class Config
     // helixsr.ini next to HelixSR's DLL, the file HelixSR reads, when the game starts and when they change in the menu.
     // Sharpening is OptiScaler's (RCAS, [Sharpness] and [CAS]); HelixSR's own sharpener stays off.
     CustomOptional<std::string, NoDefault> HelixSRInt8; // on, off (auto: HelixSR decides by the GPU)
+    // [HelixSR] DlssModel: which HLX DLSS the DLSS upscaler runs (the menu's DLSS Upscaler list): e (Model E,
+    // HelixSR\helixsr.dll, the default) or k (Preset K, HelixSR\k\helixsr.dll when installed)
+    CustomOptional<std::string, NoDefault> HelixSRDlssModel;
     CustomOptional<int, NoDefault> HelixSRWaveSize;     // 64, 32
     // [HelixSR] FGPreset from older settings (auto | c | full); preset C is removed, frame generation always runs Full;
     // helixsr.ini [DlssFrameGeneration] Preset = full is written at the game start (helixsr/HelixSRFgQuality.h)

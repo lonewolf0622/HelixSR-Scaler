@@ -865,6 +865,66 @@ class NVNGXProxy
     }
 
     // DirectX12
+    // HelixSR Scaler: HLX DLSS's second version, Preset K (HelixSR\k\helixsr.dll, its own folder, files and helixsr.ini),
+    // for the DLSS upscaler only (the menu's DLSS Upscaler list); frame generation stays on the main DLL
+    struct HelixKModule
+    {
+        HMODULE dll;
+        PFN_D3D12_Init_Ext init;
+        PFN_D3D12_CreateFeature create;
+        PFN_D3D12_EvaluateFeature evaluate;
+        PFN_D3D12_ReleaseFeature release;
+        bool tried, inited;
+    };
+    inline static HelixKModule _k {};   // static storage: all null / false
+
+    static std::filesystem::path HelixKPath() { return HelixSR::Folder() / L"k" / L"helixsr.dll"; }
+
+    // Preset K is installed and HLX DLSS is the DLSS upscaler
+    static bool HelixKAvailable()
+    {
+        std::error_code ec;
+        return HelixSRDlss() && std::filesystem::exists(HelixKPath(), ec);
+    }
+
+    // [HelixSR] DlssModel = k
+    static bool HelixKSelected()
+    {
+        auto m = Config::Instance()->HelixSRDlssModel.value_or("");
+        return HelixKAvailable() && (m == "k" || m == "K");
+    }
+
+    // Preset K's DLL, loaded and initialized once with this device (nullptr when it can't be)
+    static HelixKModule* HelixK(ID3D12Device* InDevice)
+    {
+        if (!_k.tried)
+        {
+            _k.tried = true;
+            const auto path = HelixKPath();
+            // the original loader: Scaler's own hooks treat helixsr.dll as HelixSR's main DLL
+            _k.dll = KernelBaseProxy::LoadLibraryExW_()(path.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+            if (_k.dll != nullptr)
+            {
+                auto get = [](const char* n) { return KernelBaseProxy::GetProcAddress_()(_k.dll, n); };
+                _k.init = (PFN_D3D12_Init_Ext) get("NVSDK_NGX_D3D12_Init_Ext");
+                _k.create = (PFN_D3D12_CreateFeature) get("NVSDK_NGX_D3D12_CreateFeature");
+                _k.evaluate = (PFN_D3D12_EvaluateFeature) get("NVSDK_NGX_D3D12_EvaluateFeature");
+                _k.release = (PFN_D3D12_ReleaseFeature) get("NVSDK_NGX_D3D12_ReleaseFeature");
+            }
+            if (_k.init != nullptr && _k.create != nullptr && _k.evaluate != nullptr && _k.release != nullptr)
+            {
+                NVSDK_NGX_FeatureCommonInfo fcInfo {};
+                GetFeatureCommonInfo(&fcInfo);
+                _k.inited = _k.init(State::Instance().NVNGX_ApplicationId,
+                                    State::Instance().NVNGX_ApplicationDataPath.c_str(), InDevice,
+                                    State::Instance().NVNGX_Version, &fcInfo) == NVSDK_NGX_Result_Success;
+            }
+            LOG_INFO("HelixSR DLSS upscaler: Preset K ({}) {}", wstring_to_string(path.wstring()),
+                     _k.inited ? "loaded" : (_k.dll ? "did not start" : "could not be loaded"));
+        }
+        return _k.inited ? &_k : nullptr;
+    }
+
     static bool InitDx12(ID3D12Device* InDevice)
     {
         if (_dx12Inited)
