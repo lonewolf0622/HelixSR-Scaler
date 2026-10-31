@@ -1299,6 +1299,14 @@ static void CheckQuirks(bool isNvidia)
     LOG_INFO("Game Version: {0}", State::Instance().gameVersion);
     LOG_INFO("Game Engine: {0}", magic_enum::enum_name(State::Instance().gameEngine));
 
+    // The real adapter, before any spoofing: the rest of the log only shows spoofed values, which makes
+    // reports from non-NVIDIA GPUs (Intel especially) impossible to triage.
+    {
+        const auto gpu = IdentifyGpu::getPrimaryGpu();
+        LOG_INFO("GPU: {0} (vendor {1:04X}, device {2:04X}), spoofing {3}", gpu.name, (uint32_t) gpu.vendorId,
+                 gpu.deviceId, Config::Instance()->DxgiSpoofing.value_or_default() ? "on" : "off");
+    }
+
 #ifndef _DEBUG
     // Hash is very slow on Debug builds + we don't need to check our own hashes
     if (Config::Instance()->LogToFile.value_or_default() && Config::Instance()->LogLevel.value_or_default() == 0)
