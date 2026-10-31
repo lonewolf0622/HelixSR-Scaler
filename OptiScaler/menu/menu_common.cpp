@@ -4123,8 +4123,9 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
             ImGui::EndCombo();
         }
         ImGui::PopItemWidth();
-        ShowTooltip("Model E: HLX DLSS's network (every mode).\nPreset K: NVIDIA's DLSS 4 Preset K network, sharper,\n"
-                    "a little slower; its Ultra Performance is weaker.\nSave settings to keep the choice.");
+        ShowTooltip("Model E: HLX DLSS's network (every mode).\nPreset K: NVIDIA's DLSS 4 Preset K network (optional, built by\n"
+                    "the setup when asked), sharper, a little slower; its Ultra Performance is weaker.\n"
+                    "Preset K is tested on AMD RDNA GPUs only.\nSave settings to keep the choice.");
     }
 
     // DLSS -----------------
