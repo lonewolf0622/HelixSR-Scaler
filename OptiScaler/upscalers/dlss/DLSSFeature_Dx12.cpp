@@ -2,6 +2,31 @@
 #include "DLSSFeature_Dx12.h"
 #include <dxgi1_4.h>
 #include <Config.h>
+#include <imgui/ImGuiNotify.hpp>
+
+PFN_D3D12_CreateFeature DLSSFeatureDx12::CreateFeature() const
+{
+    if (_custom != nullptr)
+        return _custom->dx12Inited ? _custom->module.D3D12_CreateFeature : nullptr;
+
+    return NVNGXProxy::D3D12_CreateFeature();
+}
+
+PFN_D3D12_EvaluateFeature DLSSFeatureDx12::EvaluateFeature() const
+{
+    if (_custom != nullptr)
+        return _custom->dx12Inited ? _custom->module.D3D12_EvaluateFeature : nullptr;
+
+    return NVNGXProxy::D3D12_EvaluateFeature();
+}
+
+PFN_D3D12_ReleaseFeature DLSSFeatureDx12::ReleaseFeature() const
+{
+    if (_custom != nullptr)
+        return _custom->dx12Inited ? _custom->module.D3D12_ReleaseFeature : nullptr;
+
+    return NVNGXProxy::D3D12_ReleaseFeature();
+}
 
 bool DLSSFeatureDx12::InitInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters)
 {
@@ -13,7 +38,7 @@ bool DLSSFeatureDx12::InitInternal(ID3D12GraphicsCommandList* InCommandList, NVS
 
 bool DLSSFeatureDx12::InitDLSS(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters)
 {
-    if (NVNGXProxy::NVNGXModule() == nullptr)
+    if (_custom == nullptr && NVNGXProxy::NVNGXModule() == nullptr)
     {
         LOG_ERROR("nvngx.dll not loaded!");
         return false;
@@ -21,27 +46,31 @@ bool DLSSFeatureDx12::InitDLSS(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
 
     if (!_dlssInited)
     {
-        _dlssInited = NVNGXProxy::InitDx12(Device);
+        _dlssInited = _custom != nullptr ? NVNGXProxy::InitCustomDx12(*_custom, Device) : NVNGXProxy::InitDx12(Device);
 
         if (!_dlssInited)
             return false;
 
-        _moduleLoaded =
-            (NVNGXProxy::D3D12_Init_ProjectID() != nullptr || NVNGXProxy::D3D12_Init_Ext() != nullptr) &&
-            (NVNGXProxy::D3D12_Shutdown() != nullptr || NVNGXProxy::D3D12_Shutdown1() != nullptr) &&
-            (NVNGXProxy::D3D12_GetParameters() != nullptr || NVNGXProxy::D3D12_AllocateParameters() != nullptr) &&
-            NVNGXProxy::D3D12_DestroyParameters() != nullptr && NVNGXProxy::D3D12_CreateFeature() != nullptr &&
-            NVNGXProxy::D3D12_ReleaseFeature() != nullptr && NVNGXProxy::D3D12_EvaluateFeature() != nullptr;
+        // LoadCustomDx12 already checked the functions of a custom runtime
+        if (_custom == nullptr)
+        {
+            _moduleLoaded =
+                (NVNGXProxy::D3D12_Init_ProjectID() != nullptr || NVNGXProxy::D3D12_Init_Ext() != nullptr) &&
+                (NVNGXProxy::D3D12_Shutdown() != nullptr || NVNGXProxy::D3D12_Shutdown1() != nullptr) &&
+                (NVNGXProxy::D3D12_GetParameters() != nullptr || NVNGXProxy::D3D12_AllocateParameters() != nullptr) &&
+                NVNGXProxy::D3D12_DestroyParameters() != nullptr && NVNGXProxy::D3D12_CreateFeature() != nullptr &&
+                NVNGXProxy::D3D12_ReleaseFeature() != nullptr && NVNGXProxy::D3D12_EvaluateFeature() != nullptr;
+        }
 
         // delay between init and create feature
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 
-    // HelixSR Scaler: Preset K or HLX DLSS's main DLL (Model E)
-    _create = NVNGXProxy::D3D12_CreateFeature();
-    _evaluate = NVNGXProxy::D3D12_EvaluateFeature();
-    _release = NVNGXProxy::D3D12_ReleaseFeature();
-    if (NVNGXProxy::HelixKSelected())
+    // HelixSR Scaler: a custom NGX runtime, Preset K or HLX DLSS's main DLL (Model E)
+    _create = CreateFeature();
+    _evaluate = EvaluateFeature();
+    _release = ReleaseFeature();
+    if (_custom == nullptr && NVNGXProxy::HelixKSelected())
     {
         if (auto k = NVNGXProxy::HelixK(Device); k != nullptr)
         {
@@ -83,7 +112,7 @@ bool DLSSFeatureDx12::InitDLSS(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
         return false;
     }
 
-    ReadVersion();
+    ReadVersion(_custom != nullptr ? _custom->module.filePath : L"");
 
     SetInit(true);
     return true;
@@ -126,7 +155,9 @@ void DLSSFeatureDx12::Shutdown(ID3D12Device* InDevice)
 {
     if (_dlssInited)
     {
-        if (NVNGXProxy::D3D12_Shutdown() != nullptr)
+        if (_custom != nullptr)
+            NVNGXProxy::ShutdownCustomDx12(*_custom, InDevice);
+        else if (NVNGXProxy::D3D12_Shutdown() != nullptr)
             NVNGXProxy::D3D12_Shutdown()();
         else if (NVNGXProxy::D3D12_Shutdown1() != nullptr)
             NVNGXProxy::D3D12_Shutdown1()(InDevice);
@@ -135,9 +166,22 @@ void DLSSFeatureDx12::Shutdown(ID3D12Device* InDevice)
     DLSSFeature::Shutdown();
 }
 
-DLSSFeatureDx12::DLSSFeatureDx12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters)
+DLSSFeatureDx12::DLSSFeatureDx12(unsigned int InHandleId, NVSDK_NGX_Parameter* InParameters,
+                                 const std::string& customUpscaler)
     : IFeature(InHandleId, InParameters), IFeature_Dx12(InHandleId, InParameters), DLSSFeature(InHandleId, InParameters)
 {
+    if (!customUpscaler.empty())
+    {
+        _custom = NVNGXProxy::LoadCustomDx12(customUpscaler);
+        _moduleLoaded = _custom != nullptr;
+
+        if (!_moduleLoaded)
+            ImGui::InsertNotification(
+                { ImGuiToastType::Error, 10000, "Can't load custom upscaler %s", customUpscaler.c_str() });
+
+        return;
+    }
+
     if (NVNGXProxy::NVNGXModule() == nullptr)
     {
         LOG_INFO("nvngx.dll not loaded, now loading");

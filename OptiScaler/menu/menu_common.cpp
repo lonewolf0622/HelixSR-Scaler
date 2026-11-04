@@ -44,6 +44,7 @@
 #include <helixsr/HelixSR.h> // HelixSR Scaler
 #include <hooks/Amdxc64_Hooks.h>
 #include <low_latency/input/input_common.h>
+#include <plugins/PluginApi.h>
 #include <hooks/Vulkan_Hooks.h>
 #include <low_latency/input/input_xell.h>
 
@@ -995,6 +996,49 @@ void MenuCommon::GetCurrentBackendInfo(const API api, Upscaler& upscaler, std::s
     *name = UpscalerDisplayName(upscaler, api);
 }
 
+// Custom upscaler setting of the API, nullptr when it has none
+static CustomOptional<std::string, NoDefault>* CustomUpscalerSetting(API api)
+{
+    if (api == API::DX12)
+        return &Config::Instance()->CustomUpscaler;
+
+    if (api == API::Vulkan)
+        return &Config::Instance()->CustomUpscalerVk;
+
+    return nullptr;
+}
+
+// Custom upscaler picked for native DX12 FFX or DLSS, or native Vulkan FFX, empty for the regular ones
+static std::string SelectedCustom(Upscaler upscaler, API api)
+{
+    if (api == API::DX12)
+    {
+        auto custom = Config::Instance()->CustomUpscaler.value_or("");
+
+        return (upscaler == Upscaler::FFX && CustomProviders::IsFfx(custom)) ||
+                       (upscaler == Upscaler::DLSS && CustomProviders::IsDlss(custom))
+                   ? custom
+                   : "";
+    }
+
+    if (api == API::Vulkan)
+    {
+        auto custom = Config::Instance()->CustomUpscalerVk.value_or("");
+        return upscaler == Upscaler::FFX && CustomProviders::IsFfxVk(custom) ? custom : "";
+    }
+
+    return "";
+}
+
+// Loaded custom FFX upscaler picked for the API, nullptr for the regular ones
+static CustomFfxModule* SelectedCustomFfx(const std::string& name, API api)
+{
+    if (name.empty())
+        return nullptr;
+
+    return api == API::Vulkan ? FfxApiProxy::FindCustomUpscalerVk(name) : FfxApiProxy::FindCustomUpscalerDx12(name);
+}
+
 // List of upscalers reported by FFX for a given backend, nullptr if the backend doesn't use FFX
 static State::FfxVersionList* GetFfxVersionList(Upscaler upscaler, API api)
 {
@@ -1107,9 +1151,13 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
         return ShortUpscalerName(upscaler, api, index);
     };
 
+    const auto currentCustom = SelectedCustom(currentUpscaler, api);
+
     // Interop is only shown here, the list uses a tag for it
     auto selectedName = upscalerName(targetBackend, ffxIndex);
-    if (IsOn12(targetBackend))
+    if (auto custom = SelectedCustom(targetBackend, api); !custom.empty())
+        selectedName = custom;
+    else if (IsOn12(targetBackend))
         selectedName += " (Dx12)";
 
     if (!ImGui::BeginCombo("##UpscalerCombo", selectedName.c_str(), ImGuiComboFlags_HeightLargest))
@@ -1120,6 +1168,7 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
         Upscaler upscaler;
         int ffxIndex; // Newest upscaler reported by FFX, -1 when not using FFX
         feature_version version;
+        std::string custom; // Custom FFX or DLSS upscaler name
     };
 
     std::vector<Entry> entries;
@@ -1155,6 +1204,22 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
         entries.push_back({ opt, -1, UpscalerSortVersion(opt) });
     }
 
+    // Custom ones are sorted after the regular ones, their names don't need versions
+    // DLSS ones don't need a DLSS capable GPU
+    if (api == API::DX12)
+    {
+        for (auto& name : CustomProviders::Scan().ffx)
+            entries.push_back({ Upscaler::FFX, config->FfxUpscalerIndexFor(name).value_or_default(), {}, name });
+
+        for (auto& name : CustomProviders::Scan().dlss)
+            entries.push_back({ Upscaler::DLSS, -1, {}, name });
+    }
+    else if (api == API::Vulkan)
+    {
+        for (auto& name : CustomProviders::Scan().ffxVk)
+            entries.push_back({ Upscaler::FFX, config->FfxUpscalerIndexFor(name).value_or_default(), {}, name });
+    }
+
     // Upscaler of the GPU vendor goes first, FSRs are sorted by version, newest first
     // Stable sort keeps native ahead of w/Dx12
     auto group = [&primaryGpu](Upscaler upscaler)
@@ -1185,23 +1250,38 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
             ImGui::Separator();
 
         // HelixSR Scaler: an FFX backend can have two lines (our own entry and the newest FSR): told apart by index
-        auto label = StrFmt("%s##%d_%d", upscalerName(entry.upscaler, entry.ffxIndex).c_str(), (int) entry.upscaler,
-                            entry.ffxIndex);
+        auto name = entry.custom.empty() ? upscalerName(entry.upscaler, entry.ffxIndex) : entry.custom;
+        auto label = StrFmt("%s##%d_%d%s", name.c_str(), (int) entry.upscaler, entry.ffxIndex, entry.custom.c_str());
         // Our line is the selected one while FFX runs our entry, the FSR line while it runs any other
-        const auto* ffxList = entry.ffxIndex >= 0 ? GetFfxVersionList(entry.upscaler, api) : nullptr;
+        const auto* ffxList = entry.ffxIndex >= 0 && entry.custom.empty() ? GetFfxVersionList(entry.upscaler, api) : nullptr;
         const bool helixsrLines = ffxList != nullptr && HelixSR::Names::ListEntries(ffxList->names).size() > 1;
         const bool runsHelixSR = helixsrLines && ffxIndex >= 0 && ffxIndex < (int) ffxList->names.size() &&
                                  HelixSR::Names::IsOwnUpscaler(ffxList->names[ffxIndex]);
+        // Folder names in Dx12Upscaler aren't case sensitive
         const bool selected =
-            currentUpscaler == entry.upscaler &&
+            currentUpscaler == entry.upscaler && _stricmp(currentCustom.c_str(), entry.custom.c_str()) == 0 &&
             (!helixsrLines || runsHelixSR == HelixSR::Names::IsOwnUpscaler(ffxList->names[entry.ffxIndex]));
 
         if (ImGui::Selectable(label.c_str(), selected))
         {
             State::Instance().newBackend = entry.upscaler;
 
+            // Regular and custom entries share an upscaler type, which the backend change check compares,
+            // so a switch between them is marked here
+            if (auto customSetting = CustomUpscalerSetting(api);
+                !selected && (entry.upscaler == Upscaler::FFX || entry.upscaler == Upscaler::DLSS) &&
+                customSetting != nullptr && entry.custom != customSetting->value_or(""))
+            {
+                if (entry.custom.empty())
+                    customSetting->reset();
+                else
+                    *customSetting = entry.custom;
+
+                MARK_ALL_BACKENDS_CHANGED();
+            }
+
             // Switching to FFX starts with the newest one (HelixSR Scaler: or HelixSR's entry, the line picked)
-            if (entry.ffxIndex >= 0 && (currentUpscaler != entry.upscaler || (helixsrLines && !selected)))
+            if (entry.ffxIndex >= 0 && entry.custom.empty() && (currentUpscaler != entry.upscaler || (helixsrLines && !selected)))
             {
                 config->FfxUpscalerIndex = entry.ffxIndex;
                 MARK_ALL_BACKENDS_CHANGED();
@@ -1217,6 +1297,8 @@ void MenuCommon::RenderUpscalerCombo(const API api, Upscaler currentUpscaler, co
             tag = "FFX";
         else if (IsOn12(entry.upscaler))
             tag = "Dx12";
+        else if (!entry.custom.empty())
+            tag = "DLSS";
 
         if (tag != nullptr)
         {
@@ -2808,6 +2890,10 @@ void MenuCommon::RenderPerformanceOverlay(RenderMenuContext& ctx)
             {
                 fgText = formatFg("Combo", Nvngx_FG::getMaxFakeFramesCount());
             }
+            else if (activeNvngxFg == FGNvngxReplacement::Custom)
+            {
+                fgText = formatFg(state.activeFgNvngxCustom, Nvngx_FG::getMaxFakeFramesCount());
+            }
             else if (state.activeFgOutput == FGOutput::DLSSG && fg)
             {
                 fgText = formatFg("DLSSG", fg->GetMaxInterpolationCount());
@@ -3733,19 +3819,26 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
     // FFX -----------------
     if (!usesDlssd && (currentBackend == Upscaler::FFX || currentBackend == Upscaler::FFX_on12))
     {
+        const auto customName = SelectedCustom(currentBackend, state.api);
+        const auto customUpscaler = SelectedCustomFfx(customName, state.api);
+        auto& upscalerIndex = config->FfxUpscalerIndexFor(customName);
+
         // HelixSR Scaler: our own entry (HelixSR's, HLX FSR 4) is an upscaler of its own, not an FSR version: no FSR
         // version list and no AMD FSR 4 choices while it runs
         const auto* ownList = GetFfxVersionList(currentBackend, state.api);
         const int ownIndex = config->FfxUpscalerIndex.value_or_default();
-        const bool runsOwn = ownList != nullptr && ownIndex >= 0 && ownIndex < (int) ownList->names.size() &&
+        const bool runsOwn = customName.empty() && ownList != nullptr && ownIndex >= 0 && ownIndex < (int) ownList->names.size() &&
                              HelixSR::Names::IsOwnUpscaler(ownList->names[ownIndex]);
 
-        if (auto versions = GetFfxVersionList(currentBackend, state.api);
+        // A custom upscaler only has a list once it got loaded
+        if (auto versions = customName.empty()          ? GetFfxVersionList(currentBackend, state.api)
+                            : customUpscaler != nullptr ? &customUpscaler->versions
+                                                        : nullptr;
             !runsOwn && versions != nullptr && !versions->names.empty())
         {
             ImGui::Spacing();
 
-            const int ffxIndex = config->FfxUpscalerIndex.value_or_default();
+            const int ffxIndex = upscalerIndex.value_or_default();
             // HelixSR Scaler: HelixSR's own entry without the FSR prefix
             auto currentName = ffxIndex >= 0 && ffxIndex < versions->names.size()
                                    ? HelixSR::FfxVersionLabel(versions->names[ffxIndex])
@@ -3763,7 +3856,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                     auto label = HelixSR::FfxVersionLabel(versions->names[n]) + "##" + std::to_string(n);
                     if (ImGui::Selectable(label.c_str(), ffxIndex == n) && ffxIndex != n)
                     {
-                        config->FfxUpscalerIndex = n;
+                        upscalerIndex = n;
                         state.newBackend = currentBackend;
                         MARK_ALL_BACKENDS_CHANGED();
                     }
@@ -3855,8 +3948,11 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                             "Preset 5 is meant for Ultra Performance");
 
                 // Display the active preset right next to the combo box instead of using a table
+                // The active preset can be left over from another module, so a custom one checks its own hook
                 ImGui::SameLine();
-                if (state.currentFsr4Preset.has_value())
+                if (customUpscaler != nullptr && !FSR4Presets::IsModuleHooked(customUpscaler->module.dll))
+                    ImGui::TextDisabled("(Failed to hook)");
+                else if (state.currentFsr4Preset.has_value())
                     ImGui::TextDisabled("(Active: %d)", state.currentFsr4Preset.value());
                 else if (FSR4Presets::IsAnyModuleHooked())
                     ImGui::TextColored(StatusWarn(), "(Potential FSR3 fallback)");
@@ -3865,17 +3961,18 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
 
                 // FSR 4 Models of the module running the selected upscaler, only listed when the GPU can run more than one
                 HMODULE upscalerModule = nullptr;
-                if (auto versions = GetFfxVersionList(currentBackend, state.api);
-                    versions != nullptr && config->FfxUpscalerIndex.value_or_default() >= 0 &&
-                    config->FfxUpscalerIndex.value_or_default() < versions->ids.size())
+                if (customUpscaler != nullptr)
+                    upscalerModule = customUpscaler->module.dll;
+                else if (auto versions = GetFfxVersionList(currentBackend, state.api);
+                         versions != nullptr && config->FfxUpscalerIndex.value_or_default() >= 0 &&
+                         config->FfxUpscalerIndex.value_or_default() < versions->ids.size())
                 {
                     auto versionId = versions->ids[config->FfxUpscalerIndex.value_or_default()];
 
                     if (versions == &state.ffxUpscalerVersionsDx12)
                         upscalerModule = FfxApiProxy::UpscalerModule(versionId);
-                    else if (versions == &state.ffxUpscalerVersionsVk && FSR4DriverProviderVk::IsAvailable() &&
-                             versionId == FSR4DriverProviderVk::VersionId())
-                        upscalerModule = FSR4DriverProviderVk::Module()->dll;
+                    else if (versions == &state.ffxUpscalerVersionsVk)
+                        upscalerModule = FfxApiProxy::UpscalerModuleVk(versionId);
                 }
 
                 if (auto models = FSR4Models::SelectableModels(upscalerModule); !models.empty())
@@ -4451,7 +4548,8 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     auto constexpr dlssgOutputIndex = (uint32_t) FGOutput::DLSSG;
     const bool maySupportDlssg = primaryGpu.vendorId == VendorId::Nvidia;
     const bool hasDlssgReplacement = state.nukemsFgFileAvailable || state.artursFgFileAvailable ||
-                                     state.helixsrFgFileAvailable || FfxApiProxy::IsFGReady(false);
+                                     state.helixsrFgFileAvailable || FfxApiProxy::IsFGReady(false) ||
+                                     !CustomProviders::Scan().dlssg.empty();
 
     if (!maySupportDlssg && hasDlssgReplacement)
     {
@@ -4521,6 +4619,14 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
     // clang-format on
 
+    // Custom ones go after the rest, each one is a value from FGNvngxReplacement::Custom on
+    const auto& customFgs = CustomProviders::Scan().dlssg;
+    auto constexpr fgNvngxCustomIndex = (uint32_t) FGNvngxReplacement::Custom;
+
+    for (uint32_t i = 0; i < customFgs.size(); i++)
+        nvngxOptions.push_back({ (FGNvngxReplacement) (fgNvngxCustomIndex + i), customFgs[i],
+                                 StrFmt("Custom DLSSG from custom\\%s\\dlssg", customFgs[i].c_str()) });
+
     bool replaceFgOutputWithNvngx = false;
     bool showNvngxFgDowndown = false;
 
@@ -4551,9 +4657,12 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
     nvngxOptions[fgNvngxArtursIndex].set_disabled(!state.artursFgFileAvailable, "Missing dlss-enabler-headless.dll");
 
     auto constexpr fgNvngxFfxIndex = (uint32_t) FGNvngxReplacement::FFX;
-    nvngxOptions[fgNvngxFfxIndex].set_disabled(state.swapchainApi == API::Vulkan, "Unsupported API");
-    nvngxOptions[fgNvngxFfxIndex].set_disabled(!FfxApiProxy::IsFGReady(false),
-                                               "Missing amd_fidelityfx_framegeneration_dx12.dll");
+    if (state.swapchainApi == API::Vulkan)
+        nvngxOptions[fgNvngxFfxIndex].set_disabled(!FfxApiProxy::IsFGReadyVk(),
+                                                   "Missing amd_fidelityfx_framegeneration_vk.dll");
+    else
+        nvngxOptions[fgNvngxFfxIndex].set_disabled(!FfxApiProxy::IsFGReady(false),
+                                                   "Missing amd_fidelityfx_framegeneration_dx12.dll");
 
     auto constexpr fgNvngxComboIndex = (uint32_t) FGNvngxReplacement::Combo;
     nvngxOptions[fgNvngxComboIndex].set_disabled(state.swapchainApi == API::Vulkan, "Unsupported API");
@@ -4571,6 +4680,39 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
     if (!config->FGNvngxReplacement.has_value())
         config->FGNvngxReplacement = config->FGNvngxReplacement.value_or_default(); // need to have a value before combo
+
+    // Folder names in FGNvngxReplacement aren't case sensitive
+    auto isActiveCustomFg = [&config, &state](const std::string& name)
+    {
+        return config->FGNvngxReplacement.value_or_default() == FGNvngxReplacement::Custom &&
+               _stricmp(state.fgNvngxCustom.c_str(), name.c_str()) == 0;
+    };
+
+    auto nvngxCombo = [&](const char* label)
+    {
+        auto current = config->FGNvngxReplacement.value_or_default();
+
+        if (current == FGNvngxReplacement::Custom)
+            current = (FGNvngxReplacement) (fgNvngxCustomIndex +
+                                            (std::ranges::find_if(customFgs, isActiveCustomFg) - customFgs.begin()));
+
+        auto selected = current;
+        PopulateCombo(label, selected, nvngxOptions);
+
+        if (selected == current)
+            return;
+
+        if ((uint32_t) selected >= fgNvngxCustomIndex)
+        {
+            state.fgNvngxCustom = customFgs[(uint32_t) selected - fgNvngxCustomIndex];
+            config->FGNvngxReplacement = FGNvngxReplacement::Custom;
+        }
+        else
+        {
+            state.fgNvngxCustom.clear();
+            config->FGNvngxReplacement = selected;
+        }
+    };
 
     if (state.activeFgInput != FGInput::ForceXeLL)
     {
@@ -4590,7 +4732,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
             if (replaceFgOutputWithNvngx)
             {
                 // Disable None?
-                PopulateCombo("FG Nvngx", config->FGNvngxReplacement, nvngxOptions);
+                nvngxCombo("FG Nvngx");
                 ShowTooltip("What backend to use instead of the real DLSSG");
             }
             else
@@ -4603,7 +4745,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
             {
                 ImGui::TableNextColumn();
 
-                PopulateCombo("FG Nvngx Replacement", config->FGNvngxReplacement, nvngxOptions);
+                nvngxCombo("FG Nvngx Replacement");
                 ShowTooltip("What backend to use instead of the real DLSSG");
             }
 
@@ -4622,10 +4764,18 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
             else if (FfxApiProxy::IsFGReady(false))
                 config->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::FFX);
+
+            else if (!customFgs.empty())
+            {
+                state.fgNvngxCustom = customFgs[0];
+                config->FGNvngxReplacement.set_volatile_value(FGNvngxReplacement::Custom);
+            }
         }
 
-        const bool nvngxFgChanged = (replaceFgOutputWithNvngx || showNvngxFgDowndown) &&
-                                    state.activeFgNvngx != config->FGNvngxReplacement.value_or_default();
+        const bool nvngxFgChanged =
+            (replaceFgOutputWithNvngx || showNvngxFgDowndown) &&
+            (state.activeFgNvngx != config->FGNvngxReplacement.value_or_default() ||
+             (state.activeFgNvngx == FGNvngxReplacement::Custom && !isActiveCustomFg(state.activeFgNvngxCustom)));
         // XeFG input to XeFG output runs without OptiScaler's FG output
         auto configFgOutput = config->FGOutput.value_or_default();
 
@@ -6194,6 +6344,11 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
         {
             SeparatorWithHelpMarker("Frame Generation (FSRFG via FFX)", "FFX using the DLSSG swapchain");
         }
+        else if (activeNvngxFg == FGNvngxReplacement::Custom)
+        {
+            SeparatorWithHelpMarker(StrFmt("Frame Generation (%s)", state.activeFgNvngxCustom.c_str()).c_str(),
+                                    "Custom DLSSG from the custom folder");
+        }
         else if (activeNvngxFg == FGNvngxReplacement::Combo)
         {
             SeparatorWithHelpMarker("Frame Generation (Enabler + FFX)",
@@ -6251,7 +6406,8 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
                                             State::Instance().gameQuirks & GameQuirk::ForceUnrealEngine;
                 const bool isDllProxyNvngxType = activeNvngxFg == FGNvngxReplacement::Nukems ||
                                                  activeNvngxFg == FGNvngxReplacement::Arturs ||
-                                                 activeNvngxFg == FGNvngxReplacement::HelixSR;
+                                                 activeNvngxFg == FGNvngxReplacement::HelixSR ||
+                                                 activeNvngxFg == FGNvngxReplacement::Custom;
                 if (isDllProxyNvngxType && !primaryGpu.dlssCapable && primaryGpu.fsr4Support == FSR4Support::None &&
                     !primaryGpu.d3d12IsVkd3dProton && !isUnrealEngine)
                 {
@@ -8348,7 +8504,7 @@ void MenuCommon::RenderFpsOverlaySettings(RenderMenuContext& ctx)
                 { "Default", "OptiScaler's overlay: every row with the graphs, grey labels with a shadow", "" },
                 { "Classic", "OptiScaler's earlier overlay: just the FPS in white, no shadow",
                   "LabelColor=0xFFFFFF;Shadow=0;Rounding=2" },
-                { "Afterburner-Like", "As MSI Afterburner: Unispace Bold, orange labels, outlined, no background",
+                { "Afterburner", "As MSI Afterburner: Unispace Bold, orange labels, outlined, no background",
                   "OverlaysUseTheme=false;Type=3;CompactLabels=true;Font=unispace bd.ttf;Alpha=0;Rounding=0;"
                   "LabelColor=0xFF9C00;ValueColor=0xFFFFFF;GraphColor=0xFF9C00;Shadow=2;ShadowStrength=0.5;"
                   "ShadowColor=0x000000;UpdateInterval=500" },
@@ -8357,6 +8513,11 @@ void MenuCommon::RenderFpsOverlaySettings(RenderMenuContext& ctx)
                   "-upscalergraph,-lowlatency;FpsRow=2;UpdateInterval=250;Alpha=0.35;Font=bahnschrift.ttf;"
                   "LetterSpacing=0.5;LabelScale=0.85;ValueScale=1.1;LabelColor=0xFFFFFF;ValueColor=0xFF9A00;"
                   "GraphColor=0x00E5FF;BGColor=0x0A0F14;Rounding=10;HideAverages=true" },
+                { "Lemon zest",
+                  "A winning submission from user Voodoo: a top center strip in Unispace Bold, lime values",
+                  "Pos=4;Type=7;Horizontal=true;Rows=upscale,-frametime,-frametimegraph,fps,upscaler,"
+                  "-upscalergraph,-lowlatency;FpsRow=1;Alpha=0.12;Font=unispace bd.ttf;ValueColor=0xC9DF21;"
+                  "ShadowStrength=0.59;ShadowColor=0x866767;Rounding=7;HideAverages=true" },
             };
 
             const float presetCount = static_cast<float>(std::size(presets));
@@ -9123,6 +9284,9 @@ void MenuCommon::RenderDetectedInfo(RenderMenuContext& ctx)
         StatusFlag("FFX 3.1", FfxApiProxy::Dx12Module() != nullptr);
         StatusFlag("FFX SR", FfxApiProxy::Dx12Module_SR() != nullptr);
         StatusFlag("FFX FG", FfxApiProxy::Dx12Module_FG() != nullptr);
+        StatusFlag("FFX Vk", FfxApiProxy::VkModule() != nullptr);
+        StatusFlag("FFX Vk SR", FfxApiProxy::VkModule_SR() != nullptr);
+        StatusFlag("FFX Vk FG", FfxApiProxy::VkModule_FG() != nullptr);
         StatusFlag("OptiPatcher", state.isOptiPatcherSucceed);
         StatusFlag("Linux", state.isRunningOnLinux);
         StatusFlag("DLSS capable GPU", primaryGpu.dlssCapable);
@@ -9656,8 +9820,15 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
     constexpr int customTab = 0;
     const bool customTabEnabled = config->CustomTabEnabled.value_or_default();
 
+    // Tabs registered by plugins come after the built-in ones
+    constexpr int builtinTabCount = (int) std::size(tabs);
+    const auto pluginTabs = PluginApi::GetTabs();
+    const int tabCount = builtinTabCount + (int) pluginTabs.size();
+
     auto isTabVisible = [&](int i)
     {
+        if (i >= builtinTabCount)
+            return true;
         if (i == customTab)
             return customTabEnabled;
         return tabs[i].visible == nullptr || tabs[i].visible(ctx);
@@ -9674,12 +9845,12 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
         requestedMenuTab = nullptr;
     }
 
-    selectedMenuTab = std::clamp(selectedMenuTab, 0, (int) std::size(tabs) - 1);
+    selectedMenuTab = std::clamp(selectedMenuTab, 0, tabCount - 1);
 
     // Selected tab can disappear, pick the first one that's visible
     if (!isTabVisible(selectedMenuTab))
     {
-        for (int i = 0; i < (int) std::size(tabs); i++)
+        for (int i = 0; i < builtinTabCount; i++)
         {
             if (isTabVisible(i))
             {
@@ -9703,15 +9874,18 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
     {
         const char* lastGroup = nullptr;
 
-        for (int i = 0; i < (int) std::size(tabs); i++)
+        for (int i = 0; i < tabCount; i++)
         {
             if (!isTabVisible(i))
                 continue;
 
-            if (lastGroup != nullptr && strcmp(lastGroup, tabs[i].group) != 0)
+            const bool pluginTab = i >= builtinTabCount;
+            const char* group = pluginTab ? "PLUGINS" : tabs[i].group;
+
+            if (lastGroup != nullptr && strcmp(lastGroup, group) != 0)
                 ImGui::Separator();
 
-            lastGroup = tabs[i].group;
+            lastGroup = group;
 
             const bool selected = selectedMenuTab == i;
 
@@ -9720,13 +9894,30 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
                 selectedMenuTab = i;
             ImGui::PopID();
 
+            // Description comes from the plugin, so it isn't used as a format string
+            if (pluginTab && !pluginTabs[i - builtinTabCount].description.empty() &&
+                ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            {
+                ImGui::BeginTooltip();
+                ImGui::TextUnformatted(pluginTabs[i - builtinTabCount].description.c_str());
+                ImGui::EndTooltip();
+            }
+
             // Label is drawn manually to center it vertically
             const ImVec2 rectMin = ImGui::GetItemRectMin();
+            const ImVec2 rectMax = ImGui::GetItemRectMax();
+            auto drawList = ImGui::GetWindowDrawList();
 
-            ImGui::GetWindowDrawList()->AddText(
+            const char* label = pluginTab                         ? pluginTabs[i - builtinTabCount].name.c_str()
+                                : tabs[i].displayLabel != nullptr ? tabs[i].displayLabel(ctx)
+                                                                  : tabs[i].label;
+
+            // Long plugin names are cut at the edge of the sidebar
+            drawList->PushClipRect(rectMin, rectMax, true);
+            drawList->AddText(
                 ImVec2(rectMin.x + 6.0f * menuResScale, rectMin.y + (tabHeight - ImGui::GetTextLineHeight()) * 0.5f),
-                ImGui::GetColorU32(ImGuiCol_Text),
-                tabs[i].displayLabel != nullptr ? tabs[i].displayLabel(ctx) : tabs[i].label);
+                ImGui::GetColorU32(ImGuiCol_Text), label);
+            drawList->PopClipRect();
         }
 
         // OptiPatcher status only visible when used
@@ -9772,6 +9963,7 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
                                     : activeNvngxFg == FGNvngxReplacement::Arturs  ? "Enabler"
                                     : activeNvngxFg == FGNvngxReplacement::FFX     ? "FFX"
                                     : activeNvngxFg == FGNvngxReplacement::HelixSR ? "HelixSR"
+                                    : activeNvngxFg == FGNvngxReplacement::Custom  ? state.activeFgNvngxCustom.c_str()
                                                                                    : "Combo";
             const int detectedCount = state.dlssgDetectedInterpolationCount;
 
@@ -9825,6 +10017,18 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
     // Scrollable content of the tab -----------------------------
     ImGui::BeginChild("##MenuContent", ImVec2(0.0f, -footerHeight), ImGuiChildFlags_NavFlattened,
                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    if (selectedMenuTab >= builtinTabCount)
+    {
+        // Own ID per tab, so every tab remembers its scroll position
+        ImGui::PushID(selectedMenuTab);
+        ImGui::BeginChild("##MenuTabBody", ImVec2(0.0f, 0.0f));
+
+        PluginApi::DrawTab(selectedMenuTab - builtinTabCount, menuResScale, toneMapColor);
+
+        ImGui::EndChild();
+        ImGui::PopID();
+    }
+    else
     {
         const Tab& tab = tabs[selectedMenuTab];
 
