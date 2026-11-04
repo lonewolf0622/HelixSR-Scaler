@@ -2,6 +2,7 @@
 
 #include "Config.h"
 
+#include <misc/IdentifyGpu.h>
 #include <plugins/PluginApi.h>
 #include <proxies/KernelBase_Proxy.h>
 #include <proxies/Ntdll_Proxy.h>
@@ -110,7 +111,16 @@ inline const Names& Scan()
         {
             auto name = wstring_to_string(entry.path().filename().wstring());
 
-            if (!FfxDllPath(name).empty())
+            // HelixSR Scaler: HLX FSR 4 Full's fast kernels need the BC-250 or RDNA 1 and vkd3d-proton's Vulkan interop; elsewhere
+            // it would only be AMD's FSR 4 with the card check lifted
+            const auto gpu = IdentifyGpu::getPrimaryGpu();
+            const auto id = gpu.deviceId;
+            const bool hlxFullFast = gpu.vendorId == VendorId::AMD && gpu.d3d12IsVkd3dProton &&
+                                     (id == 0x13FE || id == 0x143F || (id >= 0x7310 && id <= 0x731F) ||
+                                      (id >= 0x7340 && id <= 0x734F) || (id >= 0x7360 && id <= 0x736F));
+            const bool hlxFullElsewhere = _stricmp(name.c_str(), "HLX FSR 4 Full") == 0 && !hlxFullFast;
+
+            if (!FfxDllPath(name).empty() && !hlxFullElsewhere)
                 found.ffx.push_back(name);
 
             if (!FfxVkDllPath(name).empty())
