@@ -642,6 +642,12 @@ try {
     }
     New-Item -ItemType Directory -Force -Path $dst | Out-Null
     Copy-Item -LiteralPath (Join-Path $tmp 'helixsr.dll') -Destination (Join-Path $dst 'helixsr.dll') -Force
+    $kSrc = Join-Path $src 'k'; $kDst = Join-Path $dst 'k'
+    if (((Test-Path -LiteralPath (Join-Path $kSrc 'helixsr_modelk_kernels.pak')) -and (Test-Path -LiteralPath (Join-Path $kSrc 'helixsr.dll'))) -and ($kSrc -ne $kDst)) {
+        New-Item -ItemType Directory -Force -Path $kDst | Out-Null
+        foreach ($n in 'helixsr.dll', 'helixsr_modelk_kernels.pak', 'helixsr_modelk_weights.bin') { Copy-Item -LiteralPath (Join-Path $kSrc $n) -Destination (Join-Path $kDst $n) -Force }
+        if (-not (Test-Path -LiteralPath (Join-Path $kDst 'helixsr.ini'))) { Copy-Item -LiteralPath (Join-Path $kSrc 'helixsr.ini') -Destination (Join-Path $kDst 'helixsr.ini') -Force }
+    }
     if ($hasFgDll) { Copy-Item -LiteralPath (Join-Path $tmp 'helixsr_fg.dll') -Destination (Join-Path $dst 'helixsr_fg.dll') -Force }
     if ($fg) {
         foreach ($old in 'helixsr-fg', 'helixsr-fg.off') {

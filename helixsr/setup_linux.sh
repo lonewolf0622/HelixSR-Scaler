@@ -249,7 +249,7 @@ remove_from() { # remove_from EXE_FOLDER [quiet]
     rm -f "$dir/OptiScaler.log" "$dir/HelixSR/helixsr_upscaler.dll" "$dir/$FSRFG/amd_fidelityfx_upscaler_dx12.amd.dll" \
         "$dir/OptiScaler/HLX_FSR.log"
     for h in "$dir/HelixSR" "$dir/$FSRFG"; do
-        rm -f "$h/helixsr.log" "$h/helixsr.ini" "$h/helixsr-fg/nvexec.log" "$h/helixsr-fg/hxfg.log"
+        rm -f "$h/helixsr.log" "$h/helixsr.ini" "$h/helixsr-fg/nvexec.log" "$h/helixsr-fg/hxfg.log" "$h/k/helixsr.log" "$h/k/helixsr.ini"
         # earlier versions parked the frame-generation folder under this name while it was switched off
         rm -rf "${h:?}/helixsr-fg.off"
     done
@@ -507,6 +507,14 @@ while IFS= read -r rel; do
     copy_one "$STAGE/$rel" "$dest"
 done <"$STAGE/.list"
 copy_one "$TMP_HELIX" "$HELIXDIR/helixsr.dll"
+# Preset K, when HelixSR's setup built it (HelixSR/k next to the DLL); a reinstall keeps the game's helixsr.ini
+KSRC="$(dirname "$HELIX")/k"
+if [ -f "$KSRC/helixsr.dll" ] && [ -f "$KSRC/helixsr_modelk_kernels.pak" ] && [ -f "$KSRC/helixsr_modelk_weights.bin" ]; then
+    for f in helixsr.dll helixsr_modelk_kernels.pak helixsr_modelk_weights.bin; do
+        [ "$KSRC" -ef "$TARGET/$HELIXDIR/k" ] || copy_one "$KSRC/$f" "$HELIXDIR/k/$f"
+    done
+    if [ ! -f "$TARGET/$HELIXDIR/k/helixsr.ini" ] && [ -f "$KSRC/helixsr.ini" ]; then copy_one "$KSRC/helixsr.ini" "$HELIXDIR/k/helixsr.ini"; fi
+fi
 if [ -n "$HLX" ]; then
     copy_one "$TMP_HLX" "$FFX"
     [ -n "$TMP_AMD" ] && copy_one "$TMP_AMD" "$FFX_AMD"
