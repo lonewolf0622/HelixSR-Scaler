@@ -458,7 +458,7 @@ ffxReturnCode_t ffxDestroyContext_Vk(ffxContext* context, const ffxAllocationCal
 
     if (auto helper = _reactiveContexts.find(*context); helper != _reactiveContexts.end())
     {
-        FfxApiProxy::VULKAN_DestroyContext()(&helper->second, nullptr);
+        FfxApiProxy::VULKAN_DestroyContext(&helper->second, nullptr);
         _reactiveContexts.erase(helper);
     }
     _contexts.erase(*context);
@@ -706,10 +706,10 @@ ffxReturnCode_t ffxDispatch_Vk(ffxContext* context, ffxDispatchDescHeader* desc)
             createDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE;
             createDesc.header.pNext = &backend.header;
             ScopedSkipHeapCapture skipHeapCapture {};
-            auto result = FfxApiProxy::VULKAN_CreateContext()(&helper, &createDesc.header, nullptr);
+            auto result = FfxApiProxy::VULKAN_CreateContext(&helper, &createDesc.header, nullptr);
             if (result != FFX_API_RETURN_OK) return result;
         }
-        return FfxApiProxy::VULKAN_Dispatch()(&helper, desc);
+        return FfxApiProxy::VULKAN_Dispatch(&helper, desc);
     }
 
     if (dispatchDesc == nullptr)
