@@ -417,6 +417,14 @@ if [ -n "$HLX" ]; then ok "HLX FSR 4: ${D}$HLX${N}"; else warn "HLX FSR 4 isn't 
 # helixsr_fg.dll: HelixSR's DLSS frame-generation DLL, next to helixsr.dll when HelixSR's setup made it
 TMP_FGDLL=""
 if [ -f "$(dirname "$HELIX")/helixsr_fg.dll" ]; then TMP_FGDLL=$(mktemp); cp -f "$(dirname "$HELIX")/helixsr_fg.dll" "$TMP_FGDLL"; fi
+# Preset K, when HelixSR's setup built it (k next to its DLL; a reinstall: the game's own copy, and the game's helixsr.ini stays)
+TMP_K=$(mktemp -d)
+KSRC="$(dirname "$HELIX")/k"
+if [ -f "$KSRC/helixsr.dll" ] && [ -f "$KSRC/helixsr_modelk_kernels.pak" ] && [ -f "$KSRC/helixsr_modelk_weights.bin" ]; then
+    cp -f "$KSRC/helixsr.dll" "$KSRC/helixsr_modelk_kernels.pak" "$KSRC/helixsr_modelk_weights.bin" "$TMP_K/"
+    [ -f "$KSRC/helixsr.ini" ] && cp -f "$KSRC/helixsr.ini" "$TMP_K/"
+    [ -f "$TARGET/$HELIXDIR/k/helixsr.ini" ] && cp -f "$TARGET/$HELIXDIR/k/helixsr.ini" "$TMP_K/helixsr.ini"
+fi
 # Frame generation: the helixsr-fg folder HelixSR's setup made next to its DLL (a reinstall: the game's own copy)
 # All of its files (data files and subfolders too), not its logs
 for d in "$(dirname "$HELIX")/helixsr-fg" "$(dirname "$HELIX")/helixsr-fg.off" "$(dirname "$HELIX")/dlss-loader/helixsr-fg"; do
@@ -507,14 +515,12 @@ while IFS= read -r rel; do
     copy_one "$STAGE/$rel" "$dest"
 done <"$STAGE/.list"
 copy_one "$TMP_HELIX" "$HELIXDIR/helixsr.dll"
-# Preset K, when HelixSR's setup built it (HelixSR/k next to the DLL); a reinstall keeps the game's helixsr.ini
-KSRC="$(dirname "$HELIX")/k"
-if [ -f "$KSRC/helixsr.dll" ] && [ -f "$KSRC/helixsr_modelk_kernels.pak" ] && [ -f "$KSRC/helixsr_modelk_weights.bin" ]; then
-    for f in helixsr.dll helixsr_modelk_kernels.pak helixsr_modelk_weights.bin; do
-        [ "$KSRC" -ef "$TARGET/$HELIXDIR/k" ] || copy_one "$KSRC/$f" "$HELIXDIR/k/$f"
+if [ -f "$TMP_K/helixsr.dll" ]; then
+    for f in helixsr.dll helixsr_modelk_kernels.pak helixsr_modelk_weights.bin helixsr.ini; do
+        [ -f "$TMP_K/$f" ] && copy_one "$TMP_K/$f" "$HELIXDIR/k/$f"
     done
-    if [ ! -f "$TARGET/$HELIXDIR/k/helixsr.ini" ] && [ -f "$KSRC/helixsr.ini" ]; then copy_one "$KSRC/helixsr.ini" "$HELIXDIR/k/helixsr.ini"; fi
 fi
+rm -rf "$TMP_K"
 if [ -n "$HLX" ]; then
     copy_one "$TMP_HLX" "$FFX"
     [ -n "$TMP_AMD" ] && copy_one "$TMP_AMD" "$FFX_AMD"
