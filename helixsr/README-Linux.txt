@@ -1,4 +1,4 @@
-HelixSR Scaler 2.1.1 for Linux and Steam Deck
+HelixSR Scaler 2.2.0 for Linux and Steam Deck
 =============================================
 
 HelixSR Scaler is OptiScaler with HelixSR's upscalers in its list: HLX DLSS (HelixSR's DLSS
