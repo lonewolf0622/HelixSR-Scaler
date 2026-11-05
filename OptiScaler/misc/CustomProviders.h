@@ -207,7 +207,8 @@ inline void ResolveFGNvngx()
     if (name.empty())
         return;
 
-    if (!IsDlssg(name))
+    // (the dll itself, not Scan(): this runs during startup, too early for the GPU query Scan() can make)
+    if (DlssgDllPath(name).empty())
     {
         LOG_WARN("FGNvngxReplacement={} isn't a replacement or a folder with dlssg in {}", name,
                  wstring_to_string(Root().wstring()));
