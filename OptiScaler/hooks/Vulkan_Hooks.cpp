@@ -585,6 +585,55 @@ static void hkvkDestroyInstance(VkInstance instance, const VkAllocationCallbacks
     o_vkDestroyInstance(instance, pAllocator);
 }
 
+// HelixSR's Vulkan build reads which features the game's device has enabled (its int8 kernels need the integer dot
+// product, its 32-lane kernels subgroup size control, its 16-bit kernels 16-bit arithmetic and storage): the device and
+// its flags in HELIXSR_VK_DEVICE_FEATURES = "<device handle, hex>:dot=..,sgsz=..,f16=..,s16=..,i16=.."
+static void ReportHelixSRDeviceFeatures(VkDevice device, const VkDeviceCreateInfo* ci)
+{
+    bool dot = false, sgsz = false, f16 = false, s16 = false, i16 = ci->pEnabledFeatures && ci->pEnabledFeatures->shaderInt16;
+    for (auto* n = static_cast<const VkBaseInStructure*>(ci->pNext); n != nullptr; n = n->pNext)
+    {
+        switch (n->sType)
+        {
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2:
+            i16 = i16 || reinterpret_cast<const VkPhysicalDeviceFeatures2*>(n)->features.shaderInt16;
+            break;
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES:
+            s16 = s16 || reinterpret_cast<const VkPhysicalDeviceVulkan11Features*>(n)->storageBuffer16BitAccess;
+            break;
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES:
+            s16 = s16 || reinterpret_cast<const VkPhysicalDevice16BitStorageFeatures*>(n)->storageBuffer16BitAccess;
+            break;
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES:
+            f16 = f16 || reinterpret_cast<const VkPhysicalDeviceVulkan12Features*>(n)->shaderFloat16;
+            break;
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES:
+            f16 = f16 || reinterpret_cast<const VkPhysicalDeviceShaderFloat16Int8Features*>(n)->shaderFloat16;
+            break;
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES:
+        {
+            const auto* v = reinterpret_cast<const VkPhysicalDeviceVulkan13Features*>(n);
+            dot = dot || v->shaderIntegerDotProduct;
+            sgsz = sgsz || v->subgroupSizeControl;
+            break;
+        }
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_DOT_PRODUCT_FEATURES:
+            dot = dot || reinterpret_cast<const VkPhysicalDeviceShaderIntegerDotProductFeatures*>(n)->shaderIntegerDotProduct;
+            break;
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES:
+            sgsz = sgsz || reinterpret_cast<const VkPhysicalDeviceSubgroupSizeControlFeatures*>(n)->subgroupSizeControl;
+            break;
+        default:
+            break;
+        }
+    }
+    char value[128];
+    snprintf(value, sizeof(value), "%llx:dot=%d,sgsz=%d,f16=%d,s16=%d,i16=%d", (unsigned long long) (uintptr_t) device,
+             dot ? 1 : 0, sgsz ? 1 : 0, f16 ? 1 : 0, s16 ? 1 : 0, i16 ? 1 : 0);
+    SetEnvironmentVariableA("HELIXSR_VK_DEVICE_FEATURES", value);
+    LOG_INFO("HelixSR Vulkan device features: {}", value);
+}
+
 VALIDATE_HOOK(hkvkCreateDevice, PFN_vkCreateDevice)
 static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo* pCreateInfo,
                                  const VkAllocationCallbacks* pAllocator, VkDevice* pDevice)
@@ -659,6 +708,8 @@ static VkResult hkvkCreateDevice(VkPhysicalDevice physicalDevice, const VkDevice
         timelineSemaphoresEnabled = TimelineSemaphoresEnabled(&localCreateInfo);
 
         result = o_vkCreateDevice(physicalDevice, &localCreateInfo, pAllocator, pDevice);
+        if (result == VK_SUCCESS && !State::Instance().creatingD3DDevice)
+            ReportHelixSRDeviceFeatures(*pDevice, &localCreateInfo);   // (the chain still carries the features enabled above)
     }
 
     if (result == VK_SUCCESS)

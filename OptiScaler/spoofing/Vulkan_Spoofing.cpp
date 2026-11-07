@@ -520,6 +520,7 @@ struct VulkanDeviceFeatureState::Impl
     std::vector<ModifiedFeature> modifiedFeatures;
 
     VkPhysicalDeviceFeatures2 features2 { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+    VkPhysicalDeviceVulkan11Features vulkan11Features { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
     VkPhysicalDeviceVulkan12Features vulkan12Features { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
     VkPhysicalDeviceVulkan13Features vulkan13Features { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
     VkPhysicalDeviceVulkan14Features vulkan14Features { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES };
@@ -528,6 +529,10 @@ struct VulkanDeviceFeatureState::Impl
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES
     };
     VkPhysicalDevice8BitStorageFeatures storage8Bit { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES };
+    VkPhysicalDevice16BitStorageFeatures storage16Bit { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES };
+    VkPhysicalDeviceShaderIntegerDotProductFeatures integerDotProduct {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_DOT_PRODUCT_FEATURES
+    };
     VkPhysicalDeviceDescriptorIndexingFeatures descriptorIndexing {
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES
     };
@@ -577,8 +582,8 @@ struct VulkanDeviceFeatureState::Impl
     void CopyOwnedFeatureChain()
     {
         pCreateInfo->pNext =
-            CopyFeatureChain(pCreateInfo->pNext, features2, vulkan12Features, vulkan13Features, shaderFloat16Int8,
-                             storage8Bit, descriptorIndexing, bufferDeviceAddress, vulkanMemoryModel, synchronization2,
+            CopyFeatureChain(pCreateInfo->pNext, features2, vulkan11Features, vulkan12Features, vulkan13Features,
+                             shaderFloat16Int8, storage8Bit, storage16Bit, integerDotProduct, descriptorIndexing, bufferDeviceAddress, vulkanMemoryModel, synchronization2,
                              subgroupSizeControl, timelineSemaphore, descriptorBuffer, shaderFloat8, cooperativeMatrix,
                              cooperativeMatrix2, computeShaderDerivatives);
     }
@@ -641,6 +646,28 @@ struct VulkanDeviceFeatureState::Impl
             coreFeatures.shaderStorageImageExtendedFormats = VK_TRUE;
 
         pCreateInfo->pEnabledFeatures = &coreFeatures;
+    }
+
+    // HelixSR's Vulkan kernels: 16-bit loads and stores of storage buffers
+    void EnableVulkan11Features(VkPhysicalDevice physicalDevice)
+    {
+        if (apiVersion < VK_API_VERSION_1_1)
+            return;
+
+        const auto supported = GetSupportedFeatureStruct(getFeatures2, physicalDevice, storage16Bit);
+        if (const auto* existing = FindFeatureStruct<VkPhysicalDeviceVulkan11Features>(
+                pCreateInfo->pNext, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES))
+        {
+            auto* features = const_cast<VkPhysicalDeviceVulkan11Features*>(existing);
+            EnableExistingFeature(modifiedFeatures, features, vulkan11Features,
+                                  &VkPhysicalDeviceVulkan11Features::storageBuffer16BitAccess,
+                                  supported.storageBuffer16BitAccess);
+            return;
+        }
+
+        EnableSupportedFeature(pCreateInfo, modifiedFeatures, storage16Bit,
+                               &VkPhysicalDevice16BitStorageFeatures::storageBuffer16BitAccess,
+                               supported.storageBuffer16BitAccess);
     }
 
     void EnableVulkan12Features(VkPhysicalDevice physicalDevice)
@@ -769,6 +796,10 @@ struct VulkanDeviceFeatureState::Impl
                 EnableExistingFeature(modifiedFeatures, features, vulkan13Features,
                                       &VkPhysicalDeviceVulkan13Features::computeFullSubgroups,
                                       supported.computeFullSubgroups);
+                // HelixSR's int8 kernels (packed 8-bit dot products)
+                EnableExistingFeature(modifiedFeatures, features, vulkan13Features,
+                                      &VkPhysicalDeviceVulkan13Features::shaderIntegerDotProduct,
+                                      supported.shaderIntegerDotProduct);
 
                 return;
             }
@@ -782,8 +813,15 @@ struct VulkanDeviceFeatureState::Impl
             EnableSupportedFeature(pCreateInfo, modifiedFeatures, subgroupSizeControl,
                                    &VkPhysicalDeviceSubgroupSizeControlFeatures::computeFullSubgroups,
                                    supported.computeFullSubgroups);
+            EnableSupportedFeature(pCreateInfo, modifiedFeatures, integerDotProduct,
+                                   &VkPhysicalDeviceShaderIntegerDotProductFeatures::shaderIntegerDotProduct,
+                                   supported.shaderIntegerDotProduct);
             return;
         }
+
+        if (HasExtension(pCreateInfo, VK_KHR_SHADER_INTEGER_DOT_PRODUCT_EXTENSION_NAME))
+            EnableFeatureStruct(pCreateInfo, getFeatures2, physicalDevice, modifiedFeatures, integerDotProduct,
+                                &VkPhysicalDeviceShaderIntegerDotProductFeatures::shaderIntegerDotProduct);
 
         if (HasExtension(pCreateInfo, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME))
             EnableFeatureStruct(pCreateInfo, getFeatures2, physicalDevice, modifiedFeatures, synchronization2,
@@ -879,6 +917,7 @@ struct VulkanDeviceFeatureState::Impl
 
         CopyOwnedFeatureChain();
         EnableCoreFeatures(physicalDevice);
+        EnableVulkan11Features(physicalDevice);
         EnableVulkan12Features(physicalDevice);
         EnableVulkan13Features(physicalDevice);
         EnableVulkan14Features(physicalDevice);
