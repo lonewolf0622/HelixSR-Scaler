@@ -111,8 +111,9 @@ inline const Names& Scan()
         {
             auto name = wstring_to_string(entry.path().filename().wstring());
 
-            // HelixSR Scaler: HLX FSR 4 Full runs fast on the BC-250 and RDNA 1 through vkd3d-proton's Vulkan interop (its fp16
-            // kernels), and on RDNA 2 / RDNA 3 with AMD's INT8 shaders on its own runtime (any OS, plain D3D12); elsewhere it would
+            // HelixSR Scaler: HLX FSR 4 Full runs fast on the BC-250 and RDNA 1 with its fp16 kernels (through vkd3d-proton's Vulkan
+            // interop, or as DXIL on Windows), and on RDNA 2 / RDNA 3 / the Steam Deck with faster forms of AMD's INT8 shaders on its
+            // own runtime (any OS, plain D3D12); elsewhere it would
             // only be AMD's FSR 4 with the card check lifted, or its INT8 shaders without a fast dot product
             // (only for that folder: the scan runs during startup, too early to ask for the GPU for every folder)
             bool hlxFullElsewhere = false;
@@ -124,8 +125,8 @@ inline const Names& Scan()
                                   (id >= 0x7360 && id <= 0x736F);
                 const bool int8 = (id >= 0x73A0 && id <= 0x73FF) || (id >= 0x7420 && id <= 0x743F) || id == 0x1681 || id == 0x164E ||
                                   (id >= 0x7440 && id <= 0x74FF) || id == 0x15BF || id == 0x15C8 || id == 0x1900 || id == 0x1901 ||
-                                  id == 0x150E || id == 0x1586 || id == 0x1114;
-                hlxFullElsewhere = !(gpu.vendorId == VendorId::AMD && ((fp16 && gpu.d3d12IsVkd3dProton) || int8));
+                                  id == 0x150E || id == 0x1586 || id == 0x1114 || id == 0x163F || id == 0x1435 || id == 0x1490;
+                hlxFullElsewhere = !(gpu.vendorId == VendorId::AMD && (fp16 || int8));
             }
 
             if (!FfxDllPath(name).empty() && !hlxFullElsewhere)
