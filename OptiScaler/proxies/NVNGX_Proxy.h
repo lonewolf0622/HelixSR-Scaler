@@ -1188,6 +1188,14 @@ class NVNGXProxy
         return _module.VULKAN_DestroyParameters;
     }
 
+    // HelixSR Scaler: the loaded DLSS DLL has the Vulkan entry points (before InitVulkan, which the accessors below wait for)
+    static bool HasVulkanExports()
+    {
+        InitNVNGX();
+        return _module.dll != nullptr && _module.VULKAN_CreateFeature != nullptr && _module.VULKAN_EvaluateFeature != nullptr &&
+               _module.VULKAN_ReleaseFeature != nullptr;
+    }
+
     static PFN_VULKAN_CreateFeature VULKAN_CreateFeature()
     {
         if (!_vulkanInited)
