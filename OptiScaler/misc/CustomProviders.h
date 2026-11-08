@@ -111,18 +111,21 @@ inline const Names& Scan()
         {
             auto name = wstring_to_string(entry.path().filename().wstring());
 
-            // HelixSR Scaler: HLX FSR 4 Full needs the BC-250, RDNA 1 or RDNA 2 and vkd3d-proton's Vulkan interop; elsewhere
-            // it would only be AMD's FSR 4 with the card check lifted
+            // HelixSR Scaler: HLX FSR 4 Full runs fast on the BC-250 and RDNA 1 through vkd3d-proton's Vulkan interop (its fp16
+            // kernels), and on RDNA 2 / RDNA 3 with AMD's INT8 shaders on its own runtime (any OS, plain D3D12); elsewhere it would
+            // only be AMD's FSR 4 with the card check lifted, or its INT8 shaders without a fast dot product
             // (only for that folder: the scan runs during startup, too early to ask for the GPU for every folder)
             bool hlxFullElsewhere = false;
             if (_stricmp(name.c_str(), "HLX FSR 4 Full") == 0)
             {
                 const auto gpu = IdentifyGpu::getPrimaryGpu();
                 const auto id = gpu.deviceId;
-                hlxFullElsewhere = !(gpu.vendorId == VendorId::AMD && gpu.d3d12IsVkd3dProton &&
-                                     (id == 0x13FE || id == 0x143F || (id >= 0x7310 && id <= 0x731F) ||
-                                      (id >= 0x7340 && id <= 0x734F) || (id >= 0x7360 && id <= 0x736F) ||
-                                      (id >= 0x73A0 && id <= 0x73FF) || (id >= 0x7420 && id <= 0x743F) || id == 0x1681 || id == 0x164E));
+                const bool fp16 = id == 0x13FE || id == 0x143F || (id >= 0x7310 && id <= 0x731F) || (id >= 0x7340 && id <= 0x734F) ||
+                                  (id >= 0x7360 && id <= 0x736F);
+                const bool int8 = (id >= 0x73A0 && id <= 0x73FF) || (id >= 0x7420 && id <= 0x743F) || id == 0x1681 || id == 0x164E ||
+                                  (id >= 0x7440 && id <= 0x74FF) || id == 0x15BF || id == 0x15C8 || id == 0x1900 || id == 0x1901 ||
+                                  id == 0x150E || id == 0x1586 || id == 0x1114;
+                hlxFullElsewhere = !(gpu.vendorId == VendorId::AMD && ((fp16 && gpu.d3d12IsVkd3dProton) || int8));
             }
 
             if (!FfxDllPath(name).empty() && !hlxFullElsewhere)
