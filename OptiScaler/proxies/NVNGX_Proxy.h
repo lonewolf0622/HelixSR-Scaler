@@ -1196,6 +1196,17 @@ class NVNGXProxy
                _module.VULKAN_ReleaseFeature != nullptr;
     }
 
+    // HelixSR Scaler: HelixSR's Vulkan build has its kernels (HelixSR 3.3.0 on: its HelixSR_VulkanReady export; 0 when the setup
+    // did not write the Vulkan kernels, and then the Dx12 interop runs it as before). A DLL without that export: ready.
+    static bool HelixSRVulkanReady()
+    {
+        if (!HasVulkanExports())
+            return false;
+        using PFN_Ready = int (*)();
+        auto ready = (PFN_Ready) KernelBaseProxy::GetProcAddress_()(_module.dll, "HelixSR_VulkanReady");
+        return ready == nullptr || ready() != 0;
+    }
+
     static PFN_VULKAN_CreateFeature VULKAN_CreateFeature()
     {
         if (!_vulkanInited)

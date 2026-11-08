@@ -58,13 +58,13 @@ bool FeatureProvider_Vk::GetFeature(Upscaler upscaler, UINT handleId, NVSDK_NGX_
         // Vulkan device; an older HelixSR DLL (DirectX 12 only) runs through the Dx12 interop
         if (NVNGXProxy::HelixSRDlss())
         {
-            if (NVNGXProxy::HasVulkanExports())
+            if (NVNGXProxy::HelixSRVulkanReady())
             {
                 LOG_INFO("HelixSR DLSS upscaler: HelixSR's Vulkan build (native Vulkan)");
                 *feature = std::make_unique<DLSSFeatureVk>(handleId, parameters);
                 break;
             }
-            LOG_INFO("HelixSR DLSS upscaler: this helixsr.dll has no Vulkan build, running it through the Dx12 interop");
+            LOG_INFO("HelixSR DLSS upscaler: {}, running it through the Dx12 interop", NVNGXProxy::HasVulkanExports() ? "its Vulkan build has no kernels (run the HelixSR setup again)" : "this helixsr.dll has no Vulkan build");
             *feature = std::make_unique<DLSSFeatureVkOnDx12>(handleId, parameters);
             upscaler = Upscaler::DLSS_on12;
             break;
