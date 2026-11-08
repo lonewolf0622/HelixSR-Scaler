@@ -587,10 +587,10 @@ static void hkvkDestroyInstance(VkInstance instance, const VkAllocationCallbacks
 
 // HelixSR's Vulkan build reads which features the game's device has enabled (its int8 kernels need the integer dot
 // product, its 32-lane kernels subgroup size control, its 16-bit kernels 16-bit arithmetic and storage): the device and
-// its flags in HELIXSR_VK_DEVICE_FEATURES = "<device handle, hex>:dot=..,sgsz=..,f16=..,s16=..,i16=.."
+// its flags in HELIXSR_VK_DEVICE_FEATURES = "<device handle, hex>:dot=..,sgsz=..,f16=..,s16=..,i16=..,i8=.." (HLX FSR 4 reads it too)
 static void ReportHelixSRDeviceFeatures(VkDevice device, const VkDeviceCreateInfo* ci)
 {
-    bool dot = false, sgsz = false, f16 = false, s16 = false, i16 = ci->pEnabledFeatures && ci->pEnabledFeatures->shaderInt16;
+    bool dot = false, sgsz = false, f16 = false, s16 = false, i8 = false, i16 = ci->pEnabledFeatures && ci->pEnabledFeatures->shaderInt16;
     for (auto* n = static_cast<const VkBaseInStructure*>(ci->pNext); n != nullptr; n = n->pNext)
     {
         switch (n->sType)
@@ -606,9 +606,11 @@ static void ReportHelixSRDeviceFeatures(VkDevice device, const VkDeviceCreateInf
             break;
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES:
             f16 = f16 || reinterpret_cast<const VkPhysicalDeviceVulkan12Features*>(n)->shaderFloat16;
+            i8 = i8 || reinterpret_cast<const VkPhysicalDeviceVulkan12Features*>(n)->shaderInt8;
             break;
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES:
             f16 = f16 || reinterpret_cast<const VkPhysicalDeviceShaderFloat16Int8Features*>(n)->shaderFloat16;
+            i8 = i8 || reinterpret_cast<const VkPhysicalDeviceShaderFloat16Int8Features*>(n)->shaderInt8;
             break;
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES:
         {
@@ -628,8 +630,8 @@ static void ReportHelixSRDeviceFeatures(VkDevice device, const VkDeviceCreateInf
         }
     }
     char value[128];
-    snprintf(value, sizeof(value), "%llx:dot=%d,sgsz=%d,f16=%d,s16=%d,i16=%d", (unsigned long long) (uintptr_t) device,
-             dot ? 1 : 0, sgsz ? 1 : 0, f16 ? 1 : 0, s16 ? 1 : 0, i16 ? 1 : 0);
+    snprintf(value, sizeof(value), "%llx:dot=%d,sgsz=%d,f16=%d,s16=%d,i16=%d,i8=%d", (unsigned long long) (uintptr_t) device,
+             dot ? 1 : 0, sgsz ? 1 : 0, f16 ? 1 : 0, s16 ? 1 : 0, i16 ? 1 : 0, i8 ? 1 : 0);
     SetEnvironmentVariableA("HELIXSR_VK_DEVICE_FEATURES", value);
     LOG_INFO("HelixSR Vulkan device features: {}", value);
 }
