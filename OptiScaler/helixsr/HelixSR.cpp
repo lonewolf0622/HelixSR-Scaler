@@ -238,6 +238,7 @@ struct Managed
     const char* key;
 };
 const Managed kManaged[] = { { "Upscaling", "Int8" },
+                             { "Upscaling", "DeepReuse" },
                              { "Compatibility", "WaveSize" },
                              { "FrameGeneration", "QuickFlow" },
                              { "DlssFrameGeneration", "Preset" },
@@ -287,6 +288,12 @@ std::optional<std::string> ConfigValue(const std::string& key)
     auto cfg = Config::Instance();
     if (key == "Int8" && cfg->HelixSRInt8.has_value())
         return cfg->HelixSRInt8.value();
+    if (key == "DeepReuse" && cfg->HelixSRDeepReuse.has_value())
+    {   // exact, 1:2 or 1:4 (anything else: auto)
+        const auto v = Lower(cfg->HelixSRDeepReuse.value());
+        if (v == "exact" || v == "1:2" || v == "1:4")
+            return v;
+    }
     if (key == "WaveSize" && cfg->HelixSRWaveSize.has_value())
         return std::to_string(cfg->HelixSRWaveSize.value());
     // Frame generation quality (HelixSRFgQuality.h): NVIDIA's full frame generation (preset C is removed), QuickFlow
@@ -305,7 +312,8 @@ std::optional<std::string> ConfigValue(const std::string& key)
 const char* kHelixIniHeader[] = {
     "; HelixSR's settings, written by HelixSR Scaler from OptiScaler.ini each time the game starts. Change them in",
     "; OptiScaler.ini ([HelixSR]) or in the menu (Insert key). Sharpening is OptiScaler's, so HelixSR's sharpener",
-    "; stays off. Int8, WaveSize, Preset and QuickFlow here are replaced; other HelixSR settings you add to this file",
+    "; stays off. Int8, DeepReuse, WaveSize, Preset and QuickFlow here are replaced (DeepReuse only when OptiScaler.ini",
+    "; sets it); other HelixSR settings you add to this file",
     "; are kept.",
 };
 
@@ -329,6 +337,9 @@ bool WriteHelixIni()
         auto value = ConfigValue(m.key);
         if (!value.has_value() && std::string(m.key) == "WaveSize")
             value = kAutoWaveSize;
+        // DeepReuse = auto: helixsr.ini's own line stays (someone may have set it there, as HelixSR 3.4.0's notes said)
+        if (!value.has_value() && std::string(m.key) == "DeepReuse")
+            continue;
 
         // HelixSR's FidelityFX DLL and HelixSR 3.0's frame-generation DLL read DLSS frame generation's settings from
         // [DlssFrameGeneration] ([FrameGeneration] is the FidelityFX DLL's FidelityFX frame generation)
