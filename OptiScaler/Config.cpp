@@ -531,6 +531,7 @@ bool Config::Reload(std::filesystem::path iniPath)
             HelixSRInt8.set_from_config(readString("HelixSR", "Int8", true));
             HelixSRDlssModel.set_from_config(readString("HelixSR", "DlssModel", true));
             HelixSRDeepReuse.set_from_config(readString("HelixSR", "DeepReuse", true));
+            HelixSRPauseFGInMenu.set_from_config(readBool("HelixSR", "PauseFGInMenu"));
             HelixSRWaveSize.set_from_config(readInt("HelixSR", "WaveSize"));
             HelixSRVulkanComputeQueue.set_from_config(readBool("HelixSR", "VulkanComputeQueue"));
             if (auto preset = readString("HelixSR", "FGPreset", true); preset.has_value())
@@ -1804,6 +1805,10 @@ bool Config::SaveIni()
         ini.SetValue("HelixSR", "Int8", Instance()->HelixSRInt8.value_for_config_or("auto").c_str());
         ini.SetValue("HelixSR", "DlssModel", Instance()->HelixSRDlssModel.value_for_config_or("auto").c_str());
         ini.SetValue("HelixSR", "DeepReuse", Instance()->HelixSRDeepReuse.value_for_config_or("auto").c_str());
+        if (auto pf = Instance()->HelixSRPauseFGInMenu.value_for_config(); pf.has_value())
+            ini.SetValue("HelixSR", "PauseFGInMenu", pf.value() ? "true" : "false");
+        else
+            ini.SetValue("HelixSR", "PauseFGInMenu", "auto");
         ini.SetValue("HelixSR", "WaveSize", GetIntValue(Instance()->HelixSRWaveSize.value_for_config()).c_str());
         if (auto vcq = Instance()->HelixSRVulkanComputeQueue.value_for_config(); vcq.has_value())
             ini.SetValue("HelixSR", "VulkanComputeQueue", vcq.value() ? "true" : "false");

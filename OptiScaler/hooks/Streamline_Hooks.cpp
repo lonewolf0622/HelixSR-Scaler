@@ -19,6 +19,7 @@
 #include <shaders/reproject/mouseInputs/InputCollection.h>
 
 #include <intrin.h>
+#include <menu/menu_common.h>
 #pragma intrinsic(_ReturnAddress)
 
 static std::wstring GetModulePath(HMODULE module)
@@ -1365,6 +1366,15 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
     // Make DLSSG auto always mean On
     if (newOptions.mode == sl::DLSSGMode::eAuto)
         newOptions.mode = sl::DLSSGMode::eOn;
+
+    // HelixSR Scaler: frame generation pauses while the menu is open (its window would be interpolated with the game):
+    // [HelixSR] PauseFGInMenu = auto (true) / false
+    if (newOptions.mode != sl::DLSSGMode::eOff && MenuCommon::IsVisible() &&
+        Config::Instance()->HelixSRPauseFGInMenu.value_or(true))
+    {
+        newOptions.mode = sl::DLSSGMode::eOff;
+        return o_slDLSSGSetOptions(viewport, newOptions);
+    }
 
     const auto dlssgPotentiallyActive = newOptions.mode == sl::DLSSGMode::eOn ||
                                         newOptions.mode == sl::DLSSGMode::eAuto ||

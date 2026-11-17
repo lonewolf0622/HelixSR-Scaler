@@ -448,7 +448,8 @@ class Config
     // [HelixSR] DlssModel: which HLX DLSS the DLSS upscaler runs (the menu's DLSS Upscaler list): e (Model E,
     // HelixSR\helixsr.dll, the default) or k (Preset K, HelixSR\k\helixsr.dll when installed)
     CustomOptional<std::string, NoDefault> HelixSRDlssModel;
-    CustomOptional<std::string, NoDefault> HelixSRDeepReuse; // exact, 1:2, 1:4 (auto: what helixsr.ini says, else exact)
+    CustomOptional<std::string, NoDefault> HelixSRDeepReuse;
+    CustomOptional<bool, NoDefault> HelixSRPauseFGInMenu; // DLSS frame generation off while the menu is open (auto: true) // exact, 1:2, 1:4 (auto: what helixsr.ini says, else exact)
     CustomOptional<int, NoDefault> HelixSRWaveSize;     // 64, 32
     // [HelixSR] FGPreset from older settings (auto | c | full); preset C is removed, frame generation always runs Full;
     // helixsr.ini [DlssFrameGeneration] Preset = full is written at the game start (helixsr/HelixSRFgQuality.h)

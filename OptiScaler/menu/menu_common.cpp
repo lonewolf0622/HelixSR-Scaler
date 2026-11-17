@@ -15,6 +15,7 @@
 #include <fsr4/FSR4Presets.h>
 #include <fsr4/FSR4DriverProviderVk.h>
 #include <proxies/Streamline_Proxy.h>
+#include <hooks/Streamline_Hooks.h>
 
 #include <framegen/nvngx/Nvngx_FG.h>
 #include <framegen/reprojection/Reprojection_Dx12.h>
@@ -10688,6 +10689,17 @@ bool MenuCommon::RenderMenu()
     UpdateRenderTiming(ctx);
     UpdateMenuInputMode(ctx);
     HandleMenuShortcuts(ctx);
+
+    // HelixSR Scaler: the game's DLSS frame generation pauses while the menu is open (Streamline_Hooks.cpp); the game's
+    // last options go out again when it opens or closes (some games send them only when they change)
+    {
+        static bool wasVisible = false;
+        if (_isVisible != wasVisible)
+        {
+            wasVisible = _isVisible;
+            StreamlineHooks::updateDlssgOptions();
+        }
+    }
 
     // 2) Prepare one-shot notifications and start a new ImGui frame only when needed.
     UpdateVersionAndStartupNotifications(ctx);
