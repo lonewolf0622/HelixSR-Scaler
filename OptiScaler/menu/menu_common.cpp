@@ -4838,7 +4838,7 @@ void MenuCommon::RenderFrameGenerationSelection(RenderMenuContext& ctx)
 
             ImGui::BeginDisabled(state.dlssgLastSetMode != sl::DLSSGMode::eDynamic);
             static float fpsTarget = config->FGDLSSGFramerateTargetDMFG.value_or_default();
-            const float fpsSliderMax = (float) std::max(200, refreshRate);
+            const float fpsSliderMax = (float) std::max(600, refreshRate);   // (up to 6x frame generation)
             ImGui::SliderFloat("DMFG FPS Target", &fpsTarget, 0, fpsSliderMax, "%.0f");
 
             ShowTooltip("An active limit of 0 means auto-detect the display refresh rate");
@@ -5522,7 +5522,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
             // The slider's lowest step (9) is Auto, the lowest target is 10.
             constexpr float autoStep = 9.0f;
             static float xefgFpsTarget = std::max(config->FGXeFGFramerateTargetDMFG.value_or_default(), autoStep);
-            const float fpsSliderMax = (float) std::max(200, refreshRate);
+            const float fpsSliderMax = (float) std::max(600, refreshRate);   // (up to 6x frame generation)
 
             ImGui::SetNextItemWidth(150.0f * menuResScale);
             ImGui::SliderFloat("Target FPS##xefg", &xefgFpsTarget, autoStep, fpsSliderMax,
@@ -5721,7 +5721,7 @@ void MenuCommon::RenderFrameGenerationRuntimeSettings(RenderMenuContext& ctx)
 
                 ImGui::BeginDisabled(!config->FGDLSSGForceDMFG.value_or_default());
                 static float fpsTarget = config->FGDLSSGFramerateTargetDMFG.value_or_default();
-                float fpsSliderMax = (float) std::max(200, refreshRate);
+                float fpsSliderMax = (float) std::max(600, refreshRate);   // (up to 6x frame generation)
                 ImGui::SliderFloat("DMFG FPS Target", &fpsTarget, 0, fpsSliderMax, "%.0f");
 
                 ShowTooltip("An active limit of 0 means auto-detect the display refresh rate");
@@ -6864,7 +6864,7 @@ void MenuCommon::RenderFramerateSettings(RenderMenuContext& ctx)
         if (std::isinf(_limitFps))
             _limitFps = config->FramerateLimit.value_or_default();
 
-        float fpsSliderMax = (float) std::max(200, refreshRate);
+        float fpsSliderMax = (float) std::max(600, refreshRate);   // (up to 6x frame generation)
         ImGui::SliderFloat("FPS Limit", &_limitFps, 0, fpsSliderMax, "%.0f");
 
         if (ImGui::Button("Apply Limit"))
