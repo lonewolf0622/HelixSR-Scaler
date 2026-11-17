@@ -1368,9 +1368,9 @@ sl::Result StreamlineHooks::hkslDLSSGSetOptions(const sl::ViewportHandle& viewpo
         newOptions.mode = sl::DLSSGMode::eOn;
 
     // HelixSR Scaler: frame generation pauses while the menu is open (its window would be interpolated with the game):
-    // [HelixSR] PauseFGInMenu = auto (true) / false
+    // [HelixSR] PauseFGInMenu = true / auto (false)
     if (newOptions.mode != sl::DLSSGMode::eOff && MenuCommon::IsVisible() &&
-        Config::Instance()->HelixSRPauseFGInMenu.value_or(true))
+        Config::Instance()->HelixSRPauseFGInMenu.value_or(false))
     {
         newOptions.mode = sl::DLSSGMode::eOff;
         return o_slDLSSGSetOptions(viewport, newOptions);
