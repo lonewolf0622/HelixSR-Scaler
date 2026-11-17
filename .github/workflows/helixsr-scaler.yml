@@ -93,15 +93,16 @@ jobs:
         # the Linux setup in place of OptiScaler's; the list of the download's files they use
         Copy-Item -Force setup_windows.bat "$out\setup_windows.bat"
         Copy-Item -Force helixsr\setup_linux.sh "$out\setup_linux.sh"
-        # NVIDIA Streamline 2.8.0 (MIT; the DLSS Frame Generation version HelixSR's setup builds against) in
-        # OptiScaler\streamline: the plugins the DLSS-G frame-generation output (OptiFG, any game) loads
+        # NVIDIA Streamline 2.14.16 (MIT) in OptiScaler\streamline: the plugins the DLSS-G frame-generation output loads, and
+        # those HelixSR Scaler uses in place of a game's older ones (FGInput = nvngxfg: up to 6x, Dynamic MFG). The SDK zip
+        # has no license file: the repository's at v2.14.16
         $sl = "$env:RUNNER_TEMP\streamline"
-        Invoke-WebRequest https://github.com/NVIDIA-RTX/Streamline/releases/download/v2.8.0/streamline-sdk-v2.8.0.zip -OutFile "$sl.zip"
-        if ((Get-FileHash "$sl.zip").Hash -ne '313669F8CF886F823EA0518A50712EFA5E2E8623689ED2A6BD0D9353E475BC47') { throw 'Streamline 2.8.0 download changed' }
+        Invoke-WebRequest https://github.com/NVIDIA-RTX/Streamline/releases/download/v2.14.16/streamline-sdk-v2.14.16.zip -OutFile "$sl.zip"
+        if (-not (Get-FileHash "$sl.zip").Hash.StartsWith('32041E51DB0CAB70')) { throw 'Streamline 2.14.16 download changed' }
         Expand-Archive "$sl.zip" $sl
         New-Item -ItemType Directory -Force "$out\OptiScaler\streamline" | Out-Null
         foreach ($n in 'sl.interposer.dll', 'sl.common.dll', 'sl.dlss_g.dll', 'sl.reflex.dll', 'sl.pcl.dll') { Copy-Item "$sl\bin\x64\$n" "$out\OptiScaler\streamline" }
-        Copy-Item "$sl\license.txt" "$out\Licenses\Streamline_LICENSE.txt"
+        Invoke-WebRequest https://raw.githubusercontent.com/NVIDIA-RTX/Streamline/v2.14.16/license.txt -OutFile "$out\Licenses\Streamline_LICENSE.txt"
         Push-Location $out
         Get-ChildItem -Recurse -File | ForEach-Object { (Resolve-Path -Relative $_.FullName).Substring(2).Replace('\', '/') } |
           Sort-Object | Set-Content -Encoding ascii HelixSR-Scaler-package.txt
